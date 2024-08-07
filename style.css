@@ -27,11 +27,11 @@ main {
     box-shadow: 0 0 10px rgba(0,0,0,0.1);
 }
 
-#question-area, #story-display {
+#question-area, #story-display, #speech-controls {
     margin-bottom: 20px;
 }
 
-input[type="text"] {
+input[type="text"], input[type="range"] {
     width: 100%;
     padding: 10px;
     margin: 10px 0;
@@ -62,4 +62,20 @@ footer {
     text-align: center;
     margin-top: 20px;
     color: #666;
+}
+
+.highlight {
+    background-color: yellow;
+}
+
+#story-content img {
+    max-width: 100%;
+    height: auto;
+    margin: 10px 0;
+}
+
+#speech-controls label {
+    display: inline-block;
+    width: 100px;
+    margin-right: 10px;
 }
