@@ -1,4 +1,4 @@
-console.log("app.js is running");
+let currentWord = 0;
 
 // Questions for the story
 const questions = [
@@ -11,7 +11,8 @@ const questions = [
 
 let currentQuestionIndex = 0;
 let storyElements = {};
-let currentPage = 0;
+let currentPageIndex = 0;
+let storyPages = [];
 
 // DOM elements
 const questionDisplay = document.getElementById('question-display');
@@ -90,40 +91,69 @@ function handleAnswer() {
 }
 
 function speak(text, isQuestion = false) {
+    if (!text) {
+        console.error("No text provided to speak function");
+        return;
+    }
+
     if (speechSynthesis.speaking) {
         speechSynthesis.cancel();
     }
+    
     let words = text.split(' ');
-    let currentWord = 0;
+    currentWord = 0;
 
     speechUtterance.text = text;
+    speechUtterance.rate = parseFloat(document.getElementById('speech-rate').value);
     speechUtterance.onboundary = function(event) {
-        if (event.name === 'word' && isQuestion) {
-            if (currentWord > 0) {
-                document.getElementById(`word-${currentWord - 1}`).classList.remove('highlight');
-            }
-            document.getElementById(`word-${currentWord}`).classList.add('highlight');
-            currentWord++;
+        if (event.name === 'word') {
+            updateHighlight();
         }
     };
     speechUtterance.onstart = function() {
         isSpeaking = true;
     };
     speechUtterance.onend = function() {
-        if (isQuestion) {
-            document.getElementById(`word-${currentWord - 1}`).classList.remove('highlight');
-        }
         isSpeaking = false;
+        clearHighlights();
+        if (!isQuestion) {
+            setTimeout(() => {
+                currentPageIndex++;
+                if (currentPageIndex < storyPages.length) {
+                    showPage(currentPageIndex);
+                    speak(storyPages[currentPageIndex].textContent);
+                }
+            }, 3000); // 3 second pause before next page
+        }
     };
 
     if (isQuestion) {
-        // Wrap each word in a span for highlighting only for questions
         questionDisplay.innerHTML = words.map((word, index) => 
             `<span id="word-${index}">${word}</span>`
         ).join(' ');
+    } else {
+        let pageContent = document.querySelector('.story-page:not([style*="display: none"]) p');
+        if (pageContent) {
+            pageContent.innerHTML = words.map((word, index) => 
+                `<span id="word-${index}">${word}</span>`
+            ).join(' ');
+        }
     }
 
     speechSynthesis.speak(speechUtterance);
+}
+
+function updateHighlight() {
+    clearHighlights();
+    let wordToHighlight = document.getElementById(`word-${currentWord}`);
+    if (wordToHighlight) {
+        wordToHighlight.classList.add('highlight');
+    }
+    currentWord++;
+}
+
+function clearHighlights() {
+    document.querySelectorAll('.highlight').forEach(el => el.classList.remove('highlight'));
 }
 
 function stopSpeaking() {
@@ -164,9 +194,8 @@ function handleInterruption(text) {
 }
 
 function generateImage(prompt) {
-    const keywords = prompt.match(/\b(\w+)\b/g).filter(word => word.length > 3);
-    const relevantKeywords = keywords.slice(0, 3).join('+');
-    return `https://source.unsplash.com/300x200/?${encodeURIComponent(relevantKeywords)}`;
+    // Instead of using Unsplash, we'll use a local placeholder
+    return `https://via.placeholder.com/300x200?text=${encodeURIComponent(prompt)}`;
 }
 
 const storyTemplates = [
@@ -192,7 +221,7 @@ function generateAdvancedStory() {
     const template = storyTemplates[Math.floor(Math.random() * storyTemplates.length)];
     let storyHTML = `<h2>${template.title}</h2>`;
     
-    template.pages.forEach((page, index) => {
+    storyPages = template.pages.map((page, index) => {
         let pageContent = page;
         for (let [question, answer] of Object.entries(storyElements)) {
             const placeholder = placeholderMapping[question];
@@ -201,17 +230,23 @@ function generateAdvancedStory() {
             }
         }
         
-        storyHTML += `
-            <div class="story-page" id="page-${index}" style="display: none;">
-                <img src="${generateImage(pageContent)}" alt="Story illustration">
-                <p>${pageContent}</p>
-            </div>
-        `;
+        return {
+            html: `
+                <div class="story-page" id="page-${index}">
+                    <img src="${generateImage(pageContent)}" alt="Story illustration">
+                    <p>${pageContent}</p>
+                </div>
+            `,
+            textContent: pageContent
+        };
     });
     
-    storyContent.innerHTML = storyHTML;
-    showPage(0);
-    speak("Here's your story: " + storyContent.textContent);
+    storyContent.innerHTML = storyHTML + storyPages.map(page => page.html).join('');
+    questionArea.style.display = 'none';
+    storyDisplay.style.display = 'block';
+    currentPageIndex = 0;
+    showPage(currentPageIndex);
+    speak(storyPages[currentPageIndex].textContent);
 }
 
 function showPage(pageNumber) {
@@ -220,15 +255,24 @@ function showPage(pageNumber) {
     const pageToShow = document.getElementById(`page-${pageNumber}`);
     if (pageToShow) {
         pageToShow.style.display = 'block';
-        currentPage = pageNumber;
+        currentPageIndex = pageNumber;
+        
+        // Wrap words in spans for the newly displayed page
+        let pageContent = pageToShow.querySelector('p');
+        if (pageContent) {
+            let words = pageContent.textContent.split(' ');
+            pageContent.innerHTML = words.map((word, index) => 
+                `<span id="word-${index}">${word}</span>`
+            ).join(' ');
+        }
     }
     updatePageButtons();
 }
 
 function updatePageButtons() {
     const pages = document.querySelectorAll('.story-page');
-    prevPageButton.disabled = currentPage === 0;
-    nextPageButton.disabled = currentPage === pages.length - 1;
+    prevPageButton.disabled = currentPageIndex === 0;
+    nextPageButton.disabled = currentPageIndex === pages.length - 1;
 }
 
 // Event listeners
@@ -250,15 +294,18 @@ document.getElementById('speech-volume').addEventListener('change', (e) => {
 });
 
 prevPageButton.addEventListener('click', () => {
-    if (currentPage > 0) {
-        showPage(currentPage - 1);
+    if (currentPageIndex > 0) {
+        stopSpeaking();
+        showPage(currentPageIndex - 1);
+        speak(storyPages[currentPageIndex].textContent);
     }
 });
 
 nextPageButton.addEventListener('click', () => {
-    const pages = document.querySelectorAll('.story-page');
-    if (currentPage < pages.length - 1) {
-        showPage(currentPage + 1);
+    if (currentPageIndex < storyPages.length - 1) {
+        stopSpeaking();
+        showPage(currentPageIndex + 1);
+        speak(storyPages[currentPageIndex].textContent);
     }
 });
 
