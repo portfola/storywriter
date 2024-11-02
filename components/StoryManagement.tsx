@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, Button, FlatList, TouchableOpacity, StyleSheet, Modal } from 'react-native';
+import { StoryPage } from '../src/utils/storyGenerator'; // Import this
 
 interface Story {
   title: string;
-  content: string;
+  content: StoryPage[];
+  elements: { [key: string]: string };
 }
 
 interface StoryManagementProps {

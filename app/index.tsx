@@ -10,7 +10,7 @@ import SpeechControls from '../components/SpeechControls';
 import StoryManagement from '../components/StoryManagement';
 
 import { questions, storyTemplates, placeholderMapping } from '../src/data/storyData';
-import { generateStory } from '../src/utils/storyGenerator';
+import { generateStory, StoryPage } from '../src/utils/storyGenerator';
 
 export default function Index() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -21,7 +21,7 @@ export default function Index() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speechRate, setSpeechRate] = useState(1.0);
   const [speechVolume, setSpeechVolume] = useState(1.0);
-  const [savedStories, setSavedStories] = useState<{title: string, content: {textContent: string}[], elements: {[key: string]: string}}[]>([]);
+  const [savedStories, setSavedStories] = useState<{title: string, content: StoryPage[], elements: {[key: string]: string}}[]>([]);
 
   useEffect(() => {
     Voice.onSpeechResults = onSpeechResults;

@@ -4,7 +4,7 @@ interface StoryElements {
   [key: string]: string;
 }
 
-interface StoryPage {
+export interface StoryPage {
   textContent: string;
   imageUrl: string;
 }
@@ -27,7 +27,7 @@ export function generateStory(
     
     return {
       textContent: pageContent,
-      imageUrl: generateImage(pageContent) // This is a placeholder function
+      imageUrl: generateImage(pageContent) // This function should be implemented
     };
   });
 }
@@ -35,6 +35,5 @@ export function generateStory(
 function generateImage(prompt: string): string {
   // In a real application, this would call an image generation API
   // For now, we'll use a placeholder image service
-  const keywords = prompt.split(' ').slice(0, 3).join('+');
-  return `https://via.placeholder.com/300x200?text=${encodeURIComponent(keywords)}`;
+  return `https://via.placeholder.com/300x200?text=${encodeURIComponent(prompt.substring(0, 30))}`;
 }

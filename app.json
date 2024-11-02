@@ -3,7 +3,7 @@
     "name": "StoryWriter",
     "slug": "StoryWriter",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
@@ -13,18 +13,24 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.storywriter.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app needs access to microphone for voice input",
+        "NSSpeechRecognitionUsageDescription": "This app needs access to speech recognition for voice commands",
+        "UIBackgroundModes": ["audio"],
+        "UISupportedInterfaceOrientations": [
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      },
+      "screenOrientation": "landscape"
     },
     "plugins": [
       "expo-router"
