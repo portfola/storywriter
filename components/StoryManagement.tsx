@@ -12,6 +12,7 @@ interface StoryManagementProps {
   onSave: () => void;
   onLoad: (index: number) => void;
   savedStories: Story[];
+  onBack: () => void;
 }
 
 const StoryManagement: React.FC<StoryManagementProps> = ({ onSave, onLoad, savedStories }) => {
