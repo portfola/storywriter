@@ -60,6 +60,7 @@ class HuggingFaceService {
       console.log('Full response data:', response.data);
 
       if (!response.data?.[0]?.generated_text) {
+        console.error('Invalid response structure:', response.data);
         throw new Error('Empty or invalid response received');
       }
 

@@ -106,10 +106,11 @@ export default function Index() {
       const prompt = `Based on our conversation so far, ask the next question to gather more details for a children's story. 
       If you have enough information (after 3-5 questions) to create an engaging story, respond with "INTERVIEW_COMPLETE" 
       followed by a summary of the story elements.
-
+  
       Current conversation:
       ${conversationHistory.map(turn => `${turn.role}: ${turn.content}`).join('\n')}`;
-
+  
+      console.log('Sending prompt to HuggingFaceService:', prompt);
       const response = await HuggingFaceService.generateResponse(prompt);
       console.log('LLM Response:', response);
       
@@ -123,8 +124,13 @@ export default function Index() {
         setCurrentQuestion(nextQuestion);
         speak(nextQuestion, true);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error generating question:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.stack);
+      } else {
+        console.error('Unknown error occurred');
+      }
       speak('I had trouble thinking of the next question. Should we try again?');
     } finally {
       setIsGeneratingQuestion(false);
