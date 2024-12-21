@@ -3,10 +3,12 @@
     "name": "StoryWriter",
     "slug": "StoryWriter",
     "version": "1.0.0",
+    "sdkVersion": "52.0.0",
     "orientation": "landscape",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "storywriter",
     "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
@@ -33,7 +35,24 @@
       "screenOrientation": "landscape"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-dev-client",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
