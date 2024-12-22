@@ -28,6 +28,7 @@ export default {
       }
     },
     android: {
+      package: "com.portfola.StoryWriter",
       adaptiveIcon: {
         foregroundImage: "./assets/images/adaptive-icon.png",
         backgroundColor: "#ffffff"
@@ -36,7 +37,14 @@ export default {
     },
     plugins: [
       "expo-router",
-      "expo-dev-client"
+      "expo-dev-client",
+      [
+        "@react-native-voice/voice",
+        {
+          microphonePermission: "Allow $(PRODUCT_NAME) to access the microphone",
+          speechRecognitionPermission: "Allow $(PRODUCT_NAME) to securely recognize user speech",
+        },
+      ]
     ],
     extra: {
       HUGGING_FACE_API_KEY: process.env.HUGGING_FACE_API_KEY,

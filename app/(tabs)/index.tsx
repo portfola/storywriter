@@ -1,44 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Speech from 'expo-speech';
 import Voice, { SpeechResultsEvent } from '@react-native-voice/voice';
 import { router } from 'expo-router';
 
 import HuggingFaceService from '@/services/huggingFaceService';
-import QuestionArea from '@/components/QuestionArea';
 import StoryDisplay from '@/components/StoryDisplay';
 import SpeechControls from '@/components/SpeechControls';
 import StoryManagement from '@/components/StoryManagement';
 import { StoryPage } from '@/src/utils/storyGenerator';
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: '#f0f8ff',
-  },
-  backButton: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    zIndex: 1,
-    padding: 10,
-    backgroundColor: '#3498db',
-    borderRadius: 8,
-  },
-  backButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  thinkingText: {
-    textAlign: 'center',
-    color: '#666',
-    marginTop: 10,
-    fontStyle: 'italic',
-  }
-});
+interface ConversationTurn {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
 
 interface SavedStory {
   title: string;
@@ -46,10 +22,60 @@ interface SavedStory {
   elements: { [key: string]: string };
 }
 
-interface ConversationTurn {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
+const VoiceWave: React.FC<{ isListening: boolean; isSpeaking: boolean }> = ({ isListening, isSpeaking }) => {
+  const [waveAmplitudes] = useState(
+    Array(10).fill(0).map(() => new Animated.Value(10))
+  );
+  
+  useEffect(() => {
+    let animationFrameId: number;
+    
+    const animate = () => {
+      if (isListening || isSpeaking) {
+        waveAmplitudes.forEach(amplitude => {
+          Animated.timing(amplitude, {
+            toValue: Math.random() * 40 + 10,
+            duration: 100,
+            useNativeDriver: false,
+          }).start();
+        });
+      } else {
+        waveAmplitudes.forEach(amplitude => {
+          Animated.timing(amplitude, {
+            toValue: 10,
+            duration: 100,
+            useNativeDriver: false,
+          }).start();
+        });
+      }
+      animationFrameId = requestAnimationFrame(animate);
+    };
+    
+    animate();
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [isListening, isSpeaking, waveAmplitudes]);
+
+  return (
+    <View style={styles.waveContainer}>
+      {waveAmplitudes.map((amplitude, index) => (
+        <Animated.View
+          key={index}
+          style={[
+            styles.bar,
+            {
+              height: amplitude,
+              backgroundColor: isListening ? '#ff6b6b' : (isSpeaking ? '#4ecdc4' : '#dddddd')
+            }
+          ]}
+        />
+      ))}
+    </View>
+  );
+};
 
 export default function TabOneScreen() {
   const [storyElements, setStoryElements] = useState<{[key: string]: string}>({});
@@ -60,20 +86,22 @@ export default function TabOneScreen() {
   const [speechRate, setSpeechRate] = useState(1.0);
   const [speechVolume, setSpeechVolume] = useState(1.0);
   const [savedStories, setSavedStories] = useState<SavedStory[]>([]);
-  
   const [conversationHistory, setConversationHistory] = useState<ConversationTurn[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [isInterviewing, setIsInterviewing] = useState(true);
 
-  useEffect(() => {
-    Voice.onSpeechResults = onSpeechResults;
-    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
+  useEffect(() => {    const initializeVoice = async () => {
+      try {       
+        await Voice.isAvailable();
+        Voice.onSpeechResults = onSpeechResults;        // Other Voice event listeners...
+        await startNewStory();      } catch (error) {
+        console.error('Error initializing voice:', error);      
+      }
     };
-  }, []);
-
-  useEffect(() => {
+    initializeVoice();    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);    };
+  }, []);  useEffect(() => {
     const loadSavedStories = async () => {
       try {
         const saved = await AsyncStorage.getItem('savedStories');
@@ -104,31 +132,23 @@ export default function TabOneScreen() {
       const prompt = `Based on our conversation so far, ask the next question to gather more details for a children's story. 
       If you have enough information (after 3-5 questions) to create an engaging story, respond with "INTERVIEW_COMPLETE" 
       followed by a summary of the story elements.
-  
+
       Current conversation:
       ${conversationHistory.map(turn => `${turn.role}: ${turn.content}`).join('\n')}`;
-  
-      console.log('Sending prompt to HuggingFaceService:', prompt);
+
       const response = await HuggingFaceService.generateResponse(prompt);
-      console.log('LLM Response:', response);
       
       if (response.includes('INTERVIEW_COMPLETE')) {
         setIsInterviewing(false);
         const summary = response.split('INTERVIEW_COMPLETE')[1].trim();
-        console.log('Interview complete! Summary:', summary);
         await generateAndDisplayStory(summary);
       } else {
         const nextQuestion = response.trim();
         setCurrentQuestion(nextQuestion);
         speak(nextQuestion, true);
       }
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Error generating question:', error);
-      if (error instanceof Error) {
-        console.error('Error details:', error.stack);
-      } else {
-        console.error('Unknown error occurred');
-      }
       speak('I had trouble thinking of the next question. Should we try again?');
     } finally {
       setIsGeneratingQuestion(false);
@@ -139,7 +159,7 @@ export default function TabOneScreen() {
     if (!answer) return;
 
     if (isInterviewing) {
-      const updatedHistory: ConversationTurn[] = [
+      const updatedHistory = [
         ...conversationHistory,
         { role: 'user' as const, content: answer },
       ];
@@ -173,18 +193,35 @@ export default function TabOneScreen() {
 
   const handleInterruption = (text: string) => {
     console.log("Interruption:", text);
+    // Handle user interruptions during speech
   };
 
-  const toggleListening = async () => {
+  const startListening = async () => {    try {
+      if (!isListening) {
+        const isAvailable = await Voice.isAvailable();
+        if (!isAvailable) {
+          console.error('Voice recognition is not available on this device');
+          return;        }
+        await Voice.start('en-US');        
+        setIsListening(true);
+      }    
+    } catch (e) {
+      console.error('Error starting voice recognition:', e);     
+       if (e instanceof Error) {
+        console.error('Error message:', e.message);        
+        console.error('Error stack:', e.stack);
+      }    
+    }
+  };
+
+  const stopListening = async () => {
     try {
       if (isListening) {
         await Voice.stop();
-      } else {
-        await Voice.start('en-US');
+        setIsListening(false);
       }
-      setIsListening(!isListening);
     } catch (e) {
-      console.error(e);
+      console.error('Error stopping voice recognition:', e);
     }
   };
 
@@ -245,12 +282,12 @@ export default function TabOneScreen() {
     }
   };
 
-  const startNewStory = () => {
+  const startNewStory = async () => {
     setIsInterviewing(true);
     setStoryElements({});
     setStoryPages([]);
     const initialConversation: ConversationTurn[] = [{
-      role: 'system' as const,
+      role: 'system',
       content: `You are a friendly children's story creator assistant. Interview the user to gather details for their story. 
       Ask one question at a time. Keep questions simple and child-friendly. 
       After 2-3 questions, when you have enough information, respond with "INTERVIEW_COMPLETE" followed by a summary of the story elements.`
@@ -260,25 +297,42 @@ export default function TabOneScreen() {
     const initialQuestion = "What kind of story would you like to create today?";
     setCurrentQuestion(initialQuestion);
     speak(initialQuestion, true);
+    await startListening();
+  };
+
+  const handleBack = async () => {
+    console.log('handleBack called');
+    await stopListening();
+    await Speech.stop();
+    setIsGeneratingQuestion(false);
+    setConversationHistory([]);
+    setCurrentQuestion('');
+    setStoryPages([]);
+  
+    if (Voice) {
+      await Voice.destroy();
+      Voice.removeAllListeners();
+    }
+  
+    router.back();
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.container}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.push('/')}
-        >
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        
+      <TouchableOpacity 
+        style={styles.backButton}
+        onPress={handleBack}
+      >
+        <Text style={styles.backButtonText}>← Back</Text>
+      </TouchableOpacity>
+      
+      <View style={styles.contentContainer}>
         {isInterviewing ? (
           <>
-            <QuestionArea
-              question={currentQuestion}
-              onAnswer={handleAnswer}
-              onVoiceInput={toggleListening}
+            <Text style={styles.currentQuestion}>{currentQuestion}</Text>
+            <VoiceWave 
               isListening={isListening}
+              isSpeaking={isSpeaking}
             />
             {isGeneratingQuestion && (
               <Text style={styles.thinkingText}>Thinking of next question...</Text>
@@ -301,7 +355,7 @@ export default function TabOneScreen() {
               onSave={saveStory}
               onLoad={loadStory}
               savedStories={savedStories}
-              onBack={() => router.push('/')}
+              onBack={handleBack}
             />
           </>
         )}
@@ -309,3 +363,54 @@ export default function TabOneScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f0f8ff',
+  },
+  contentContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 60,
+    padding: 20,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    zIndex: 1,
+    padding: 10,
+    backgroundColor: '#3498db',
+    borderRadius: 8,
+  },
+  backButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  currentQuestion: {
+    fontSize: 24,
+    textAlign: 'center',
+    marginBottom: 30,
+    color: '#2c3e50',
+  },
+  thinkingText: {
+    textAlign: 'center',
+    color: '#666',
+    marginTop: 10,
+    fontStyle: 'italic',
+  },
+  waveContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 60,
+    gap: 4,
+  },
+  bar: {
+    width: 4,
+    borderRadius: 2,
+  }
+});
