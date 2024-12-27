@@ -207,31 +207,81 @@ export default function TabOneScreen() {
   };
 
   const speak = async (text: string, isQuestion = false) => {
-    if (isSpeaking) {
-      await Speech.stop();
+    // Don't start new speech if we're processing
+    if (isProcessing) {
+      console.log('Currently processing, cannot start speech');
+      return;
     }
-
-    setIsSpeaking(true);
-    await Speech.speak(text, {
-      rate: speechRate,
-      volume: speechVolume,
-      onDone: () => {
-        setIsSpeaking(false);
-        if (!isQuestion) {
-          setTimeout(() => {
-            if (currentPageIndex < storyPages.length - 1) {
+  
+    try {
+      // Cancel any ongoing speech
+      if (isSpeaking) {
+        await Speech.stop();
+      }
+  
+      setIsSpeaking(true);
+      
+      await Speech.speak(text, {
+        rate: speechRate,
+        volume: speechVolume,
+        onStart: () => {
+          console.log('Speech started:', text.slice(0, 50) + '...');
+        },
+        onDone: () => {
+          console.log('Speech completed');
+          setIsSpeaking(false);
+          
+          // Only auto-advance for story pages, not questions
+          if (!isQuestion && currentPageIndex < storyPages.length - 1) {
+            // Add a small delay before next page
+            setTimeout(() => {
               setCurrentPageIndex(prev => prev + 1);
               speak(storyPages[currentPageIndex + 1].textContent);
-            }
-          }, 3000);
+            }, 2000);
+          }
+        },
+        onStopped: () => {
+          console.log('Speech stopped');
+          setIsSpeaking(false);
+        },
+        onError: (error) => {
+          console.error('Speech error:', error);
+          setIsSpeaking(false);
         }
-      }
-    });
+      });
+    } catch (error) {
+      console.error('Error in speak function:', error);
+      setIsSpeaking(false);
+    }
   };
 
-  const handleInterruption = (text: string) => {
-    console.log("Interruption:", text);
-    // Handle user interruptions during speech
+  const stopCurrentSpeech = async () => {
+    try {
+      if (isSpeaking) {
+        await Speech.stop();
+        setIsSpeaking(false);
+      }
+    } catch (error) {
+      console.error('Error stopping speech:', error);
+    }
+  };
+
+  const handleInterruption = async (text: string) => {
+    console.log("User interrupted with:", text);
+    await stopCurrentSpeech();
+    
+    // If we're in story mode and user says something like "stop" or "pause" or "wait"
+    if (text.toLowerCase().includes('stop') || text.toLowerCase().includes('pause') || text.toLowerCase().includes('wait')) {
+      await stopCurrentSpeech();
+    }
+    
+    // If user says "next" or "continue" while in story mode
+    if (!isInterviewing && (text.toLowerCase().includes('next') || text.toLowerCase().includes('continue'))) {
+      if (currentPageIndex < storyPages.length - 1) {
+        setCurrentPageIndex(prev => prev + 1);
+        speak(storyPages[currentPageIndex + 1].textContent);
+      }
+    }
   };
 
   const startListening = async () => {
