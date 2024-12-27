@@ -90,6 +90,7 @@ export default function TabOneScreen() {
   const [currentQuestion, setCurrentQuestion] = useState<string>('');
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [isInterviewing, setIsInterviewing] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     // Initialize voice recognition and start the interview process
@@ -156,17 +157,24 @@ export default function TabOneScreen() {
   };
 
   const generateNextQuestion = async () => {
+    if (isProcessing || isSpeaking) {
+      console.log('Already processing or speaking, cannot generate next question');
+      return;
+    }
+  
     setIsGeneratingQuestion(true);
+    setIsProcessing(true);
+    
     try {
       const prompt = `Based on our conversation so far, ask the next question to gather more details for a children's story. 
-      If you have enough information (after 3-5 questions) to create an engaging story, respond with "INTERVIEW_COMPLETE" 
+      If you have enough information (after 3-5 questions) to create a story, respond with "INTERVIEW_COMPLETE" 
       followed by a summary of the story elements.
-
+  
       Current conversation:
       ${conversationHistory.map(turn => `${turn.role}: ${turn.content}`).join('\n')}`;
-
+  
       const response = await HuggingFaceService.generateResponse(prompt);
-
+      
       if (response.includes('INTERVIEW_COMPLETE')) {
         setIsInterviewing(false);
         const summary = response.split('INTERVIEW_COMPLETE')[1].trim();
@@ -174,13 +182,14 @@ export default function TabOneScreen() {
       } else {
         const nextQuestion = response.trim();
         setCurrentQuestion(nextQuestion);
-        speak(nextQuestion, true);
+        await speak(nextQuestion, true);
       }
     } catch (error) {
       console.error('Error generating question:', error);
       speak('I had trouble thinking of the next question. Should we try again?');
     } finally {
       setIsGeneratingQuestion(false);
+      setIsProcessing(false);
     }
   };
 
@@ -314,21 +323,36 @@ export default function TabOneScreen() {
   };
 
   const startNewStory = async () => {
-    setIsInterviewing(true);
-    setStoryElements({});
-    setStoryPages([]);
-    const initialConversation: ConversationTurn[] = [{
-      role: 'system',
-      content: `You are a friendly children's story creator assistant. Interview the user to gather details for their story. 
-      Ask one question at a time. Keep questions simple and child-friendly. 
-      After 2-3 questions, when you have enough information, respond with "INTERVIEW_COMPLETE" followed by a summary of the story elements.`
-    }];
-    setConversationHistory(initialConversation);
-
-    const initialQuestion = "What kind of story would you like to create today?";
-    setCurrentQuestion(initialQuestion);
-    speak(initialQuestion, true);
-    await startListening();
+    // Prevent starting if already processing or speaking
+    if (isProcessing || isSpeaking) {
+      console.log('Already processing or speaking, cannot start new story');
+      return;
+    }
+    
+    try {
+      setIsProcessing(true);
+      setIsInterviewing(true);
+      setStoryElements({});
+      setStoryPages([]);
+      setConversationHistory([{
+        role: 'system',
+        content: 'You are a friendly children\'s story creator assistant.'
+      }]);
+  
+      const initialQuestion = "What kind of story would you like to create today?";
+      setCurrentQuestion(initialQuestion);
+      
+      // Wait for speech to complete before starting listening
+      await speak(initialQuestion, true);
+      
+      if (!isListening) {
+        await startListening();
+      }
+    } catch (error) {
+      console.error('Error starting new story:', error);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleBack = async () => {
