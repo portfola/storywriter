@@ -26,10 +26,10 @@ const VoiceWave: React.FC<{ isListening: boolean; isSpeaking: boolean }> = ({ is
   const [waveAmplitudes] = useState(
     Array(10).fill(0).map(() => new Animated.Value(10))
   );
-  
+
   useEffect(() => {
     let animationFrameId: number;
-    
+
     const animate = () => {
       if (isListening || isSpeaking) {
         waveAmplitudes.forEach(amplitude => {
@@ -50,7 +50,7 @@ const VoiceWave: React.FC<{ isListening: boolean; isSpeaking: boolean }> = ({ is
       }
       animationFrameId = requestAnimationFrame(animate);
     };
-    
+
     animate();
     return () => {
       if (animationFrameId) {
@@ -78,7 +78,7 @@ const VoiceWave: React.FC<{ isListening: boolean; isSpeaking: boolean }> = ({ is
 };
 
 export default function TabOneScreen() {
-  const [storyElements, setStoryElements] = useState<{[key: string]: string}>({});
+  const [storyElements, setStoryElements] = useState<{ [key: string]: string }>({});
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [storyPages, setStoryPages] = useState<StoryPage[]>([]);
   const [isListening, setIsListening] = useState(false);
@@ -91,17 +91,46 @@ export default function TabOneScreen() {
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [isInterviewing, setIsInterviewing] = useState(true);
 
-  useEffect(() => {    const initializeVoice = async () => {
-      try {       
-        await Voice.isAvailable();
-        Voice.onSpeechResults = onSpeechResults;        // Other Voice event listeners...
-        await startNewStory();      } catch (error) {
-        console.error('Error initializing voice:', error);      
+  useEffect(() => {
+    // Initialize voice recognition and start the interview process
+    const initializeVoice = async () => {
+      try {
+        // Set up all voice event listeners
+        Voice.onSpeechStart = () => setIsListening(true);
+        Voice.onSpeechEnd = () => setIsListening(false);
+        Voice.onSpeechError = (error) => {
+          console.error('Speech error:', error);
+          setIsListening(false);
+        };
+        Voice.onSpeechResults = onSpeechResults;
+  
+        // Check platform-specific permissions if needed
+        // Note: On iOS, permissions are automatically requested when starting Voice
+        await startNewStory();
+      } catch (error) {
+        console.error('Error initializing voice:', error);
+        speak("I had trouble initializing voice recognition. Please check your microphone permissions.");
       }
     };
-    initializeVoice();    return () => {
-      Voice.destroy().then(Voice.removeAllListeners);    };
-  }, []);  useEffect(() => {
+  
+    initializeVoice();
+  
+    // Cleanup function
+    return () => {
+      const cleanup = async () => {
+        try {
+          await Voice.destroy();
+          await Speech.stop();
+          Voice.removeAllListeners();
+        } catch (error) {
+          console.error('Error during cleanup:', error);
+        }
+      };
+      cleanup();
+    };
+  }, []);
+  
+  useEffect(() => {
     const loadSavedStories = async () => {
       try {
         const saved = await AsyncStorage.getItem('savedStories');
@@ -137,7 +166,7 @@ export default function TabOneScreen() {
       ${conversationHistory.map(turn => `${turn.role}: ${turn.content}`).join('\n')}`;
 
       const response = await HuggingFaceService.generateResponse(prompt);
-      
+
       if (response.includes('INTERVIEW_COMPLETE')) {
         setIsInterviewing(false);
         const summary = response.split('INTERVIEW_COMPLETE')[1].trim();
@@ -196,21 +225,23 @@ export default function TabOneScreen() {
     // Handle user interruptions during speech
   };
 
-  const startListening = async () => {    try {
+  const startListening = async () => {
+    try {
       if (!isListening) {
         const isAvailable = await Voice.isAvailable();
         if (!isAvailable) {
           console.error('Voice recognition is not available on this device');
-          return;        }
-        await Voice.start('en-US');        
+          return;
+        }
+        await Voice.start('en-US');
         setIsListening(true);
-      }    
+      }
     } catch (e) {
-      console.error('Error starting voice recognition:', e);     
-       if (e instanceof Error) {
-        console.error('Error message:', e.message);        
+      console.error('Error starting voice recognition:', e);
+      if (e instanceof Error) {
+        console.error('Error message:', e.message);
         console.error('Error stack:', e.stack);
-      }    
+      }
     }
   };
 
@@ -247,7 +278,7 @@ export default function TabOneScreen() {
           textContent: text.slice(i * pageSize, (i + 1) * pageSize).join('.') + '.'
         }));
       }
-      
+
       setStoryPages(generatedPages);
       setCurrentPageIndex(0);
       speak(generatedPages[0].textContent);
@@ -293,7 +324,7 @@ export default function TabOneScreen() {
       After 2-3 questions, when you have enough information, respond with "INTERVIEW_COMPLETE" followed by a summary of the story elements.`
     }];
     setConversationHistory(initialConversation);
-    
+
     const initialQuestion = "What kind of story would you like to create today?";
     setCurrentQuestion(initialQuestion);
     speak(initialQuestion, true);
@@ -308,29 +339,29 @@ export default function TabOneScreen() {
     setConversationHistory([]);
     setCurrentQuestion('');
     setStoryPages([]);
-  
+
     if (Voice) {
       await Voice.destroy();
       Voice.removeAllListeners();
     }
-  
+
     router.back();
   };
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.backButton}
         onPress={handleBack}
       >
         <Text style={styles.backButtonText}>← Back</Text>
       </TouchableOpacity>
-      
+
       <View style={styles.contentContainer}>
         {isInterviewing ? (
           <>
             <Text style={styles.currentQuestion}>{currentQuestion}</Text>
-            <VoiceWave 
+            <VoiceWave
               isListening={isListening}
               isSpeaking={isSpeaking}
             />
@@ -340,8 +371,8 @@ export default function TabOneScreen() {
           </>
         ) : (
           <>
-            <StoryDisplay 
-              storyPages={storyPages} 
+            <StoryDisplay
+              storyPages={storyPages}
               currentPageIndex={currentPageIndex}
               onPageChange={setCurrentPageIndex}
             />
