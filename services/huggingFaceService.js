@@ -24,6 +24,19 @@ class HuggingFaceService {
   }
 
   async generateResponse(prompt, retryCount = 0) {
+    // Add validation for empty/invalid prompts
+    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+      console.error('Invalid or empty prompt received');
+      throw new Error('Invalid prompt');
+    }
+
+    // Check if this is an interview prompt without any conversation history
+    if (prompt.includes('Based on our conversation so far') && 
+        !prompt.includes('user:')) {
+      console.log('Preventing API call with empty conversation history');
+      return 'What kind of story would you like to create today?';
+    }
+
     try {
       console.log('\n=== API Request ===');
       console.log('Attempt:', retryCount + 1);

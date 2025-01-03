@@ -157,15 +157,35 @@ export default function TabOneScreen() {
   };
 
   const generateNextQuestion = async () => {
-    if (isProcessing || isSpeaking) {
-      console.log('Already processing or speaking, cannot generate next question');
+    // Comprehensive state check before proceeding
+    if (!isInterviewing) {
+      console.log('Not in interview mode, skipping question generation');
       return;
     }
   
-    setIsGeneratingQuestion(true);
-    setIsProcessing(true);
-    
+    if (isProcessing || isSpeaking) {
+      console.log('Blocked question generation:', { isProcessing, isSpeaking });
+      return;
+    }
+  
+    // Check for valid conversation history
+    const hasUserInput = conversationHistory.some(turn => turn.role === 'user');
+    console.log('Conversation status:', { 
+      hasUserInput, 
+      historyLength: conversationHistory.length,
+      history: conversationHistory 
+    });
+  
+    // For the initial question, don't make an API call
+    if (!hasUserInput) {
+      console.log('No user input yet, waiting for first response');
+      return;
+    }
+  
     try {
+      setIsProcessing(true);
+      setIsGeneratingQuestion(true);
+  
       const prompt = `Based on our conversation so far, ask the next question to gather more details for a children's story. 
       If you have enough information (after 3-5 questions) to create a story, respond with "INTERVIEW_COMPLETE" 
       followed by a summary of the story elements.
@@ -176,12 +196,17 @@ export default function TabOneScreen() {
       const response = await HuggingFaceService.generateResponse(prompt);
       
       if (response.includes('INTERVIEW_COMPLETE')) {
+        console.log('Interview complete, transitioning to story generation');
         setIsInterviewing(false);
         const summary = response.split('INTERVIEW_COMPLETE')[1].trim();
         await generateAndDisplayStory(summary);
       } else {
+        console.log('Preparing to ask next question:', response.slice(0, 50) + '...');
         const nextQuestion = response.trim();
         setCurrentQuestion(nextQuestion);
+        
+        // Make sure previous speech is stopped
+        await stopCurrentSpeech();
         await speak(nextQuestion, true);
       }
     } catch (error) {
@@ -194,15 +219,59 @@ export default function TabOneScreen() {
   };
 
   const handleAnswer = async (answer: string) => {
-    if (!answer) return;
-
-    if (isInterviewing) {
+    console.log('Received answer:', { 
+      answer: answer?.slice(0, 50) + '...', 
+      isProcessing, 
+      isInterviewing,
+      isListening,
+      isSpeaking
+    });
+    
+    // Validate input and state
+    if (!answer?.trim()) {
+      console.log('Empty answer received, ignoring');
+      return;
+    }
+  
+    if (!isInterviewing) {
+      console.log('Not in interview mode, ignoring answer');
+      return;
+    }
+  
+    if (isProcessing || isSpeaking) {
+      console.log('Cannot process answer - already processing or speaking');
+      return;
+    }
+  
+    try {
+      setIsProcessing(true);
+      
+      // Stop listening while processing the answer
+      await stopListening();
+      
+      // Update conversation history
       const updatedHistory = [
         ...conversationHistory,
-        { role: 'user' as const, content: answer },
+        { role: 'user' as const, content: answer }
       ];
+      console.log('Updating conversation history:', updatedHistory);
       setConversationHistory(updatedHistory);
+  
+      // Small delay to ensure state updates are processed
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Generate next question
       await generateNextQuestion();
+      
+      // Resume listening after processing (if still in interview mode)
+      if (isInterviewing && !isProcessing && !isSpeaking) {
+        await startListening();
+      }
+    } catch (error) {
+      console.error('Error handling answer:', error);
+      speak('I had trouble processing your answer. Could you try again?');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -316,7 +385,15 @@ export default function TabOneScreen() {
   };
 
   const generateAndDisplayStory = async (summary?: string) => {
+    if (isProcessing) {
+      console.log('Already processing, cannot generate story');
+      return;
+    }
+  
     try {
+      setIsProcessing(true);
+      await stopCurrentSpeech(); // Stop any ongoing speech
+  
       const prompt = `Create a children's story based on these elements:
       ${summary || Object.entries(storyElements).map(([q, a]) => `${q}: ${a}`).join('\n')}
       
@@ -325,25 +402,33 @@ export default function TabOneScreen() {
       Make the story engaging and appropriate for children.
       
       Return the story as a JSON array of 5 page objects.`;
-
+  
       const response = await HuggingFaceService.generateResponse(prompt);
       let generatedPages;
+      
       try {
         generatedPages = JSON.parse(response);
       } catch (e) {
+        console.log('Failed to parse JSON response, falling back to text splitting');
         const text = response.split('.').filter(Boolean);
         const pageSize = Math.ceil(text.length / 5);
         generatedPages = Array(5).fill(null).map((_, i) => ({
           textContent: text.slice(i * pageSize, (i + 1) * pageSize).join('.') + '.'
         }));
       }
-
+      
       setStoryPages(generatedPages);
       setCurrentPageIndex(0);
-      speak(generatedPages[0].textContent);
+      
+      // Only start speaking if we're still in a valid state
+      if (!isProcessing && !isSpeaking) {
+        await speak(generatedPages[0].textContent);
+      }
     } catch (error) {
       console.error('Error generating story:', error);
       speak('I encountered an error while creating your story. Should we try again?');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -373,53 +458,69 @@ export default function TabOneScreen() {
   };
 
   const startNewStory = async () => {
-    // Prevent starting if already processing or speaking
+    console.log('Starting new story:', { isProcessing, isSpeaking });
+    
     if (isProcessing || isSpeaking) {
-      console.log('Already processing or speaking, cannot start new story');
+      console.log('Cannot start new story - already processing or speaking');
       return;
     }
     
     try {
       setIsProcessing(true);
+      
+      // Reset all state
+      await stopCurrentSpeech();
       setIsInterviewing(true);
       setStoryElements({});
       setStoryPages([]);
+      setCurrentPageIndex(0);
+      
+      // Initialize with ONLY the system message
       setConversationHistory([{
         role: 'system',
         content: 'You are a friendly children\'s story creator assistant.'
       }]);
   
       const initialQuestion = "What kind of story would you like to create today?";
+      console.log('Setting initial question:', initialQuestion);
       setCurrentQuestion(initialQuestion);
+      
+      // Ensure we're not already listening
+      if (isListening) {
+        await stopListening();
+      }
       
       // Wait for speech to complete before starting listening
       await speak(initialQuestion, true);
       
-      if (!isListening) {
-        await startListening();
-      }
+      // Small delay before starting to listen
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      console.log('Starting listening');
+      await startListening();
     } catch (error) {
       console.error('Error starting new story:', error);
+      speak('I had trouble starting. Please try again.');
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleBack = async () => {
-    console.log('handleBack called');
-    await stopListening();
-    await Speech.stop();
-    setIsGeneratingQuestion(false);
-    setConversationHistory([]);
-    setCurrentQuestion('');
-    setStoryPages([]);
-
-    if (Voice) {
-      await Voice.destroy();
-      Voice.removeAllListeners();
+    try {
+      setIsProcessing(true);
+      await stopListening();
+      await stopCurrentSpeech();
+      setIsGeneratingQuestion(false);
+      setConversationHistory([]);
+      setCurrentQuestion('');
+      setStoryPages([]);
+      router.push('/');
+    } catch (error) {
+      console.error('Error during navigation:', error);
+    } finally {
+      setIsProcessing(false);
     }
-
-    router.back();
   };
 
   return (
