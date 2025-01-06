@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Speech from 'expo-speech';
@@ -9,7 +9,14 @@ import HuggingFaceService from '@/services/huggingFaceService';
 import StoryDisplay from '@/components/StoryDisplay';
 import SpeechControls from '@/components/SpeechControls';
 import StoryManagement from '@/components/StoryManagement';
+import VoiceWave from '@/components/VoiceWave';
 import { StoryPage } from '@/src/utils/storyGenerator';
+
+import useConversationStore, {
+  useConversationPhase,
+  useCurrentQuestion,
+  useSpeechState
+} from '@/src/stores/conversationStore';
 
 interface ConversationTurn {
   role: 'system' | 'user' | 'assistant';
@@ -22,95 +29,39 @@ interface SavedStory {
   elements: { [key: string]: string };
 }
 
-const VoiceWave: React.FC<{ isListening: boolean; isSpeaking: boolean }> = ({ isListening, isSpeaking }) => {
-  const [waveAmplitudes] = useState(
-    Array(10).fill(0).map(() => new Animated.Value(10))
-  );
-
-  useEffect(() => {
-    let animationFrameId: number;
-
-    const animate = () => {
-      if (isListening || isSpeaking) {
-        waveAmplitudes.forEach(amplitude => {
-          Animated.timing(amplitude, {
-            toValue: Math.random() * 40 + 10,
-            duration: 100,
-            useNativeDriver: false,
-          }).start();
-        });
-      } else {
-        waveAmplitudes.forEach(amplitude => {
-          Animated.timing(amplitude, {
-            toValue: 10,
-            duration: 100,
-            useNativeDriver: false,
-          }).start();
-        });
-      }
-      animationFrameId = requestAnimationFrame(animate);
-    };
-
-    animate();
-    return () => {
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-    };
-  }, [isListening, isSpeaking, waveAmplitudes]);
-
-  return (
-    <View style={styles.waveContainer}>
-      {waveAmplitudes.map((amplitude, index) => (
-        <Animated.View
-          key={index}
-          style={[
-            styles.bar,
-            {
-              height: amplitude,
-              backgroundColor: isListening ? '#ff6b6b' : (isSpeaking ? '#4ecdc4' : '#dddddd')
-            }
-          ]}
-        />
-      ))}
-    </View>
-  );
-};
-
 export default function TabOneScreen() {
-  const [storyElements, setStoryElements] = useState<{ [key: string]: string }>({});
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [storyPages, setStoryPages] = useState<StoryPage[]>([]);
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [speechRate, setSpeechRate] = useState(1.0);
-  const [speechVolume, setSpeechVolume] = useState(1.0);
-  const [savedStories, setSavedStories] = useState<SavedStory[]>([]);
-  const [conversationHistory, setConversationHistory] = useState<ConversationTurn[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<string>('');
-  const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
-  const [isInterviewing, setIsInterviewing] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const phase = useConversationPhase();
+  const currentQuestion = useCurrentQuestion();
+  const speechState = useSpeechState();
+  const {
+    startConversation,
+    addUserResponse,
+    setQuestion,
+    setSpeechState,
+    resetConversation,
+    setError
+  } = useConversationStore();
 
   useEffect(() => {
     // Initialize voice recognition and start the interview process
     const initializeVoice = async () => {
       try {
         // Set up all voice event listeners
-        Voice.onSpeechStart = () => setIsListening(true);
-        Voice.onSpeechEnd = () => setIsListening(false);
+        Voice.onSpeechStart = () => setSpeechState({ isListening: true });
+        Voice.onSpeechEnd = () => setSpeechState({ isListening: false });
         Voice.onSpeechError = (error) => {
           console.error('Speech error:', error);
-          setIsListening(false);
+          setSpeechState({ isListening: false });
+          setError('Speech recognition error: ${error.message}');
         };
-        Voice.onSpeechResults = onSpeechResults;
+        Voice.onSpeechResults = handleSpeechResults;
   
-        // Check platform-specific permissions if needed
-        // Note: On iOS, permissions are automatically requested when starting Voice
-        await startNewStory();
+        // Start the conversation
+        await startConversation();
+        await speak(currentQuestion);
       } catch (error) {
         console.error('Error initializing voice:', error);
-        speak("I had trouble initializing voice recognition. Please check your microphone permissions.");
+        setError('Failed to initialize voice recognition');
       }
     };
   
@@ -145,10 +96,10 @@ export default function TabOneScreen() {
     loadSavedStories();
   }, []);
 
-  const onSpeechResults = (e: SpeechResultsEvent) => {
+  const handleSpeechResults = (e: SpeechResultsEvent) => {
     const text = e.value?.[0];
     if (text) {
-      if (isSpeaking) {
+      if (speechState.isSpeaking) {
         handleInterruption(text);
       } else {
         handleAnswer(text);
@@ -158,13 +109,16 @@ export default function TabOneScreen() {
 
   const generateNextQuestion = async () => {
     // Comprehensive state check before proceeding
-    if (!isInterviewing) {
+    if (phase !== 'INTERVIEWING') {
       console.log('Not in interview mode, skipping question generation');
       return;
     }
   
-    if (isProcessing || isSpeaking) {
-      console.log('Blocked question generation:', { isProcessing, isSpeaking });
+    if (phase === 'PROCESSING' || speechState.isSpeaking) {
+      console.log('Blocked question generation:', {
+        phase,
+        isSpeaking: speechState.isSpeaking
+      });
       return;
     }
   
@@ -183,8 +137,7 @@ export default function TabOneScreen() {
     }
   
     try {
-      setIsProcessing(true);
-      setIsGeneratingQuestion(true);
+      setPhase('PROCESSING');
   
       const prompt = `Based on our conversation so far, ask the next question to gather more details for a children's story. 
       If you have enough information (after 3-5 questions) to create a story, respond with "INTERVIEW_COMPLETE" 
@@ -213,122 +166,100 @@ export default function TabOneScreen() {
       console.error('Error generating question:', error);
       speak('I had trouble thinking of the next question. Should we try again?');
     } finally {
-      setIsGeneratingQuestion(false);
-      setIsProcessing(false);
+      setPhase('INTERVIEWING');
     }
   };
 
   const handleAnswer = async (answer: string) => {
-    console.log('Received answer:', { 
-      answer: answer?.slice(0, 50) + '...', 
-      isProcessing, 
-      isInterviewing,
-      isListening,
-      isSpeaking
-    });
+    // First check if we're in the right phase to process an answer
+    if (phase !== 'INTERVIEWING') {
+      console.log('Not in interviewing phase, ignoring answer'); 
+      return;
+    }
     
-    // Validate input and state
-    if (!answer?.trim()) {
-      console.log('Empty answer received, ignoring');
-      return;
-    }
-  
-    if (!isInterviewing) {
-      console.log('Not in interview mode, ignoring answer');
-      return;
-    }
-  
-    if (isProcessing || isSpeaking) {
-      console.log('Cannot process answer - already processing or speaking');
-      return;
-    }
-  
     try {
-      setIsProcessing(true);
-      
-      // Stop listening while processing the answer
+      // Stop listening while we process the answer
       await stopListening();
-      
-      // Update conversation history
-      const updatedHistory = [
-        ...conversationHistory,
-        { role: 'user' as const, content: answer }
-      ];
-      console.log('Updating conversation history:', updatedHistory);
-      setConversationHistory(updatedHistory);
-  
-      // Small delay to ensure state updates are processed
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Generate next question
-      await generateNextQuestion();
-      
-      // Resume listening after processing (if still in interview mode)
-      if (isInterviewing && !isProcessing && !isSpeaking) {
-        await startListening();
+
+      // Add the user's response to our conversation history
+      addUserResponse(answer);
+
+      // Set the processing phase while we generate the next question
+      setPhase('PROCESSING');
+
+      // Generate the next question using your Hugging Face service
+      const prompt = `Based on our conversation so far, ask the next question to gather more details for a children's story. If you have enough information (after 3-5 questions) to create a story, respond with "INTERVIEW_COMPLETE" followed by a summary of the story elements. Current conversation: ${conversationHistory.map(turn => `${turn.role}: ${turn.content}`).join('\n')}`;
+
+      const response = await HuggingFaceService.generateResponse(prompt);
+
+      // Check if we have enough information to generate the story
+      if (response.includes('INTERVIEW_COMPLETE')) {
+        console.log('Interview complete, transitioning to story generation');
+        setPhase('GENERATING_STORY');
+        const summary = response.split('INTERVIEW_COMPLETE')[1].trim();
+        await generateAndDisplayStory(summary);
+      } else {
+        // If we need more information, ask the next question
+        console.log('Preparing to ask next question:', response.slice(0, 50) + '...');
+        const nextQuestion = response.trim();
+
+        // Make sure any previous speech is stopped
+        await stopCurrentSpeech();
+
+        // Set the new question in our store and speak it
+        setQuestion(nextQuestion);
+        await speak(nextQuestion);
+
+        // Resume listening for the next answer
+        if (phase === 'INTERVIEWING' && !speechState.isSpeaking) {
+          await startListening();
+        }
       }
     } catch (error) {
       console.error('Error handling answer:', error);
-      speak('I had trouble processing your answer. Could you try again?');
-    } finally {
-      setIsProcessing(false);
+      setError('Failed to process your answer');
+
+      // If something goes wrong, let's tell the user
+      await speak('I had trouble processing your answer. Could you try again?');
+
+      // Reset back to interviewing phase
+      setPhase('INTERVIEWING');
+
+      // Resume listening
+      await startListening();
     }
   };
-
-  const speak = async (text: string, isQuestion = false) => {
-    // Don't start new speech if we're processing
-    if (isProcessing) {
-      console.log('Currently processing, cannot start speech');
-      return;
-    }
   
+  const speak = async (text: string) => {
     try {
-      // Cancel any ongoing speech
-      if (isSpeaking) {
+      if (speechState.isSpeaking) {
         await Speech.stop();
       }
   
-      setIsSpeaking(true);
+      setSpeechState({ isSpeaking: true });
       
       await Speech.speak(text, {
-        rate: speechRate,
-        volume: speechVolume,
-        onStart: () => {
-          console.log('Speech started:', text.slice(0, 50) + '...');
-        },
-        onDone: () => {
-          console.log('Speech completed');
-          setIsSpeaking(false);
-          
-          // Only auto-advance for story pages, not questions
-          if (!isQuestion && currentPageIndex < storyPages.length - 1) {
-            // Add a small delay before next page
-            setTimeout(() => {
-              setCurrentPageIndex(prev => prev + 1);
-              speak(storyPages[currentPageIndex + 1].textContent);
-            }, 2000);
-          }
-        },
-        onStopped: () => {
-          console.log('Speech stopped');
-          setIsSpeaking(false);
-        },
+        rate: speechState.speechRate,
+        volume: speechState.speechVolume,
+        onDone: () => setSpeechState({ isSpeaking: false }),
         onError: (error) => {
           console.error('Speech error:', error);
-          setIsSpeaking(false);
+          setSpeechState({ isSpeaking: false });
+          setError('Failed to speak');
         }
       });
     } catch (error) {
       console.error('Error in speak function:', error);
-      setIsSpeaking(false);
+      setSpeechState({ isSpeaking: false });
+      setError('Failed to speak');
     }
   };
 
   const stopCurrentSpeech = async () => {
     try {
-      if (isSpeaking) {
+      if (speechState.isSpeaking) {
         await Speech.stop();
-        setIsSpeaking(false);
+        setSpeechState({ isSpeaking: false });
       }
     } catch (error) {
       console.error('Error stopping speech:', error);
@@ -345,7 +276,7 @@ export default function TabOneScreen() {
     }
     
     // If user says "next" or "continue" while in story mode
-    if (!isInterviewing && (text.toLowerCase().includes('next') || text.toLowerCase().includes('continue'))) {
+    if (phase !== 'INTERVIEWING' && (text.toLowerCase().includes('next') || text.toLowerCase().includes('continue'))) {
       if (currentPageIndex < storyPages.length - 1) {
         setCurrentPageIndex(prev => prev + 1);
         speak(storyPages[currentPageIndex + 1].textContent);
@@ -355,43 +286,38 @@ export default function TabOneScreen() {
 
   const startListening = async () => {
     try {
-      if (!isListening) {
+      if (!speechState.isListening) {
         const isAvailable = await Voice.isAvailable();
         if (!isAvailable) {
-          console.error('Voice recognition is not available on this device');
-          return;
+          throw new Error('Voice recognition not available');
         }
         await Voice.start('en-US');
-        setIsListening(true);
       }
-    } catch (e) {
-      console.error('Error starting voice recognition:', e);
-      if (e instanceof Error) {
-        console.error('Error message:', e.message);
-        console.error('Error stack:', e.stack);
-      }
+    } catch (error) {
+      console.error('Error starting voice recognition:', error);
+      setError('Failed to start voice recognition');
     }
   };
 
   const stopListening = async () => {
     try {
-      if (isListening) {
+      if (speechState.isListening) {
         await Voice.stop();
-        setIsListening(false);
       }
-    } catch (e) {
-      console.error('Error stopping voice recognition:', e);
+    } catch (error) {
+      console.error('Error stopping voice recognition:', error);
+      setError('Failed to stop voice recognition');
     }
   };
 
   const generateAndDisplayStory = async (summary?: string) => {
-    if (isProcessing) {
+    if (phase === 'PROCESSING') {
       console.log('Already processing, cannot generate story');
       return;
     }
   
     try {
-      setIsProcessing(true);
+      setPhase('PROCESSING');
       await stopCurrentSpeech(); // Stop any ongoing speech
   
       const prompt = `Create a children's story based on these elements:
@@ -421,14 +347,15 @@ export default function TabOneScreen() {
       setCurrentPageIndex(0);
       
       // Only start speaking if we're still in a valid state
-      if (!isProcessing && !isSpeaking) {
+      if (phase !== 'PROCESSING' && !speechState.isSpeaking) {
         await speak(generatedPages[0].textContent);
       }
     } catch (error) {
       console.error('Error generating story:', error);
-      speak('I encountered an error while creating your story. Should we try again?');
+      await speak('I encountered an error while creating your story. Should we try again?');
     } finally {
-      setIsProcessing(false);
+      // Make sure we return to the interviewing phase
+      setPhase('INTERVIEWING');
     }
   };
 
@@ -458,15 +385,18 @@ export default function TabOneScreen() {
   };
 
   const startNewStory = async () => {
-    console.log('Starting new story:', { isProcessing, isSpeaking });
+    console.log('Starting new story:', { 
+      phase, 
+      isSpeaking: speechState.isSpeaking 
+    });
     
-    if (isProcessing || isSpeaking) {
+    if (phase === 'PROCESSING' || speechState.isSpeaking) {
       console.log('Cannot start new story - already processing or speaking');
       return;
     }
     
     try {
-      setIsProcessing(true);
+      setPhase('PROCESSING');
       
       // Reset all state
       await stopCurrentSpeech();
@@ -502,24 +432,18 @@ export default function TabOneScreen() {
       console.error('Error starting new story:', error);
       speak('I had trouble starting. Please try again.');
     } finally {
-      setIsProcessing(false);
+      setPhase('INTERVIEWING');
     }
   };
 
   const handleBack = async () => {
     try {
-      setIsProcessing(true);
       await stopListening();
-      await stopCurrentSpeech();
-      setIsGeneratingQuestion(false);
-      setConversationHistory([]);
-      setCurrentQuestion('');
-      setStoryPages([]);
+      await Speech.stop();
+      resetConversation();
       router.push('/');
     } catch (error) {
       console.error('Error during navigation:', error);
-    } finally {
-      setIsProcessing(false);
     }
   };
 
@@ -533,37 +457,13 @@ export default function TabOneScreen() {
       </TouchableOpacity>
 
       <View style={styles.contentContainer}>
-        {isInterviewing ? (
-          <>
-            <Text style={styles.currentQuestion}>{currentQuestion}</Text>
-            <VoiceWave
-              isListening={isListening}
-              isSpeaking={isSpeaking}
-            />
-            {isGeneratingQuestion && (
-              <Text style={styles.thinkingText}>Thinking of next question...</Text>
-            )}
-          </>
-        ) : (
-          <>
-            <StoryDisplay
-              storyPages={storyPages}
-              currentPageIndex={currentPageIndex}
-              onPageChange={setCurrentPageIndex}
-            />
-            <SpeechControls
-              speechRate={speechRate}
-              onSpeechRateChange={setSpeechRate}
-              speechVolume={speechVolume}
-              onSpeechVolumeChange={setSpeechVolume}
-            />
-            <StoryManagement
-              onSave={saveStory}
-              onLoad={loadStory}
-              savedStories={savedStories}
-              onBack={handleBack}
-            />
-          </>
+        <Text style={styles.currentQuestion}>{currentQuestion}</Text>
+        <VoiceWave
+          isListening={speechState.isListening}
+          isSpeaking={speechState.isSpeaking}
+        />
+        {phase === 'PROCESSING' && (
+          <Text style={styles.processingText}>Processing your response...</Text>
         )}
       </View>
     </View>
