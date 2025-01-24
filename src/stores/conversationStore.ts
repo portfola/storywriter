@@ -1,4 +1,3 @@
-import React from 'react';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -34,7 +33,7 @@ export interface StoryElements {
 }
 
 // Define what information we need to track about speech
-interface SpeechState {
+export interface SpeechState {
   isListening: boolean;
   isSpeaking: boolean;
   speechRate: number;
@@ -42,7 +41,7 @@ interface SpeechState {
 }
 
 // Define our story state
-interface StoryState {
+export interface StoryState {
   currentPageIndex: number;
   storyPages: StoryPage[];
   storyElements: StoryElements;
@@ -50,7 +49,7 @@ interface StoryState {
 }
 
 // Define our complete store state shape
-interface ConversationState extends SpeechState, StoryState {
+export interface ConversationState extends SpeechState, StoryState {
   phase: ConversationPhase;
   conversationHistory: ConversationTurn[];
   currentQuestion: string;

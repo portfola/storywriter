@@ -6,70 +6,105 @@ import { router } from 'expo-router';
 import HuggingFaceService from '@/services/huggingFaceService';
 import StoryDisplay from '@/components/StoryDisplay';
 import VoiceWave from '@/components/VoiceWave';
-import useConversationStore from '@/src/stores/conversationStore';
-import { shallow } from 'zustand/shallow';
-
+import { StoryPage } from '@/src/utils/storyGenerator';
+import useConversationStore, {
+  ConversationState,
+  ConversationPhase,
+  ConversationTurn,
+  StoryElements,
+  SpeechState,
+  StoryState
+} from '@/src/stores/conversationStore';
 
 export default function StoryScreen() {
-  // Individual state selectors
+  // Select individual state values
   const phase = useConversationStore(state => state.phase);
   const currentQuestion = useConversationStore(state => state.currentQuestion);
   const conversationHistory = useConversationStore(state => state.conversationHistory);
-  
-  // Speech state
   const isListening = useConversationStore(state => state.isListening);
   const isSpeaking = useConversationStore(state => state.isSpeaking);
   const speechRate = useConversationStore(state => state.speechRate);
   const speechVolume = useConversationStore(state => state.speechVolume);
-
-  // Story state
   const currentPageIndex = useConversationStore(state => state.currentPageIndex);
   const storyPages = useConversationStore(state => state.storyPages);
   const storyElements = useConversationStore(state => state.storyElements);
-  
-  // Actions
-  const actions = useConversationStore(
-    (state) => ({
-      startConversation: state.startConversation,
-      addUserResponse: state.addUserResponse,
-      setQuestion: state.setQuestion,
-      setSpeechState: state.setSpeechState,
-      resetConversation: state.resetConversation,
-      setError: state.setError,
-      setPhase: state.setPhase,
-      setStoryPages: state.setStoryPages,
-      setCurrentPage: state.setCurrentPage,
-      nextPage: state.nextPage,
-      previousPage: state.previousPage,
-      updateStoryElements: state.updateStoryElements,
-      saveStory: state.saveStory,
-      loadStory: state.loadStory,
-      loadSavedStories: state.loadSavedStories
-    })
-  );
+
+  // Select individual actions
+  const startConversation = useConversationStore(state => state.startConversation);
+  const addUserResponse = useConversationStore(state => state.addUserResponse);
+  const setQuestion = useConversationStore(state => state.setQuestion);
+  const setSpeechState = useConversationStore(state => state.setSpeechState);
+  const setPhase = useConversationStore(state => state.setPhase);
+  const setError = useConversationStore(state => state.setError);
+  const setStoryPages = useConversationStore(state => state.setStoryPages);
+  const setCurrentPage = useConversationStore(state => state.setCurrentPage);
+  const nextPage = useConversationStore(state => state.nextPage);
+  const previousPage = useConversationStore(state => state.previousPage);
+  const resetConversation = useConversationStore(state => state.resetConversation);
+  const loadSavedStories = useConversationStore(state => state.loadSavedStories);
 
   // Initialize conversation
   useEffect(() => {
     const initialize = async () => {
       if (phase === 'INITIAL') {
-        await actions.startConversation();
+        await startConversation();
       }
     };
     
     initialize();
-  }, [phase, actions.startConversation]);
+  }, [phase, startConversation]);
+
+  // Handle speech results
+  const handleSpeechResults = (e: SpeechResultsEvent) => {
+    if (e.value && e.value.length > 0) {
+      const text = e.value[0];
+      if (text) {
+        if (isSpeaking) {
+          handleInterruption(text);
+        }
+        else {
+          handleAnswer(text);
+        }
+      }
+    }
+  };
+
+  const speak = async (text: string) => {
+    try {
+      if (isSpeaking) {
+        await Speech.stop();
+      }
+
+      setSpeechState({ isSpeaking: true });
+
+      await Speech.speak(text, {
+        rate: speechRate,
+        volume: speechVolume,
+        onDone: () => setSpeechState({ isSpeaking: false }),
+        onError: () => {
+          setSpeechState({ isSpeaking: false });
+          setError('Failed to speak');
+        }
+      });
+      
+    } catch (error) {
+      console.error('Error in speak function:', error);
+      setSpeechState({ isSpeaking: false });
+      setError('Failed to speak');
+    }
+  };
 
   // Initialize voice
   useEffect(() => {
     if (phase !== 'INITIAL') {
       const initVoice = async () => {
         try {
-          Voice.onSpeechStart = () => actions.setSpeechState({ isListening: true });
-          Voice.onSpeechEnd = () => actions.setSpeechState({ isListening: false });
+          Voice.onSpeechStart = () => setSpeechState({ isListening: true });
+          Voice.onSpeechEnd = () => setSpeechState({ isListening: false });
           Voice.onSpeechError = (error) => {
             console.error('Speech error:', error);
-            actions.setSpeechState({ isListening: false });
-            actions.setError('Speech recognition error: ${error.message}');
+            setSpeechState({ isListening: false });
+            setError('Speech recognition error: ${error.message}');
           };
           Voice.onSpeechResults = handleSpeechResults;
           
@@ -78,7 +113,7 @@ export default function StoryScreen() {
           }
         } catch (error) {
           console.error('Error initializing voice:', error);
-          actions.setError('Failed to initialize voice recognition');
+          setError('Failed to initialize voice recognition');
         }
       };
       
@@ -97,51 +132,7 @@ export default function StoryScreen() {
       };
       cleanup();
     };
-  }, [phase, currentQuestion, actions.setSpeechState, actions.setError]);
-
-  // Load saved stories
-  useEffect(() => {
-    actions.loadSavedStories().catch(error => {
-      console.error('Failed to load saved stories', error);
-      actions.setError('Failed to load saved stories');
-    });
-  }, []);
-
-  const handleSpeechResults = (e: SpeechResultsEvent) => {
-    const text = e.value?.[0];
-    if (text) {
-      if (isSpeaking) {
-        handleInterruption(text);
-      } else {
-        handleAnswer(text);
-      }
-    }
-  };
-
-  const speak = async (text: string) => {
-    try {
-      if (isSpeaking) {
-        await Speech.stop();
-      }
-  
-      actions.setSpeechState({ isSpeaking: true });
-      
-      await Speech.speak(text, {
-        rate: speechRate,
-        volume: speechVolume,
-        onDone: () => actions.setSpeechState({ isSpeaking: false }),
-        onError: (error) => {
-          console.error('Speech error:', error);
-          actions.setSpeechState({ isSpeaking: false });
-          actions.setError('Failed to speak');
-        }
-      });
-    } catch (error) {
-      console.error('Error in speak function:', error);
-      actions.setSpeechState({ isSpeaking: false });
-      actions.setError('Failed to speak');
-    }
-  };
+  }, [phase, currentQuestion, setSpeechState, setError]);
 
   const generateNextQuestion = async () => {
     if (phase !== 'INTERVIEWING') {
@@ -154,7 +145,7 @@ export default function StoryScreen() {
       return;
     }
   
-    const hasUserInput = conversationHistory.some(turn => turn.role === 'user');
+    const hasUserInput = conversationHistory.some((turn: ConversationTurn) => turn.role === 'user');
     console.log('Conversation status:', { 
       hasUserInput, 
       historyLength: conversationHistory.length,
@@ -167,14 +158,14 @@ export default function StoryScreen() {
     }
   
     try {
-      actions.setPhase('PROCESSING');
+      setPhase('PROCESSING');
   
       const prompt = `Based on our conversation so far, ask the next question to gather more details for a children's story. 
       If you have enough information (after 3-5 questions) to create a story, respond with "INTERVIEW_COMPLETE" 
       followed by a summary of the story elements.
   
       Current conversation:
-      ${conversationHistory.map(turn => `${turn.role}: ${turn.content}`).join('\n')}`;
+      ${conversationHistory.map((turn: ConversationTurn) => `${turn.role}: ${turn.content}`).join('\n')}`;
   
       const response = await HuggingFaceService.generateResponse(prompt);
       
@@ -187,13 +178,13 @@ export default function StoryScreen() {
         const nextQuestion = response.trim();
         
         await stopCurrentSpeech();
-        actions.setQuestion(nextQuestion);
+        setQuestion(nextQuestion);
         await speak(nextQuestion);
       }
     } catch (error) {
       console.error('Error generating question:', error);
       await speak('I had trouble thinking of the next question. Should we try again?');
-      actions.setError('Failed to generate next question');
+      setError('Failed to generate next question');
     }
   };
   
@@ -205,8 +196,8 @@ export default function StoryScreen() {
     
     try {
       await stopListening();
-      actions.addUserResponse(answer);
-      actions.setPhase('PROCESSING');
+      addUserResponse(answer);
+      setPhase('PROCESSING');
   
       const prompt = `Based on our conversation so far, ask the next question to gather more details for a children's story. 
       If you have enough information (after 3-5 questions) to create a story, respond with "INTERVIEW_COMPLETE" 
@@ -218,7 +209,7 @@ export default function StoryScreen() {
   
       if (response.includes('INTERVIEW_COMPLETE')) {
         console.log('Interview complete, transitioning to story generation');
-        actions.setPhase('GENERATING_STORY');
+        setPhase('GENERATING_STORY');
         const summary = response.split('INTERVIEW_COMPLETE')[1].trim();
         await generateAndDisplayStory(summary);
       } else {
@@ -226,7 +217,7 @@ export default function StoryScreen() {
         const nextQuestion = response.trim();
   
         await stopCurrentSpeech();
-        actions.setQuestion(nextQuestion);
+        setQuestion(nextQuestion);
         await speak(nextQuestion);
   
         if (phase === 'INTERVIEWING' && !isSpeaking) {
@@ -235,9 +226,9 @@ export default function StoryScreen() {
       }
     } catch (error) {
       console.error('Error handling answer:', error);
-      actions.setError('Failed to process your answer');
+      setError('Failed to process your answer');
       await speak('I had trouble processing your answer. Could you try again?');
-      actions.setPhase('INTERVIEWING');
+      setPhase('INTERVIEWING');
       await startListening();
     }
   };
@@ -246,7 +237,7 @@ export default function StoryScreen() {
     try {
       if (isSpeaking) {
         await Speech.stop();
-        actions.setSpeechState({ isSpeaking: false });
+        setSpeechState({ isSpeaking: false });
       }
     } catch (error) {
       console.error('Error stopping speech:', error);
@@ -263,7 +254,7 @@ export default function StoryScreen() {
     
     if (phase === 'DISPLAYING_STORY' && (text.toLowerCase().includes('next') || text.toLowerCase().includes('continue'))) {
       if (currentPageIndex < storyPages.length - 1) {
-        actions.nextPage();
+        nextPage();
         await speak(storyPages[currentPageIndex + 1].textContent);
       }
     }
@@ -280,7 +271,7 @@ export default function StoryScreen() {
       }
     } catch (error) {
       console.error('Error starting voice recognition:', error);
-      actions.setError('Failed to start voice recognition');
+      setError('Failed to start voice recognition');
     }
   };
   
@@ -291,7 +282,7 @@ export default function StoryScreen() {
       }
     } catch (error) {
       console.error('Error stopping voice recognition:', error);
-      actions.setError('Failed to stop voice recognition');
+      setError('Failed to stop voice recognition');
     }
   };
   
@@ -302,7 +293,7 @@ export default function StoryScreen() {
     }
   
     try {
-      actions.setPhase('GENERATING_STORY');
+      setPhase('GENERATING_STORY');
       await stopCurrentSpeech();
   
       const prompt = `Create a children's story based on these elements:
@@ -328,7 +319,7 @@ export default function StoryScreen() {
         }));
       }
       
-      actions.setStoryPages(generatedPages);
+      setStoryPages(generatedPages);
       
       if (phase !== 'INTERVIEWING' && !isSpeaking) {
         await speak(generatedPages[0].textContent);
@@ -336,27 +327,8 @@ export default function StoryScreen() {
     } catch (error) {
       console.error('Error generating story:', error);
       await speak('I encountered an error while creating your story. Should we try again?');
-      actions.setError('Failed to generate story');
+      setError('Failed to generate story');
     } 
-  };
-  
-  const handleSaveStory = async (title?: string) => {
-    try {
-      await actions.saveStory(title);
-    } catch (error) {
-      console.error('Failed to save the story', error);
-      actions.setError('Failed to save story');
-    }
-  };
-  
-  const handleLoadStory = async (id: string) => {
-    try {
-      await actions.loadStory(id);
-      await speak(storyPages[0].textContent);
-    } catch (error) {
-      console.error('Failed to load story', error);
-      actions.setError('Failed to load story');
-    }
   };
   
   const startNewStory = async () => {
@@ -369,17 +341,17 @@ export default function StoryScreen() {
       await stopCurrentSpeech();
       await stopListening();
       
-      actions.resetConversation();
+      resetConversation();
       setTimeout(() => {
-        actions.startConversation();
+        startConversation();
         startListening().catch(error => {
           console.error('Error starting listening:', error);
-          actions.setError('Failed to start voice recognition');
+          setError('Failed to start voice recognition');
         });
       }, 0);
     } catch (error) {
       console.error('Error starting new story:', error);
-      actions.setError('Failed to start new story');
+      setError('Failed to start new story');
       await speak('I had trouble starting. Please try again.');
     }
   };
@@ -388,7 +360,7 @@ export default function StoryScreen() {
     try {
       await stopListening();
       await Speech.stop();
-      actions.resetConversation();
+      resetConversation();
       router.push('/');
     } catch (error) {
       console.error('Error during navigation:', error);
@@ -409,7 +381,7 @@ export default function StoryScreen() {
           <StoryDisplay
             storyPages={storyPages}
             currentPageIndex={currentPageIndex}
-            onPageChange={actions.setCurrentPage}
+            onPageChange={setCurrentPage}
           />
         ) : (
           <>
