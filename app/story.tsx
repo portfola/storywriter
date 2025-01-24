@@ -1,19 +1,14 @@
-// story.tsx
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Speech from 'expo-speech';
 import Voice, { SpeechResultsEvent } from '@react-native-voice/voice';
 import { router } from 'expo-router';
-
 import HuggingFaceService from '@/services/huggingFaceService';
 import StoryDisplay from '@/components/StoryDisplay';
-import SpeechControls from '@/components/SpeechControls';
-import StoryManagement from '@/components/StoryManagement';
 import VoiceWave from '@/components/VoiceWave';
-import { StoryPage } from '@/src/utils/storyGenerator';
-
 import useConversationStore from '@/src/stores/conversationStore';
+import { shallow } from 'zustand/shallow';
+
 
 export default function StoryScreen() {
   // Individual state selectors
@@ -34,26 +29,23 @@ export default function StoryScreen() {
   
   // Actions
   const actions = useConversationStore(
-    React.useCallback(
     (state) => ({
-        startConversation: state.startConversation,
-        addUserResponse: state.addUserResponse,
-        setQuestion: state.setQuestion,
-        setSpeechState: state.setSpeechState,
-        resetConversation: state.resetConversation,
-        setError: state.setError,
-        setPhase: state.setPhase,
-        setStoryPages: state.setStoryPages,
-        setCurrentPage: state.setCurrentPage,
-        nextPage: state.nextPage,
-        previousPage: state.previousPage,
-        updateStoryElements: state.updateStoryElements,
-        saveStory: state.saveStory,
-        loadStory: state.loadStory,
-        loadSavedStories: state.loadSavedStories
-      }),
-      []
-    )
+      startConversation: state.startConversation,
+      addUserResponse: state.addUserResponse,
+      setQuestion: state.setQuestion,
+      setSpeechState: state.setSpeechState,
+      resetConversation: state.resetConversation,
+      setError: state.setError,
+      setPhase: state.setPhase,
+      setStoryPages: state.setStoryPages,
+      setCurrentPage: state.setCurrentPage,
+      nextPage: state.nextPage,
+      previousPage: state.previousPage,
+      updateStoryElements: state.updateStoryElements,
+      saveStory: state.saveStory,
+      loadStory: state.loadStory,
+      loadSavedStories: state.loadSavedStories
+    })
   );
 
   // Initialize conversation
