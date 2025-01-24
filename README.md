@@ -1,8 +1,16 @@
-# Welcome to your Expo app 👋
+# StoryWriter
+
+Create your own digital storybooks with the help of a cyber assistant!
+
+## Jan 2025 Dev Notes
+
+This app is being written with the help of Claude AI LLM ([https://claude.ai](https://claude.ai))
+
+Current status, as of Jan 23, is that we have critical failures immediately upon progressing past the initial splash screen. There appears to be an infinite loop happening...
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
-## Get started
+## Get started (original readme from Expo)
 
 1. Install dependencies
 
