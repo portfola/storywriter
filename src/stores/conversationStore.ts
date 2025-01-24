@@ -1,5 +1,8 @@
+import React from 'react';
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StoryPage } from '@/src/utils/storyGenerator';
 
 // Define all possible states of our conversation
 export type ConversationPhase = 
@@ -16,6 +19,20 @@ export interface ConversationTurn {
   timestamp: number;
 }
 
+// Define what a saved story looks like
+export interface SavedStory {
+  id: string;           // Unique identifier for the story
+  title: string;        // Display title
+  content: StoryPage[]; // The actual story pages
+  elements: StoryElements; // The gathered story elements
+  createdAt: number;    // Timestamp for sorting
+}
+
+// Define story elements structure
+export interface StoryElements {
+  [key: string]: string;
+}
+
 // Define what information we need to track about speech
 interface SpeechState {
   isListening: boolean;
@@ -24,14 +41,32 @@ interface SpeechState {
   speechVolume: number;
 }
 
-// Define our store's state shape
-interface ConversationState extends SpeechState {
+// Define our story state
+interface StoryState {
+  currentPageIndex: number;
+  storyPages: StoryPage[];
+  storyElements: StoryElements;
+  savedStories: SavedStory[];
+}
+
+// Define our complete store state shape
+interface ConversationState extends SpeechState, StoryState {
   phase: ConversationPhase;
   conversationHistory: ConversationTurn[];
   currentQuestion: string;
   error: string | null;
   
-  // Actions (these will be implemented as functions)
+  // Story management actions
+  setStoryPages: (pages: StoryPage[]) => void;
+  setCurrentPage: (index: number) => void;
+  nextPage: () => void;
+  previousPage: () => void;
+  updateStoryElements: (elements: StoryElements) => void;
+  saveStory: (title?: string) => Promise<void>;
+  loadStory: (id: string) => Promise<void>;
+  loadSavedStories: () => Promise<void>;
+  
+  // Existing conversation actions
   startConversation: () => void;
   addUserResponse: (response: string) => void;
   setQuestion: (question: string) => void;
@@ -41,11 +76,9 @@ interface ConversationState extends SpeechState {
   setError: (error: string | null) => void;
 }
 
-// Create the store with initial state and actions
 const useConversationStore = create<ConversationState>()(
   devtools(
     (set, get) => ({
-      // Initial state
       phase: 'INITIAL',
       conversationHistory: [],
       currentQuestion: '',
@@ -54,8 +87,12 @@ const useConversationStore = create<ConversationState>()(
       isSpeaking: false,
       speechRate: 1.0,
       speechVolume: 1.0,
-
-      // Actions
+      currentPageIndex: 0,
+      storyPages: [],
+      storyElements: {},
+      savedStories: [],
+      
+      // Actions are simplified to avoid nested updates
       startConversation: () => {
         set({
           phase: 'INTERVIEWING',
@@ -65,7 +102,9 @@ const useConversationStore = create<ConversationState>()(
             timestamp: Date.now()
           }],
           currentQuestion: 'What kind of story would you like to create today?',
-          error: null
+          error: null,
+          isListening: false,
+          isSpeaking: false
         });
       },
 
@@ -132,27 +171,97 @@ const useConversationStore = create<ConversationState>()(
 
       setError: (error: string | null) => {
         set({ error });
+      },
+      // Story management actions
+      setStoryPages: (pages: StoryPage[]) => {
+        set({
+          storyPages: pages,
+          currentPageIndex: 0,  // Reset to first page when setting new pages
+          phase: 'DISPLAYING_STORY'
+        });
+      },
+
+      setCurrentPage: (index: number) => {
+        const { storyPages } = get();
+        if (index >= 0 && index < storyPages.length) {
+          set({ currentPageIndex: index });
+        }
+      },
+
+      nextPage: () => {
+        const { currentPageIndex, storyPages } = get();
+        if (currentPageIndex < storyPages.length - 1) {
+          set({ currentPageIndex: currentPageIndex + 1 });
+        }
+      },
+
+      previousPage: () => {
+        const { currentPageIndex } = get();
+        if (currentPageIndex > 0) {
+          set({ currentPageIndex: currentPageIndex - 1 });
+        }
+      },
+
+      updateStoryElements: (elements: StoryElements) => {
+        set({ storyElements: elements });
+      },
+
+      saveStory: async (title?: string) => {
+        const { storyPages, storyElements, savedStories } = get();
+        
+        if (storyPages.length === 0) {
+          throw new Error('No story to save');
+        }
+
+        const newStory: SavedStory = {
+          id: Date.now().toString(),
+          title: title || `Story Created on ${new Date().toLocaleDateString()}`,
+          content: storyPages,
+          elements: storyElements,
+          createdAt: Date.now()
+        };
+
+        const updatedStories = [...savedStories, newStory];
+        
+        try {
+          await AsyncStorage.setItem('savedStories', JSON.stringify(updatedStories));
+          set({ savedStories: updatedStories });
+        } catch (error) {
+          console.error('Failed to save story:', error);
+          throw new Error('Failed to save story');
+        }
+      },
+
+      loadStory: async (id: string) => {
+        const { savedStories } = get();
+        const story = savedStories.find(s => s.id === id);
+        
+        if (!story) {
+          throw new Error('Story not found');
+        }
+
+        set({
+          storyPages: story.content,
+          storyElements: story.elements,
+          currentPageIndex: 0,
+          phase: 'DISPLAYING_STORY'
+        });
+      },
+
+      loadSavedStories: async () => {
+        try {
+          const stored = await AsyncStorage.getItem('savedStories');
+          if (stored) {
+            const stories = JSON.parse(stored);
+            set({ savedStories: stories });
+          }
+        } catch (error) {
+          console.error('Failed to load saved stories:', error);
+          throw new Error('Failed to load saved stories');
+        }
       }
     })
   )
 );
-
-// Create custom hooks for specific parts of the state
-export const useConversationPhase = () => 
-  useConversationStore((state) => state.phase);
-
-export const useCurrentQuestion = () => 
-  useConversationStore((state) => state.currentQuestion);
-
-export const useConversationHistory = () => 
-  useConversationStore((state) => state.conversationHistory);
-
-export const useSpeechState = () => 
-  useConversationStore((state) => ({
-    isListening: state.isListening,
-    isSpeaking: state.isSpeaking,
-    speechRate: state.speechRate,
-    speechVolume: state.speechVolume
-  }));
 
 export default useConversationStore;

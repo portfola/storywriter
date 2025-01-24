@@ -9,7 +9,7 @@ export default function Index() {
       <Text style={styles.subtitle}>Create amazing stories with your voice!</Text>
       
       <View style={styles.buttonContainer}>
-        <Link href="/(tabs)" asChild>
+        <Link href="/story" asChild>
           <TouchableOpacity style={styles.button}>
             <Text style={styles.buttonText}>Start Writing</Text>
           </TouchableOpacity>
