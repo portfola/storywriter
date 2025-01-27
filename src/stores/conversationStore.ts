@@ -5,79 +5,81 @@ import { StoryPage } from '@/src/utils/storyGenerator';
 
 // Define all possible states of our conversation
 export type ConversationPhase = 
-  | 'INITIAL'           // Just started, no interaction yet
-  | 'INTERVIEWING'      // Actively asking questions
-  | 'PROCESSING'        // Processing user's response
-  | 'GENERATING_STORY'  // Creating the story
-  | 'DISPLAYING_STORY'; // Showing the generated story
+  | 'INITIAL'           // App just started; no interaction yet
+  | 'INTERVIEWING'      // Asking questions to gather story details
+  | 'PROCESSING'        // Analyzing user's response or generating a question
+  | 'GENERATING_STORY'  // Creating the story based on collected data
+  | 'DISPLAYING_STORY'; // Showing the generated story to the user
 
-// Define the structure of our conversation turns
+// Define the structure of each turn in the conversation
 export interface ConversationTurn {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-  timestamp: number;
+  role: 'system' | 'user' | 'assistant'; // Who said this (system, user, or assistant)?
+  content: string;                      // The actual message content
+  timestamp: number;                    // When the message was created
 }
 
-// Define what a saved story looks like
+// Define the structure of a saved story
 export interface SavedStory {
   id: string;           // Unique identifier for the story
-  title: string;        // Display title
-  content: StoryPage[]; // The actual story pages
-  elements: StoryElements; // The gathered story elements
-  createdAt: number;    // Timestamp for sorting
+  title: string;        // Display title for the story
+  content: StoryPage[]; // The actual pages of the story
+  elements: StoryElements; // Key story elements collected during the conversation
+  createdAt: number;    // Timestamp for when the story was saved
 }
 
-// Define story elements structure
+// Define the structure for story elements (e.g., characters, settings)
 export interface StoryElements {
-  [key: string]: string;
+  [key: string]: string; // Key-value pairs for story details
 }
 
-// Define what information we need to track about speech
+// Define the state for speech recognition and text-to-speech
 export interface SpeechState {
-  isListening: boolean;
-  isSpeaking: boolean;
-  speechRate: number;
-  speechVolume: number;
+  isListening: boolean;  // Whether the app is actively listening
+  isSpeaking: boolean;   // Whether the app is actively speaking
+  speechRate: number;    // Rate of speech for text-to-speech
+  speechVolume: number;  // Volume of text-to-speech output
 }
 
-// Define our story state
+// Define the state for managing story display and progression
 export interface StoryState {
-  currentPageIndex: number;
-  storyPages: StoryPage[];
-  storyElements: StoryElements;
-  savedStories: SavedStory[];
+  currentPageIndex: number;      // Index of the currently displayed story page
+  storyPages: StoryPage[];       // List of all generated story pages
+  storyElements: StoryElements;  // Collected story elements
+  savedStories: SavedStory[];    // List of all saved stories
 }
 
-// Define our complete store state shape
+// Combine all states and actions into the complete store state
 export interface ConversationState extends SpeechState, StoryState {
-  phase: ConversationPhase;
-  conversationHistory: ConversationTurn[];
-  currentQuestion: string;
-  error: string | null;
-  
+  phase: ConversationPhase;                  // Current phase of the app
+  conversationHistory: ConversationTurn[];  // Log of the conversation so far
+  currentQuestion: string;                  // Current question being asked
+  error: string | null;                     // Error message, if any
+
   // Story management actions
-  setStoryPages: (pages: StoryPage[]) => void;
-  setCurrentPage: (index: number) => void;
-  nextPage: () => void;
-  previousPage: () => void;
-  updateStoryElements: (elements: StoryElements) => void;
-  saveStory: (title?: string) => Promise<void>;
-  loadStory: (id: string) => Promise<void>;
-  loadSavedStories: () => Promise<void>;
-  
-  // Existing conversation actions
-  startConversation: () => void;
-  addUserResponse: (response: string) => void;
-  setQuestion: (question: string) => void;
-  setPhase: (phase: ConversationPhase) => void;
-  setSpeechState: (speechState: Partial<SpeechState>) => void;
-  resetConversation: () => void;
-  setError: (error: string | null) => void;
+  setStoryPages: (pages: StoryPage[]) => void;       // Set story pages
+  setCurrentPage: (index: number) => void;          // Set the current page
+  nextPage: () => void;                             // Go to the next story page
+  previousPage: () => void;                         // Go to the previous story page
+  updateStoryElements: (elements: StoryElements) => void; // Update collected story elements
+  saveStory: (title?: string) => Promise<void>;     // Save the current story
+  loadStory: (id: string) => Promise<void>;         // Load a saved story
+  loadSavedStories: () => Promise<void>;            // Load all saved stories
+
+  // Conversation management actions
+  startConversation: () => void;            // Start a new conversation
+  addUserResponse: (response: string) => void; // Add a user's response to the conversation
+  setQuestion: (question: string) => void;   // Set the next question to ask the user
+  setPhase: (phase: ConversationPhase) => void; // Change the app's phase
+  setSpeechState: (speechState: Partial<SpeechState>) => void; // Update speech state
+  resetConversation: () => void;            // Reset the entire conversation
+  setError: (error: string | null) => void; // Set or clear an error
 }
 
+// Create the Zustand store for managing the conversation and story state
 const useConversationStore = create<ConversationState>()(
   devtools(
     (set, get) => ({
+      // Initial state
       phase: 'INITIAL',
       conversationHistory: [],
       currentQuestion: '',
@@ -90,27 +92,30 @@ const useConversationStore = create<ConversationState>()(
       storyPages: [],
       storyElements: {},
       savedStories: [],
-      
-      // Actions are simplified to avoid nested updates
+
+      // Start a new conversation
       startConversation: () => {
         set({
           phase: 'INTERVIEWING',
-          conversationHistory: [{
-            role: 'system',
-            content: 'You are a friendly children\'s story creator assistant.',
-            timestamp: Date.now()
-          }],
+          conversationHistory: [
+            {
+              role: 'system',
+              content: 'You are a friendly children\'s story creator assistant.',
+              timestamp: Date.now(),
+            },
+          ],
           currentQuestion: 'What kind of story would you like to create today?',
           error: null,
           isListening: false,
-          isSpeaking: false
+          isSpeaking: false,
         });
       },
 
+      // Add a user's response to the conversation
       addUserResponse: (response: string) => {
         const { conversationHistory, phase } = get();
-        
-        // Only add response if we're in the right phase
+
+        // Only add a response if in the correct phase
         if (phase !== 'INTERVIEWING' && phase !== 'PROCESSING') {
           console.warn('Attempted to add user response in invalid phase:', phase);
           return;
@@ -122,16 +127,17 @@ const useConversationStore = create<ConversationState>()(
             {
               role: 'user',
               content: response,
-              timestamp: Date.now()
-            }
+              timestamp: Date.now(),
+            },
           ],
-          phase: 'PROCESSING'
+          phase: 'PROCESSING',
         });
       },
 
+      // Set the next question in the conversation
       setQuestion: (question: string) => {
         const { conversationHistory } = get();
-        
+
         set({
           currentQuestion: question,
           conversationHistory: [
@@ -139,24 +145,27 @@ const useConversationStore = create<ConversationState>()(
             {
               role: 'assistant',
               content: question,
-              timestamp: Date.now()
-            }
+              timestamp: Date.now(),
+            },
           ],
-          phase: 'INTERVIEWING'
+          phase: 'INTERVIEWING',
         });
       },
 
+      // Update the app's phase
       setPhase: (phase: ConversationPhase) => {
         set({ phase });
       },
 
+      // Update speech recognition and TTS state
       setSpeechState: (speechState: Partial<SpeechState>) => {
         set((state) => ({
           ...state,
-          ...speechState
+          ...speechState,
         }));
       },
 
+      // Reset the entire conversation
       resetConversation: () => {
         set({
           phase: 'INITIAL',
@@ -164,19 +173,21 @@ const useConversationStore = create<ConversationState>()(
           currentQuestion: '',
           error: null,
           isListening: false,
-          isSpeaking: false
+          isSpeaking: false,
         });
       },
 
+      // Set or clear an error message
       setError: (error: string | null) => {
         set({ error });
       },
+
       // Story management actions
       setStoryPages: (pages: StoryPage[]) => {
         set({
           storyPages: pages,
-          currentPageIndex: 0,  // Reset to first page when setting new pages
-          phase: 'DISPLAYING_STORY'
+          currentPageIndex: 0, // Reset to the first page
+          phase: 'DISPLAYING_STORY',
         });
       },
 
@@ -207,7 +218,7 @@ const useConversationStore = create<ConversationState>()(
 
       saveStory: async (title?: string) => {
         const { storyPages, storyElements, savedStories } = get();
-        
+
         if (storyPages.length === 0) {
           throw new Error('No story to save');
         }
@@ -217,11 +228,11 @@ const useConversationStore = create<ConversationState>()(
           title: title || `Story Created on ${new Date().toLocaleDateString()}`,
           content: storyPages,
           elements: storyElements,
-          createdAt: Date.now()
+          createdAt: Date.now(),
         };
 
         const updatedStories = [...savedStories, newStory];
-        
+
         try {
           await AsyncStorage.setItem('savedStories', JSON.stringify(updatedStories));
           set({ savedStories: updatedStories });
@@ -233,8 +244,8 @@ const useConversationStore = create<ConversationState>()(
 
       loadStory: async (id: string) => {
         const { savedStories } = get();
-        const story = savedStories.find(s => s.id === id);
-        
+        const story = savedStories.find((s) => s.id === id);
+
         if (!story) {
           throw new Error('Story not found');
         }
@@ -243,7 +254,7 @@ const useConversationStore = create<ConversationState>()(
           storyPages: story.content,
           storyElements: story.elements,
           currentPageIndex: 0,
-          phase: 'DISPLAYING_STORY'
+          phase: 'DISPLAYING_STORY',
         });
       },
 
@@ -258,9 +269,9 @@ const useConversationStore = create<ConversationState>()(
           console.error('Failed to load saved stories:', error);
           throw new Error('Failed to load saved stories');
         }
-      }
-    })
-  )
+      },
+    }),
+  ),
 );
 
 export default useConversationStore;
