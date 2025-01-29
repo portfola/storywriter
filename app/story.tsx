@@ -35,94 +35,48 @@ export default function StoryScreen() {
   const setStoryPages = useConversationStore(state => state.setStoryPages); // Update story pages
   const resetConversation = useConversationStore(state => state.resetConversation); // Reset the conversation
 
-  /**
-   * Initialize the conversation when the app first loads.
-   * Starts in the 'INITIAL' phase and transitions to asking the first question.
-   */
   useEffect(() => {
     const initialize = async () => {
       if (phase === 'INITIAL') {
         await startConversation();
+        setPhase('INTERVIEWING'); // Ensure phase changes before listening
       }
     };
     initialize();
   }, [phase, startConversation]);
-
+  
   /**
-   * Handle results from voice recognition.
-   * Processes the text captured by the microphone.
-   */
-  const handleSpeechResults = (e: SpeechResultsEvent) => {
-    if (e.value && e.value.length > 0) {
-      const text = e.value[0]; // Take the first recognized result
-      if (text) {
-        if (isSpeaking) {
-          handleInterruption(text); // Handle interruptions during speech output
-        } else {
-          handleAnswer(text); // Handle user's response
-        }
-      }
-    }
-  };
-
-  /**
-   * Speak a given text aloud using TTS.
-   * Updates the speaking state to prevent conflicts during output.
-   */
-  const speak = async (text: string) => {
-    try {
-      if (isSpeaking) {
-        await Speech.stop(); // Stop any ongoing speech
-      }
-      setSpeechState({ isSpeaking: true }); // Indicate speaking has started
-
-      await Speech.speak(text, {
-        rate: speechRate,
-        volume: speechVolume,
-        onDone: () => setSpeechState({ isSpeaking: false }),
-        onError: () => {
-          setSpeechState({ isSpeaking: false });
-          setError('Failed to speak');
-        },
-      });
-    } catch (error) {
-      console.error('Error in speak function:', error);
-      setSpeechState({ isSpeaking: false });
-      setError('Failed to speak');
-    }
-  };
-
-  /**
-   * Initialize voice recognition and prepare listeners.
-   * Cleans up resources when the component unmounts.
+   * Starts listening immediately after a question is asked.
+   * Ensures the app correctly listens for speech input.
    */
   useEffect(() => {
-    if (phase !== 'INITIAL') {
-      const initVoice = async () => {
-        try {
-          // Set up voice recognition event handlers
-          Voice.onSpeechStart = () => setSpeechState({ isListening: true });
-          Voice.onSpeechEnd = () => setSpeechState({ isListening: false });
-          Voice.onSpeechError = (error) => {
-            console.error('Speech error:', error);
-            setSpeechState({ isListening: false });
-            setError(`Speech recognition error: ${error.message}`);
-          };
-          Voice.onSpeechResults = handleSpeechResults;
-
-          // Speak the current question aloud
-          if (currentQuestion) {
-            await speak(currentQuestion);
-          }
-        } catch (error) {
-          console.error('Error initializing voice:', error);
-          setError('Failed to initialize voice recognition');
+    const initVoice = async () => {
+      try {
+        // Set up voice recognition event handlers
+        Voice.onSpeechStart = () => setSpeechState({ isListening: true });
+        Voice.onSpeechEnd = () => setSpeechState({ isListening: false });
+        Voice.onSpeechError = (error) => {
+          console.error('Speech error:', error);
+          setSpeechState({ isListening: false });
+          setError(`Speech recognition error: ${error.message}`);
+        };
+        Voice.onSpeechResults = handleSpeechResults;
+  
+        // Speak first, then start listening
+        if (currentQuestion) {
+          await speak(currentQuestion);
+          await Voice.start('en-US'); // Start listening **immediately after speaking**
         }
-      };
+      } catch (error) {
+        console.error('Error initializing voice:', error);
+        setError('Failed to initialize voice recognition');
+      }
+    };
+  
+    if (phase === 'INTERVIEWING') {
       initVoice();
     }
-
-    // Cleanup function to release resources
+  
     return () => {
       const cleanup = async () => {
         try {
@@ -136,35 +90,49 @@ export default function StoryScreen() {
       cleanup();
     };
   }, [phase, currentQuestion, setSpeechState, setError]);
-
+  
   /**
-   * Generate the next question or story segment.
-   * Uses AI to analyze the current conversation and decide the next step.
+   * Handles speech recognition results and determines the next step.
    */
-  const generateNextQuestion = async () => {
-    if (phase !== 'INTERVIEWING' || isSpeaking) {
-      console.log('Blocked question generation due to current state.');
-      return;
-    }
-    try {
-      setPhase('PROCESSING'); // Transition to processing phase
-
-      // Build a prompt for the AI
-      const prompt = `Based on our conversation so far, ask the next question...`;
-      const response = await HuggingFaceService.generateResponse(prompt);
-
-      if (response.includes('INTERVIEW_COMPLETE')) {
-        const summary = response.split('INTERVIEW_COMPLETE')[1].trim();
-        await generateAndDisplayStory(summary); // Transition to story generation
-      } else {
-        setQuestion(response.trim());
-        await speak(response.trim());
+  const handleSpeechResults = (e: SpeechResultsEvent) => {
+    if (e.value && e.value.length > 0) {
+      const text = e.value[0]; // Take the first recognized result
+      if (text) {
+        handleAnswer(text); // Handle user's response
       }
-    } catch (error) {
-      console.error('Error generating question:', error);
-      setError('Failed to generate question.');
     }
   };
+  
+  /**
+   * Speaks a given text aloud using TTS.
+   * Starts listening immediately after speaking.
+   */
+  const speak = async (text: string) => {
+    try {
+      if (isSpeaking) {
+        await Speech.stop(); // Stop any ongoing speech
+      }
+      setSpeechState({ isSpeaking: true }); // Indicate speaking has started
+  
+      await Speech.speak(text, {
+        rate: speechRate,
+        volume: speechVolume,
+        onDone: async () => {
+          setSpeechState({ isSpeaking: false });
+          await Voice.start('en-US'); // Start listening once speaking is finished
+        },
+        onError: () => {
+          setSpeechState({ isSpeaking: false });
+          setError('Failed to speak');
+        },
+      });
+    } catch (error) {
+      console.error('Error in speak function:', error);
+      setSpeechState({ isSpeaking: false });
+      setError('Failed to speak');
+    }
+  };  
+  
 
   return (
     <View style={styles.container}>
