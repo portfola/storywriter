@@ -58,7 +58,7 @@ export default function StoryScreen() {
         Voice.onSpeechError = (error) => {
           console.error('Speech error:', error);
           setSpeechState({ isListening: false });
-          setError(`Speech recognition error: ${error.message}`);
+          setError(`Speech recognition error: ${error}`);
         };
         Voice.onSpeechResults = handleSpeechResults;
   
