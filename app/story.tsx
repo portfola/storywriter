@@ -4,8 +4,12 @@ import * as Speech from 'expo-speech';
 
 export default function StoryScreen() {
   const [question, setQuestion] = useState<string>('What kind of story would you like?');
-  const [userResponse, setUserResponse] = useState<string>('');
+  const [responses, setResponses] = useState<string[]>([]);
   const [isListening, setIsListening] = useState<boolean>(false);
+  const [conversationComplete, setConversationComplete] = useState<boolean>(false);
+
+//   const [userResponse, setUserResponse] = useState<string>('');
+//   const [isListening, setIsListening] = useState<boolean>(false);
 
   // Function to handle speech recognition
   const startListening = () => {
@@ -22,7 +26,8 @@ export default function StoryScreen() {
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
-      setUserResponse(transcript);
+    //   setUserResponse(transcript);
+      setResponses((prevResponses) => [...prevResponses, transcript]);
       setIsListening(false);
     };
 
@@ -37,7 +42,16 @@ export default function StoryScreen() {
   // Speak the initial question when the screen loads
   useEffect(() => {
     Speech.speak(question);
-  }, []);
+  }, [question]);
+
+    // Handle continuing the conversation
+    useEffect(() => {
+        if (responses.length > 0 && !conversationComplete) {
+          const nextQuestion = "Do you have anything to add to your story?";
+          setTimeout(() => Speech.speak(nextQuestion), 1000);
+          setQuestion(nextQuestion);
+        }
+      }, [responses, conversationComplete]);
 
   return (
     <View style={styles.container}>
@@ -47,7 +61,25 @@ export default function StoryScreen() {
         <Text style={styles.buttonText}>{isListening ? 'Listening...' : 'Tap to Speak'}</Text>
       </TouchableOpacity>
 
-      {userResponse ? <Text style={styles.responseText}>Your response: {userResponse}</Text> : null}
+      {responses.length > 0 && (
+        <View style={styles.responseContainer}>
+          <Text style={styles.responseLabel}>Your story so far:</Text>
+          {responses.map((res, index) => (
+            <Text key={index} style={styles.responseText}>
+              {index + 1}. {res}
+            </Text>
+          ))}
+        </View>
+      )}
+
+      {responses.length > 0 && (
+        <TouchableOpacity
+          style={styles.finishButton}
+          onPress={() => setConversationComplete(true)}
+        >
+          <Text style={styles.buttonText}>Generate Story</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -77,11 +109,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  responseText: {
-    fontSize: 18,
+  responseContainer: {
     marginTop: 20,
+    paddingHorizontal: 20,
+  },
+  responseLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
     color: '#2c3e50',
-    textAlign: 'center',
+  },
+  responseText: {
+    fontSize: 16,
+    color: '#34495e',
+    marginBottom: 5,
   },
 });
 
