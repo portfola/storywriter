@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import * as Speech from 'expo-speech';
 
+import { HUGGINGFACE_API_KEY } from '@env';
+
 export default function StoryScreen() {
   const [question, setQuestion] = useState<string>('What kind of story would you like?');
   const [responses, setResponses] = useState<string[]>([]);
