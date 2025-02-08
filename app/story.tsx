@@ -1,42 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import * as Speech from 'expo-speech';
-import HuggingFaceService from '@/services/huggingFaceService'; // Service for AI responses
+import HuggingFaceService from '@/services/huggingFaceService';
+
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any;
+  }
+}
 
 export default function StoryScreen() {
-  const [question, setQuestion] = useState<string>('What kind of story would you like?');
+  const [question, setQuestion] = useState('What kind of story would you like?');
   const [responses, setResponses] = useState<string[]>([]);
-  const [isListening, setIsListening] = useState<boolean>(false);
-  const [conversationComplete, setConversationComplete] = useState<boolean>(false);
+  const [isListening, setIsListening] = useState(false);
+  const [conversationComplete, setConversationComplete] = useState(false);
   const [generatedStory, setGeneratedStory] = useState<string | null>(null);
 
   const startListening = () => {
-    if (!('webkitSpeechRecognition' in window)) {
-      alert('Your browser does not support speech recognition. Please use Google Chrome.');
+    if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) {
+      alert('Speech recognition is only available in Chrome browser.');
       return;
     }
 
-    setIsListening(true);
     const recognition = new window.webkitSpeechRecognition();
     recognition.lang = 'en-US';
     recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+
+    setIsListening(true);
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
+      const isDone = ['i\'m done', 'that\'s all', 'finish'].some(
+        phrase => transcript.toLowerCase().includes(phrase)
+      );
 
-      // If user says they are done, finish conversation
-      if (
-        transcript.toLowerCase().includes("i'm done") ||
-        transcript.toLowerCase().includes("that's all") ||
-        transcript.toLowerCase().includes("finish")
-      ) {
+      if (isDone) {
         setConversationComplete(true);
         Speech.speak("Okay! I will now create your story.");
       } else {
-        setResponses((prevResponses) => [...prevResponses, transcript]);
+        setResponses(prev => [...prev, transcript]);
       }
-
       setIsListening(false);
     };
 
@@ -48,34 +51,28 @@ export default function StoryScreen() {
     recognition.start();
   };
 
-  // Speak the initial question when the screen loads
   useEffect(() => {
-    Speech.speak(question);
-  }, [question]);
-
-  // Handle follow-up question
-  // TODO: Why is this question repeating?
-  useEffect(() => {
-    if (responses.length > 0 && !conversationComplete) {
-      const nextQuestion = "Do you have anything to add to your story?";
-      setTimeout(() => Speech.speak(nextQuestion), 1000);
-      setQuestion(nextQuestion);
+    if (!conversationComplete) {
+      const questionText = responses.length > 0 
+        ? "Do you have anything to add to your story?" 
+        : "What kind of story would you like?";
+      setTimeout(() => Speech.speak(questionText), 1000);
+      setQuestion(questionText);
     }
   }, [responses, conversationComplete]);
 
-  // Function to send the collected prompt to Hugging Face
   const generateStory = async () => {
-  const fullPrompt = `Create a children's story based on the following details:\n\n${responses.join(' ')}\n\nMake it engaging and appropriate for a 5-year-old.`;
-
     try {
+      const fullPrompt = `Create a children's story based on the following details:\n\n${responses.join(' ')}\n\nMake it engaging and appropriate for a 5-year-old.`;
       const response = await HuggingFaceService.generateResponse(fullPrompt);
-      console.log(response);
+      setGeneratedStory(response);
     } catch (error) {
       console.error("Error:", error);
+      alert('Failed to generate story. Please try again.');
     }
-
   };
 
+  // Rest of your component remains the same...
   return (
     <View style={styles.container}>
       {!generatedStory ? (
@@ -83,8 +80,14 @@ export default function StoryScreen() {
           <Text style={styles.questionText}>{question}</Text>
 
           {!conversationComplete && (
-            <TouchableOpacity style={styles.button} onPress={startListening} disabled={isListening}>
-              <Text style={styles.buttonText}>{isListening ? 'Listening...' : 'Tap to Speak'}</Text>
+            <TouchableOpacity 
+              style={styles.button} 
+              onPress={startListening} 
+              disabled={isListening}
+            >
+              <Text style={styles.buttonText}>
+                {isListening ? 'Listening...' : 'Tap to Speak'}
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -100,7 +103,10 @@ export default function StoryScreen() {
           )}
 
           {(conversationComplete || responses.length > 0) && (
-            <TouchableOpacity style={styles.finishButton} onPress={generateStory}>
+            <TouchableOpacity 
+              style={styles.finishButton} 
+              onPress={generateStory}
+            >
               <Text style={styles.buttonText}>Generate Story</Text>
             </TouchableOpacity>
           )}
@@ -178,4 +184,3 @@ const styles = StyleSheet.create({
     color: '#2c3e50',
   },
 });
-

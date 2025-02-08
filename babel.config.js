@@ -13,6 +13,7 @@ module.exports = function(api) {
         },
       ],
       'module:react-native-dotenv',
+      'transform-inline-environment-variables',
     ],
   };
 }
