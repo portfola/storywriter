@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import * as Speech from 'expo-speech';
-
-import { HUGGINGFACE_API_KEY } from '@env';
+import HuggingFaceService from '@/services/huggingFaceService'; // Service for AI responses
 
 export default function StoryScreen() {
   const [question, setQuestion] = useState<string>('What kind of story would you like?');
@@ -10,8 +9,6 @@ export default function StoryScreen() {
   const [isListening, setIsListening] = useState<boolean>(false);
   const [conversationComplete, setConversationComplete] = useState<boolean>(false);
   const [generatedStory, setGeneratedStory] = useState<string | null>(null);
-
-  const API_URL = 'https://api-inference.huggingface.co/models/YOUR_MODEL_HERE'; // Replace with actual Hugging Face model
 
   const startListening = () => {
     if (!('webkitSpeechRecognition' in window)) {
@@ -25,7 +22,7 @@ export default function StoryScreen() {
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
 
       // If user says they are done, finish conversation
@@ -43,7 +40,7 @@ export default function StoryScreen() {
       setIsListening(false);
     };
 
-    recognition.onerror = (event) => {
+    recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
     };
@@ -57,6 +54,7 @@ export default function StoryScreen() {
   }, [question]);
 
   // Handle follow-up question
+  // TODO: Why is this question repeating?
   useEffect(() => {
     if (responses.length > 0 && !conversationComplete) {
       const nextQuestion = "Do you have anything to add to your story?";
@@ -67,30 +65,15 @@ export default function StoryScreen() {
 
   // Function to send the collected prompt to Hugging Face
   const generateStory = async () => {
-    const fullPrompt = `Create a children's story based on the following details:\n\n${responses.join(' ')}\n\nMake it engaging and appropriate for a 5-year-old.`;
+  const fullPrompt = `Create a children's story based on the following details:\n\n${responses.join(' ')}\n\nMake it engaging and appropriate for a 5-year-old.`;
 
     try {
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer YOUR_HUGGINGFACE_API_KEY`, // Replace with your Hugging Face API key
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ inputs: fullPrompt })
-      });
-
-      const result = await response.json();
-
-      if (result && result.generated_text) {
-        setGeneratedStory(result.generated_text);
-        Speech.speak(result.generated_text);
-      } else {
-        setGeneratedStory('Sorry, I was unable to generate a story. Try again.');
-      }
+      const response = await HuggingFaceService.generateResponse(fullPrompt);
+      console.log(response);
     } catch (error) {
-      console.error('Error generating story:', error);
-      setGeneratedStory('Error generating the story. Please try again.');
+      console.error("Error:", error);
     }
+
   };
 
   return (
