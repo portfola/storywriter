@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator } from 'react-native';
 import * as Speech from 'expo-speech';
 import HuggingFaceService from '@/services/huggingFaceService';
 
@@ -7,6 +7,11 @@ declare global {
   interface Window {
     webkitSpeechRecognition: any;
   }
+}
+
+interface StorySection {
+  text: string;
+  imageUrl: string | null;
 }
 
 /**
@@ -36,7 +41,11 @@ export default function StoryScreen() {
   const [responses, setResponses] = useState<string[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [conversationComplete, setConversationComplete] = useState(false);
+  const [storyContent, setStoryContent] = useState<StorySection[]>([]);
   const [generatedStory, setGeneratedStory] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  
 
   /**
    * Start listening for voice input using the Web Speech Recognition API.
@@ -73,15 +82,11 @@ export default function StoryScreen() {
       setIsListening(false);
     };
 
-/*************  ✨ Codeium Command ⭐  *************/
-/**
- * Handles errors from the speech recognition process.
- * Logs the error to the console and updates the listening state.
- * @param event - The error event object containing error details.
- */
-
-/******  93ad292d-e783-4043-b921-860dfd916d3b  *******/
-
+  /**
+   * Handles errors from the speech recognition process.
+   * Logs the error to the console and updates the listening state.
+   * @param event - The error event object containing error details.
+   */
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
@@ -112,6 +117,63 @@ export default function StoryScreen() {
       alert('Failed to generate story. Please try again.');
     }
   };
+
+
+  const generateImage = async (prompt: string): Promise<string | null> => {
+    try {
+      // Assuming HuggingFaceService has an imageGeneration method
+      const imageUrl = await HuggingFaceService.generateImage(
+        `child-friendly, safe, cartoon style illustration of ${prompt}`
+      );
+      return imageUrl;
+    } catch (error) {
+      console.error('Image generation error:', error);
+      return null;
+    }
+  };
+
+  const splitStoryIntoSections = (story: string): string[] => {
+    // Split story into sections based on paragraphs or sentences
+    return story
+      .split(/(?<=[.!?])\s+/)
+      .reduce((acc: string[], sentence: string, i: number) => {
+        if (i % 2 === 0) {
+          acc.push(sentence);
+        } else {
+          acc[acc.length - 1] += ' ' + sentence;
+        }
+        return acc;
+      }, []);
+  };
+
+  const generateStoryWithImages = async () => {
+    setIsGenerating(true);
+    try {
+      // Generate the story text
+      const fullPrompt = `Create a children's story based on the following details:\n\n${responses.join(' ')}\n\nMake it engaging and appropriate for a 5-year-old. Keep paragraphs short.`;
+      const storyText = await HuggingFaceService.generateResponse(fullPrompt);
+      
+      // Split the story into sections
+      const sections = splitStoryIntoSections(storyText);
+      
+      // Generate images for each section
+      const storyWithImages = await Promise.all(
+        sections.map(async (text): Promise<StorySection> => {
+          const imageUrl = await generateImage(text);
+          return { text, imageUrl };
+        })
+      );
+      
+      setStoryContent(storyWithImages);
+    } catch (error) {
+      console.error("Error:", error);
+      alert('Failed to generate story. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+
 
   // Rest of your component remains the same...
   return (
@@ -156,7 +218,20 @@ export default function StoryScreen() {
         <ScrollView style={styles.storyContainer}>
           <Text style={styles.storyTitle}>Your Story:</Text>
           <Text style={styles.storyText}>{generatedStory}</Text>
-        </ScrollView>
+  
+        {storyContent.map((section, index) => (
+          <View key={index} style={styles.sectionContainer}>
+            <Text style={styles.storyText}>{section.text}</Text>
+            {section.imageUrl && (
+              <Image
+                source={{ uri: section.imageUrl }}
+                style={styles.storyImage}
+                resizeMode="contain"
+              />
+            )}
+          </View>
+        ))}
+      </ScrollView>
       )}
     </View>
   );
@@ -223,5 +298,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 26,
     color: '#2c3e50',
+  },
+  sectionContainer: {
+    marginBottom: 20,
+  },
+  storyImage: {
+    width: '100%',
+    height: 200,
+    marginVertical: 10,
+    borderRadius: 10,
+  },
+  loader: {
+    marginTop: 20,
   },
 });
