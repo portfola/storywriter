@@ -9,6 +9,28 @@ declare global {
   }
 }
 
+/**
+ * StoryScreen: The main component responsible for the story creation process.
+ * It interacts with the user via voice commands to gather input for story generation.
+ * 
+ * Features:
+ * - Prompts the user with questions using text-to-speech.
+ * - Records user's voice responses using s peech recognition.
+ * - Manages conversation state and user responses.
+ * - Generates a story based on collected responses using an AI service.
+ * 
+ * State:
+ * - question: The current question being asked to the user.
+ * - responses: List of user responses gathered during the session.
+ * - isListening: Boolean indicating if the app is actively listening for voice input.
+ * - conversationComplete: Boolean indicating if the user has finished providing input.
+ * - generatedStory: The final story generated from the user's responses.
+ * 
+ * Usage:
+ * - Tap the button to start speaking and provide input.
+ * - The app will guide the user with questions and generate a story from the responses.
+ */
+
 export default function StoryScreen() {
   const [question, setQuestion] = useState('What kind of story would you like?');
   const [responses, setResponses] = useState<string[]>([]);
@@ -16,6 +38,13 @@ export default function StoryScreen() {
   const [conversationComplete, setConversationComplete] = useState(false);
   const [generatedStory, setGeneratedStory] = useState<string | null>(null);
 
+  /**
+   * Start listening for voice input using the Web Speech Recognition API.
+   * This function is only available in Chrome browser.
+   * It will prompt the user with a question, record their response, and
+   * add it to the list of responses. If the user says they are done, it will
+   * generate a story from the collected responses.
+   */
   const startListening = () => {
     if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) {
       alert('Speech recognition is only available in Chrome browser.');
@@ -44,6 +73,15 @@ export default function StoryScreen() {
       setIsListening(false);
     };
 
+/*************  ✨ Codeium Command ⭐  *************/
+/**
+ * Handles errors from the speech recognition process.
+ * Logs the error to the console and updates the listening state.
+ * @param event - The error event object containing error details.
+ */
+
+/******  93ad292d-e783-4043-b921-860dfd916d3b  *******/
+
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
@@ -57,10 +95,12 @@ export default function StoryScreen() {
       const questionText = responses.length > 0 
         ? "Do you have anything to add to your story?" 
         : "What kind of story would you like?";
-      setTimeout(() => Speech.speak(questionText), 1000);
+      setTimeout(() => Speech.speak(questionText), 2000);
       setQuestion(questionText);
     }
   }, [responses, conversationComplete]);
+
+
 
   const generateStory = async () => {
     try {
