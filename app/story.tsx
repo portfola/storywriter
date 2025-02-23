@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import * as Speech from 'expo-speech';
+import TranscribeService from '@/services/transcribe';
 import HuggingFaceService from '@/services/huggingFaceService';
 
 declare global {
@@ -38,57 +39,38 @@ export default function StoryScreen() {
   const [conversationComplete, setConversationComplete] = useState(false);
   const [generatedStory, setGeneratedStory] = useState<string | null>(null);
 
-  /**
-   * Start listening for voice input using the Web Speech Recognition API.
-   * This function is only available in Chrome browser.
-   * It will prompt the user with a question, record their response, and
-   * add it to the list of responses. If the user says they are done, it will
-   * generate a story from the collected responses.
-   */
-  const startListening = () => {
-    if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) {
-      alert('Speech recognition is only available in Chrome browser.');
-      return;
+  const startListening = async () => {
+    try {
+      setIsListening(true);
+      
+      await TranscribeService.startTranscription((transcript) => {
+        // Check if they want to finish
+        const isDone = ['i\'m done', 'that\'s all', 'finish'].some(
+          phrase => transcript.toLowerCase().includes(phrase)
+        );
+
+        if (isDone) {
+          TranscribeService.stopTranscription();
+          setConversationComplete(true);
+          Speech.speak("Okay! I will now create your story.");
+        } else {
+          setResponses(prev => [...prev, transcript]);
+        }
+      });
+    } catch (error) {
+      console.error('Transcription error:', error);
+      alert('Failed to start listening. Please try again.');
+    } finally {
+      setIsListening(false);
     }
-
-    const recognition = new window.webkitSpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-
-    setIsListening(true);
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      const isDone = ['i\'m done', 'that\'s all', 'finish'].some(
-        phrase => transcript.toLowerCase().includes(phrase)
-      );
-
-      if (isDone) {
-        setConversationComplete(true);
-        // This is not being spoken at the moment
-        Speech.speak("Okay! I will now create your story.");
-      } else {
-        setResponses(prev => [...prev, transcript]);
-      }
-      setIsListening(false);
-    };
-
-/*************  ✨ Codeium Command ⭐  *************/
-/**
- * Handles errors from the speech recognition process.
- * Logs the error to the console and updates the listening state.
- * @param event - The error event object containing error details.
- */
-
-/******  93ad292d-e783-4043-b921-860dfd916d3b  *******/
-
-    recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
-      setIsListening(false);
-    };
-
-    recognition.start();
   };
+
+  // Add cleanup on unmount
+  useEffect(() => {
+    return () => {
+      TranscribeService.stopTranscription();
+    };
+  }, []);
 
   useEffect(() => {
     if (!conversationComplete) {
@@ -99,8 +81,6 @@ export default function StoryScreen() {
       setQuestion(questionText);
     }
   }, [responses, conversationComplete]);
-
-
 
   const generateStory = async () => {
     try {
@@ -113,7 +93,13 @@ export default function StoryScreen() {
     }
   };
 
-  // Rest of your component remains the same...
+  const stopListening = async () => {
+    await TranscribeService.stopTranscription();
+    setIsListening(false);
+    setConversationComplete(true);
+    Speech.speak("Okay! I will now create your story.");
+  };
+
   return (
     <View style={styles.container}>
       {!generatedStory ? (
@@ -121,6 +107,7 @@ export default function StoryScreen() {
           <Text style={styles.questionText}>{question}</Text>
 
           {!conversationComplete && (
+          <View style={styles.buttonContainer}>
             <TouchableOpacity 
               style={styles.button} 
               onPress={startListening} 
@@ -130,7 +117,17 @@ export default function StoryScreen() {
                 {isListening ? 'Listening...' : 'Tap to Speak'}
               </Text>
             </TouchableOpacity>
-          )}
+
+            {isListening && (
+              <TouchableOpacity 
+                style={[styles.button, styles.stopButton]} 
+                onPress={stopListening}
+              >
+                <Text style={styles.buttonText}>Stop Listening</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
           {responses.length > 0 && (
             <View style={styles.responseContainer}>
@@ -223,5 +220,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 26,
     color: '#2c3e50',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stopButton: {
+    backgroundColor: '#e74c3c',
   },
 });
