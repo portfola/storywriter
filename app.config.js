@@ -48,6 +48,9 @@ export default {
     ],
     extra: {
       HUGGING_FACE_API_KEY: process.env.HUGGING_FACE_API_KEY,
+      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+      AWS_REGION: process.env.AWS_REGION,
       eas: {
         projectId: "ddc93476-3b8d-4b46-8ffa-de979a17a116"
       }

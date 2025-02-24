@@ -2,12 +2,6 @@
 import Constants from 'expo-constants';
 import axios from 'axios';
 
-import { HUGGING_FACE_API_KEY } from "@env";
-
-console.log("API Key type:", typeof HUGGING_FACE_API_KEY);
-console.log("API Key:", HUGGING_FACE_API_KEY);
-
-
 const HUGGING_FACE_API_URL = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3';
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000;
