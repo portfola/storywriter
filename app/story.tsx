@@ -122,6 +122,7 @@ export default function StoryScreen() {
   const generateImage = async (prompt: string): Promise<string | null> => {
     try {
       // Assuming HuggingFaceService has an imageGeneration method
+      // NOTE: Might have to update HuggingFace account
       const imageUrl = await HuggingFaceService.generateImage(
         `child-friendly, safe, cartoon style illustration of ${prompt}`
       );
