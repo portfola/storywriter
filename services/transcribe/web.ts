@@ -8,6 +8,14 @@ import {
 import Constants from 'expo-constants';
 import { TranscribeServiceInterface } from './types';
 
+// temporary
+import Config from 'react-native-config';
+
+console.log('Constants Imported from expo-constants: ', Constants);
+
+console.log('Constants.expoConfig: ', Constants.expoConfig);
+
+
 class ChromeTestTranscribeService implements TranscribeServiceInterface {
   private client: TranscribeStreamingClient;
   private mediaRecorder: MediaRecorder | null = null;
@@ -21,7 +29,9 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
 
   constructor() {
     console.warn('ChromeTestTranscribeService: This is a test implementation for Chrome browser only.');
-    
+
+   console.log('Config: ', Config.AWS_ACCESS_KEY_ID);
+
     this.client = new TranscribeStreamingClient({
       region: Constants.expoConfig?.extra?.AWS_REGION || 'us-east-1',
       credentials: {

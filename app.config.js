@@ -1,4 +1,7 @@
-export default {
+require('dotenv').config();
+
+export default ({ config }) => ({
+  ...config, 
   expo: {
     name: "StoryWriter",
     slug: "storywriter",
@@ -56,4 +59,4 @@ export default {
       }
     }
   }
-};
+});

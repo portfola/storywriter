@@ -73,16 +73,9 @@ export default function StoryScreen() {
       setIsListening(false);
     };
 
+  };
 
-    // Add cleanup on unmount
-  useEffect(() => {
-    return () => {
-      TranscribeService.stopTranscription();
-    };
-  }, []);
-
-
-
+    
   useEffect(() => {
     if (!conversationComplete) {
       const questionText = responses.length > 0 
@@ -92,6 +85,7 @@ export default function StoryScreen() {
       setQuestion(questionText);
     }
   }, [responses, conversationComplete]);
+
 
   const generateStory = async () => {
     try {
@@ -302,4 +296,10 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     color: '#2c3e50',
   },
+  sectionContainer: {
+    marginBottom: 20,
+  },
+  storyImage: {
+    width: 100, 
+  }, 
 });
