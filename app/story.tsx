@@ -105,6 +105,7 @@ export default function StoryScreen() {
       const imageUrl = await HuggingFaceService.generateImage(
         `child-friendly, safe, cartoon style illustration of ${prompt}`
       );
+      console.log(imageUrl);
       return imageUrl;
     } catch (error) {
       console.error('Image generation error:', error);
@@ -140,6 +141,7 @@ export default function StoryScreen() {
       const storyWithImages = await Promise.all(
         sections.map(async (text): Promise<StorySection> => {
           const imageUrl = await generateImage(text);
+          console.log('imageUrl. story.tsx:Line 144', imageUrl);
           return { text, imageUrl };
         })
       );
@@ -152,8 +154,6 @@ export default function StoryScreen() {
       setIsGenerating(false);
     }
   };
-
-
 
   const stopListening = async () => {
     await TranscribeService.stopTranscription();
@@ -205,9 +205,12 @@ export default function StoryScreen() {
           {(conversationComplete || responses.length > 0) && (
             <TouchableOpacity 
               style={styles.finishButton} 
-              onPress={generateStory}
+              onPress={generateStoryWithImages}
+              disabled={isGenerating}
             >
-              <Text style={styles.buttonText}>Generate Story</Text>
+                 <Text style={styles.buttonText}>
+                  {isGenerating ? 'Generating...' : 'Generate Story with Images'}
+                </Text>
             </TouchableOpacity>
           )}
         </>
@@ -296,10 +299,21 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     color: '#2c3e50',
   },
+  storyImage: {
+    width: '100%', // Set this to full width
+    height: 200,   // Add a fixed height
+    marginVertical: 10,
+  },
   sectionContainer: {
     marginBottom: 20,
   },
   storyImage: {
     width: 100, 
   }, 
+  buttonContainer: {
+    marginBottom: 20,
+  },
+  stopButton: {
+    marginTop: 20,
+  },
 });
