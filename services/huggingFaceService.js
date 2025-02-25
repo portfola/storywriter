@@ -8,6 +8,7 @@ const INITIAL_RETRY_DELAY = 1000;
 
 class HuggingFaceService {
   constructor() {
+    
     this.apiKey = Constants.expoConfig.extra.HUGGING_FACE_API_KEY;
     this.client = axios.create({
       baseURL: HUGGING_FACE_API_URL,

@@ -9,9 +9,11 @@ module.exports = function(api) {
           root: ['.'],
           alias: {
             '@': '.',
+            "@env": "./.env", // ✅ Explicitly add @env alias
           },
         },
       ],
+      "module:react-native-dotenv",
     ],
   };
 }
