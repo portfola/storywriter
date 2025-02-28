@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIn
 import * as Speech from 'expo-speech';
 import TranscribeService from '@/services/transcribe';
 import HuggingFaceService from '@/services/huggingFaceService';
+import { usePolly } from '@/hooks/usePolly';
 
 declare global {
   interface Window {
@@ -45,12 +46,15 @@ export default function StoryScreen() {
   const [storyContent, setStoryContent] = useState<StorySection[]>([]);
   const [generatedStory, setGeneratedStory] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-
+  const { speak, stop } = usePolly();
   
 
   const startListening = async () => {
     try {
       setIsListening(true);
+
+      // Stop any ongoing speech before starting to listen
+      stop();
       
       await TranscribeService.startTranscription((transcript) => {
         // Check if they want to finish
@@ -61,7 +65,7 @@ export default function StoryScreen() {
         if (isDone) {
           TranscribeService.stopTranscription();
           setConversationComplete(true);
-          Speech.speak("Okay! I will now create your story.");
+          speak("Okay! I will now create your story.");
         } else {
           setResponses(prev => [...prev, transcript]);
         }
@@ -79,12 +83,19 @@ export default function StoryScreen() {
   useEffect(() => {
     if (!conversationComplete) {
       const questionText = responses.length > 0 
-        ? "Do you have anything to add to your story?" 
-        : "What kind of story would you like?";
-      setTimeout(() => Speech.speak(questionText), 2000);
+        ? "OK, and what else?" 
+        : "What kind of story shall we create together?";
+      stop();
+      setTimeout(() => speak(questionText), 3000);
       setQuestion(questionText);
     }
   }, [responses, conversationComplete]);
+
+  useEffect(() => {
+    return () => {
+      stop(); // Cleanup when component unmounts
+    };
+  }, [stop]);
 
 
   const generateStory = async () => {
@@ -128,6 +139,7 @@ export default function StoryScreen() {
   };
 
   const generateStoryWithImages = async () => {
+    stop();
     setIsGenerating(true);
     try {
       // Generate the story text
@@ -159,7 +171,8 @@ export default function StoryScreen() {
     await TranscribeService.stopTranscription();
     setIsListening(false);
     setConversationComplete(true);
-    Speech.speak("Okay! I will now create your story.");
+    stop();
+    speak("Okay! I will now create your story.");
   };
 
   return (
@@ -307,9 +320,6 @@ const styles = StyleSheet.create({
   sectionContainer: {
     marginBottom: 20,
   },
-  storyImage: {
-    width: 100, 
-  }, 
   buttonContainer: {
     marginBottom: 20,
   },

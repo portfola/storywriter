@@ -263,4 +263,4 @@ const useConversationStore = create<ConversationState>()(
   )
 );
 
-export default useConversationStore;
+export { useConversationStore };
