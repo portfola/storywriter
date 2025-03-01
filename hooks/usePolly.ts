@@ -1,19 +1,13 @@
 import { useCallback } from 'react';
+import { shallow } from 'zustand/shallow';
 import Polly from '@/services/polly/polly-wrapper';
 import { useConversationStore } from '@/src/stores/conversationStore';
 
 export function usePolly() {
-  const { 
-    setSpeechState, 
-    setError,
-    speechRate,
-    speechVolume
-  } = useConversationStore(state => ({
-    setSpeechState: state.setSpeechState,
-    setError: state.setError,
-    speechRate: state.speechRate,
-    speechVolume: state.speechVolume
-  }));
+  const setSpeechState = useConversationStore(state => state.setSpeechState);
+  const setError = useConversationStore(state => state.setError);
+  const speechRate = useConversationStore(state => state.speechRate);
+  const speechVolume = useConversationStore(state => state.speechVolume);
 
   const speak = useCallback((text: string, customOptions = {}) => {
     return Polly.speak(text, {

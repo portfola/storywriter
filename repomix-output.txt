@@ -100,6 +100,7 @@ README.md
 scripts/reset-project.js
 services/huggingFaceService.js
 services/polly/index.ts
+services/polly/native.ts
 services/polly/polly-wrapper.ts
 services/polly/types.ts
 services/polly/web.ts
@@ -3299,9 +3300,32 @@ const PollyService: PollyServiceInterface =
 export default PollyService;
 
 ================
+File: services/polly/native.ts
+================
+import { PollyServiceInterface, PollyOptions } from './types';
+
+class NativePollyService implements PollyServiceInterface {
+  async synthesizeSpeech(text: string, options?: PollyOptions): Promise<string> {
+    console.warn('Native Polly implementation not yet available');
+    throw new Error('Native Polly implementation not yet available');
+  }
+
+  async speak(text: string, options?: PollyOptions): Promise<void> {
+    console.warn('Native Polly implementation not yet available');
+    throw new Error('Native Polly implementation not yet available');
+  }
+
+  async stop(): Promise<void> {
+    console.warn('Native Polly implementation not yet available');
+  }
+}
+
+export default new NativePollyService();
+
+================
 File: services/polly/polly-wrapper.ts
 ================
-import PollyService from './web';
+import PollyService from './index';
 
 // Define types for the options
 type SpeakOptions = {
