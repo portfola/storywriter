@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIn
 import * as Speech from 'expo-speech';
 import TranscribeService from '@/services/transcribe';
 import HuggingFaceService from '@/services/huggingFaceService';
+import { usePolly } from '@/hooks/usePolly';
 
 declare global {
   interface Window {
@@ -45,6 +46,7 @@ export default function StoryScreen() {
   const [storyContent, setStoryContent] = useState<StorySection[]>([]);
   const [generatedStory, setGeneratedStory] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const { speak, stop } = usePolly();
 
   
 
@@ -85,6 +87,12 @@ export default function StoryScreen() {
       setQuestion(questionText);
     }
   }, [responses, conversationComplete]);
+
+  useEffect(() => {
+    return () => {
+      stop(); // Cleanup when component unmounts
+    };
+  }, [stop]);
 
 
   const generateStory = async () => {
