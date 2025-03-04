@@ -180,6 +180,7 @@ class HuggingFaceService {
       console.log('Image generated with URI length:', imageUri.length);
       
       return imageUri;
+      
     } catch (error) {
       console.error('\n=== Image API Error ===');
       console.error('Error:', error.message);

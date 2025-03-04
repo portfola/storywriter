@@ -105,7 +105,6 @@ export default function StoryScreen() {
       const imageUrl = await HuggingFaceService.generateImage(
         `child-friendly, safe, cartoon style illustration of ${prompt}`
       );
-      console.log(imageUrl);
       return imageUrl;
     } catch (error) {
       console.error('Image generation error:', error);
@@ -139,9 +138,13 @@ export default function StoryScreen() {
       
       // Generate images for each section
       const storyWithImages = await Promise.all(
-        sections.map(async (text): Promise<StorySection> => {
-          const imageUrl = await generateImage(text);
-          console.log('imageUrl. story.tsx:Line 144', imageUrl);
+        sections.map(async (text, index): Promise<StorySection> => {
+          let imageUrl = null;
+          if (index < 2) { // Only generate images for the first two sections
+            imageUrl = await generateImage(text);
+          }
+          
+          console.log(`Image ${index}: ${imageUrl}`);
           return { text, imageUrl };
         })
       );
@@ -222,13 +225,13 @@ export default function StoryScreen() {
         {storyContent.map((section, index) => (
           <View key={index} style={styles.sectionContainer}>
             <Text style={styles.storyText}>{section.text}</Text>
-            {section.imageUrl && (
-              <Image
-                source={{ uri: section.imageUrl }}
-                style={styles.storyImage}
-                resizeMode="contain"
-              />
-            )}
+            {section.imageUrl && section.imageUrl.startsWith("data:image/") && (
+            <Image
+              source={{ uri: section.imageUrl }}
+              style={styles.storyImage}
+              resizeMode="contain"
+            />
+          )}
           </View>
         ))}
       </ScrollView>
@@ -307,9 +310,6 @@ const styles = StyleSheet.create({
   sectionContainer: {
     marginBottom: 20,
   },
-  storyImage: {
-    width: 100, 
-  }, 
   buttonContainer: {
     marginBottom: 20,
   },
