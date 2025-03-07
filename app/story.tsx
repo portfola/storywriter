@@ -61,7 +61,8 @@ export default function StoryScreen() {
         if (isDone) {
           TranscribeService.stopTranscription();
           setConversationComplete(true);
-          Speech.speak("Okay! I will now create your story.");
+          // Speech.speak("Okay! I will now create your story.");
+          setTimeout(() => Speech.speak("Okay! I will now create your story."), 2000); // ✅ Delayed speech
         } else {
           setResponses(prev => [...prev, transcript]);
         }
@@ -77,14 +78,18 @@ export default function StoryScreen() {
 
     
   useEffect(() => {
-    if (!conversationComplete) {
+    if (!conversationComplete && !isListening) {
       const questionText = responses.length > 0 
         ? "Do you have anything to add to your story?" 
         : "What kind of story would you like?";
-      setTimeout(() => Speech.speak(questionText), 2000);
+        setTimeout(() => {
+          if (!isListening) { // ✅ Double check before speaking
+            Speech.speak(questionText);
+          }
+        }, 2000);
       setQuestion(questionText);
     }
-  }, [responses, conversationComplete]);
+  }, [responses, conversationComplete, isListening]);
 
 
   const generateStory = async () => {

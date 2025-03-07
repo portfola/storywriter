@@ -8,13 +8,6 @@ import {
 import Constants from 'expo-constants';
 import { TranscribeServiceInterface } from './types';
 
-// temporary
-// import Config from 'react-native-config';
-
-// console.log('Constants Imported from expo-constants: ', Constants);
-
-// console.log('Constants.expoConfig: ', Constants.expoConfig);
-
 
 class ChromeTestTranscribeService implements TranscribeServiceInterface {
   private client: TranscribeStreamingClient;
