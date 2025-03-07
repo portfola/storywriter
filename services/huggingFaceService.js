@@ -4,8 +4,6 @@ import axios from 'axios';
 
 const IMAGE_MODEL_URL = 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0';
 
-console.log('huggingFace Constants: ', Constants);
-
 const HUGGING_FACE_API_URL = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3';
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000;

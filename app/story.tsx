@@ -167,7 +167,10 @@ export default function StoryScreen() {
     await TranscribeService.stopTranscription();
     setIsListening(false);
     setConversationComplete(true);
-    Speech.speak("Okay! I will now create your story.");
+    // Speech.speak("Okay! I will now create your story.");
+    setTimeout(() => {
+      Speech.speak("Okay! I will now create your story.");
+    }, 2000); // ✅ Delayed to avoid overlap
   };
 
   return (
