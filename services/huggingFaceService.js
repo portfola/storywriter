@@ -174,7 +174,7 @@ class HuggingFaceService {
       
       // Create data URI
       const imageUri = `data:image/jpeg;base64,${base64}`;
-      
+      console.log('✅ Image successfully generated:', imageUri.substring(0, 50)); // Show first 50 chars for debugging
       console.log('Image generated with URI length:', imageUri.length);
       
       return imageUri;
