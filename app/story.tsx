@@ -134,29 +134,54 @@ export default function StoryScreen() {
   };
 
 
+  // 
+  
+
   const generateStoryWithImages = async () => {
     setIsGenerating(true);
     try {
       console.log('🔄 Generating story with images...');
-  
-      // Generate the story text
-      const storyText = await HuggingFaceService.generateResponse(
-        `Create a children's story based on: ${responses.join(' ')}`
-      );
+    
+      // ✅ First, generate the story text
+      // const storyText = await HuggingFaceService.generateResponse(
+      //   `Create a children's story based on: ${responses.join(' ')}`
+      // );
+      
+      const storyText = await HuggingFaceService.generateResponse(responses.join(' '));
+      
       console.log('📝 Story text received:', storyText);
-  
-      // Split the story into sections
-      const sections = storyText.split('. ').map((text, index) => ({
+      setGeneratedStory(storyText); // ✅ Set the text immediately
+
+      // ✅ Now, process the story into sections
+      const sections = storyText.split('. ').slice(0, 2).map((text, index) => ({
         text,
-        imageUrl: index < 2 ? HuggingFaceService.generateImage(text) : null, // Limit to 2 images
+        imageUrl: index === 0 ? HuggingFaceService.generateImage(text) : null, // ✅ Only first section gets an image
       }));
-  
-      // Resolve image generation promises
-      const storyWithImages = await Promise.all(sections.map(async (section) => ({
-        text: section.text,
-        imageUrl: await section.imageUrl, // Resolve the promise
-      })));
-  
+
+      // ✅ Step 2: Generate the image (based on full story)
+    const imageUrl = await HuggingFaceService.generateImage(storyText);
+    console.log('🖼️ Image generated:', imageUrl);
+      
+
+    
+      // ✅ Resolve image promise only for one section
+      const storyWithImages = await Promise.all(
+        sections.map(async (section, index) => ({
+          imageUrl: index === 0 ? await section.imageUrl : null, // ✅ Ensure only first section gets an image
+          text: section.text,
+        }))
+      );
+
+      // const storyWithImages = [{
+      //   text: storyText, // ✅ Full story in one block
+      //   imageUrl: await HuggingFaceService.generateImage(storyText), // ✅ One image for the entire story
+      // }];
+      
+      // setStoryContent(storyWithImages); // ✅ Save to state
+      // ✅ Step 3: Update state together (ensures simultaneous rendering)
+      // setStoryContent([{ text: storyText, imageUrl }]);
+      
+    
       console.log('🖼️ Story sections with images:', storyWithImages);
       
       setStoryContent(storyWithImages); // ✅ Update state
@@ -167,38 +192,6 @@ export default function StoryScreen() {
     }
   };
   
-
-  // const generateStoryWithImages = async () => {
-  //   setIsGenerating(true);
-  //   try {
-  //     // Generate the story text
-  //     const fullPrompt = `Create a children's story based on the following details:\n\n${responses.join(' ')}\n\nMake it engaging and appropriate for a 5-year-old. Keep paragraphs short.`;
-  //     const storyText = await HuggingFaceService.generateResponse(fullPrompt);
-      
-  //     // Split the story into sections
-  //     const sections = splitStoryIntoSections(storyText);
-      
-  //     // Generate images for each section
-  //     const storyWithImages = await Promise.all(
-  //       sections.map(async (text, index): Promise<StorySection> => {
-  //         let imageUrl = null;
-  //         if (index < 2) { // Only generate images for the first two sections
-  //           imageUrl = await generateImage(text);
-  //         }
-          
-  //         console.log(`Image ${index}: ${imageUrl}`);
-  //         return { text, imageUrl };
-  //       })
-  //     );
-      
-  //     setStoryContent(storyWithImages);
-  //   } catch (error) {
-  //     console.error("Error:", error);
-  //     alert('Failed to generate story. Please try again.');
-  //   } finally {
-  //     setIsGenerating(false);
-  //   }
-  // };
 
   const stopListening = async () => {
     await TranscribeService.stopTranscription();
@@ -270,17 +263,16 @@ export default function StoryScreen() {
         {/* Debugging: Show JSON of storyContent */}
         <Text style={{ fontSize: 10, color: 'red' }}>DEBUG: {JSON.stringify(storyContent, null, 2)}</Text>
 
-  
         {storyContent.map((section, index) => (
           <View key={index} style={styles.sectionContainer}>
+            {section.imageUrl && section.imageUrl.startsWith("data:image/jpeg;base64,") && (
+              <Image
+                source={{ uri: section.imageUrl }}
+                style={styles.storyImage}
+                resizeMode="contain"
+              />
+            )}
             <Text style={styles.storyText}>{section.text}</Text>
-            {section.imageUrl && section.imageUrl.startsWith("data:image/") && (
-            <Image
-              source={{ uri: section.imageUrl }}
-              style={styles.storyImage}
-              resizeMode="contain"
-            />
-          )}
           </View>
         ))}
       </ScrollView>
