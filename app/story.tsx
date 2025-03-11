@@ -15,273 +15,213 @@ interface StorySection {
   imageUrl: string | null;
 }
 
+interface StoryState {
+  question: string;
+  responses: string[];
+  isListening: boolean;
+  conversationComplete: boolean;
+  isGenerating: boolean;
+}
+
+interface StoryContent {
+  content: string | null;
+  sections: StorySection[];
+}
+
 /**
- * StoryScreen: The main component responsible for the story creation process.
- * It interacts with the user via voice commands to gather input for story generation.
- * 
- * Features:
- * - Prompts the user with questions using text-to-speech.
- * - Records user's voice responses using s peech recognition.
- * - Manages conversation state and user responses.
- * - Generates a story based on collected responses using an AI service.
- * 
- * State:
- * - question: The current question being asked to the user.
- * - responses: List of user responses gathered during the session.
- * - isListening: Boolean indicating if the app is actively listening for voice input.
- * - conversationComplete: Boolean indicating if the user has finished providing input.
- * - generatedStory: The final story generated from the user's responses.
- * 
- * Usage:
- * - Tap the button to start speaking and provide input.
- * - The app will guide the user with questions and generate a story from the responses.
+ * StoryScreen: Interactive story creation using voice input and AI generation
  */
-
 export default function StoryScreen() {
-  const [question, setQuestion] = useState('What kind of story would you like?');
-  const [responses, setResponses] = useState<string[]>([]);
-  const [isListening, setIsListening] = useState(false);
-  const [conversationComplete, setConversationComplete] = useState(false);
-  const [storyContent, setStoryContent] = useState<StorySection[]>([]);
-  const [generatedStory, setGeneratedStory] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-
+  // Combined state management
+  const [storyState, setStoryState] = useState<StoryState>({
+    question: 'What kind of story would you like?',
+    responses: [],
+    isListening: false,
+    conversationComplete: false,
+    isGenerating: false
+  });
   
+  const [story, setStory] = useState<StoryContent>({
+    content: null,
+    sections: []
+  });
 
+  // Handle speech prompts
+  useEffect(() => {
+    if (!storyState.isListening && !storyState.conversationComplete) {
+      const questionText = storyState.responses.length > 0 
+        ? "Do you have anything to add to your story?" 
+        : "What kind of story would you like?";
+      
+      setTimeout(() => {
+        Speech.speak(questionText);
+      }, 2000);
+      
+      setStoryState(prev => ({...prev, question: questionText}));
+    }
+  }, [storyState.responses, storyState.conversationComplete, storyState.isListening]);
+
+  // Start voice transcription
   const startListening = async () => {
     try {
-      setIsListening(true);
+      setStoryState(prev => ({...prev, isListening: true}));
       
       await TranscribeService.startTranscription((transcript) => {
-        // Check if they want to finish
         const isDone = ['i\'m done', 'that\'s all', 'finish'].some(
           phrase => transcript.toLowerCase().includes(phrase)
         );
 
         if (isDone) {
-          TranscribeService.stopTranscription();
-          setConversationComplete(true);
-          // Speech.speak("Okay! I will now create your story.");
-          setTimeout(() => Speech.speak("Okay! I will now create your story."), 2000); // ✅ Delayed speech
+          handleConversationComplete();
         } else {
-          setResponses(prev => [...prev, transcript]);
+          setStoryState(prev => ({
+            ...prev, 
+            responses: [...prev.responses, transcript]
+          }));
         }
       });
     } catch (error) {
       console.error('Transcription error:', error);
       alert('Failed to start listening. Please try again.');
-    } finally {
-      setIsListening(false);
-    };
-
+    }
   };
 
+  // Handle conversation completion
+  const handleConversationComplete = () => {
+    TranscribeService.stopTranscription();
+    setStoryState(prev => ({
+      ...prev, 
+      isListening: false, 
+      conversationComplete: true
+    }));
     
-  useEffect(() => {
-    if (!conversationComplete) {
-      const questionText = responses.length > 0 
-        ? "Do you have anything to add to your story?" 
-        : "What kind of story would you like?";
-        setTimeout(() => {
-          if (!isListening) { // ✅ Double check before speaking
-            Speech.speak(questionText);
-          }
-        }, 2000);
-      setQuestion(questionText);
-    }
-  }, [responses, conversationComplete, isListening]);
-
-
-  const generateStory = async () => {
-    try {
-      const fullPrompt = `Create a children's story based on the following details:\n\n${responses.join(' ')}\n\nMake it engaging and appropriate for a 5-year-old.`;
-      const response = await HuggingFaceService.generateResponse(fullPrompt);
-      console.log('response: '  + response);
-      setGeneratedStory(response);
-    } catch (error) {
-      console.error("Error:", error);
-      alert('Failed to generate story. Please try again.');
-    }
+    setTimeout(() => {
+      Speech.speak("Okay! I will now create your story.");
+    }, 1000);
   };
 
-
-  const generateImage = async (prompt: string): Promise<string | null> => {
-    try {
-      // Assuming HuggingFaceService has an imageGeneration method
-      const imageUrl = await HuggingFaceService.generateImage(
-        `child-friendly, safe, cartoon style illustration of ${prompt}`
-      );
-      console.log('imageUrl: ' + imageUrl);
-      return imageUrl;
-    } catch (error) {
-      console.error('Image generation error:', error);
-      return null;
-    }
-  };
-
-  const splitStoryIntoSections = (story: string): string[] => {
-    // Split story into sections based on paragraphs or sentences
-    return story
-      .split(/(?<=[.!?])\s+/)
-      .reduce((acc: string[], sentence: string, i: number) => {
-        if (i % 2 === 0) {
-          acc.push(sentence);
-        } else {
-          acc[acc.length - 1] += ' ' + sentence;
-        }
-        return acc;
-      }, []);
-  };
-
-
-  // 
-  
-
+  // Generate story with image
   const generateStoryWithImages = async () => {
-    setIsGenerating(true);
-    setStoryContent([]); // Clear previous content
+    setStoryState(prev => ({...prev, isGenerating: true}));
+    
     try {
       console.log('🔄 Generating story with images...');
     
-      // ✅ First, generate the story text
+      // Generate story text
       const storyText = await HuggingFaceService.generateResponse(
-        `Create a children's story based on: ${responses.join(' ')}`
+        `Create a children's story based on: ${storyState.responses.join(' ')}`
       );
+      console.log('📝 Story text received');
       
-      //const storyText = await HuggingFaceService.generateResponse(responses.join(' '));
+      // Set initial story content
+      setStory(prev => ({...prev, content: storyText}));
       
-      console.log('📝 Story text received:', storyText);
-      setGeneratedStory(storyText); // ✅ Set the text immediately
-
-      // ✅ Now, process the story into sections
-      const sections = storyText.split('. ').slice(0, 2).map((text, index) => ({
-        text,
-        imageUrl: index === 0 ? HuggingFaceService.generateImage(text) : null, // ✅ Only first section gets an image
-      }));
-
-      // ✅ Step 2: Generate the image (based on full story)
-    const imageUrl = await HuggingFaceService.generateImage(storyText);
-    console.log('🖼️ Image generated:', imageUrl);
+      // Generate one image for the story
+      const imageUrl = await HuggingFaceService.generateImage(storyText);
+      console.log('🖼️ Image generated');
       
-
-    
-
-    
-      // ✅ Resolve image promise only for one section
-      const storyWithImages = await Promise.all(
-        sections.map(async (section, index) => ({
-          imageUrl: index === 0 ? await section.imageUrl : null, // ✅ Ensure only first section gets an image
-          text: section.text,
-        }))
-      );
-
-      
-    
-      console.log('🖼️ Story sections with images:', storyWithImages);
-      
-      // setStoryContent(storyWithImages); // ✅ Update state
-      // ✅ Step 3: Delay text rendering for synchronization
-    setTimeout(() => {
-      setStoryContent([{ text: storyText, imageUrl }]); // ✅ Updates both at the same time
-    }, 2000); // Delay text update to match image processing
+      // Update with completed story and image
+      setStory({
+        content: storyText,
+        sections: [{ text: storyText, imageUrl }]
+      });
     } catch (error) {
       console.error("❌ Error generating story:", error);
+      alert('Failed to generate story. Please try again.');
     } finally {
-      setIsGenerating(false);
+      setStoryState(prev => ({...prev, isGenerating: false}));
     }
   };
-  
 
-  const stopListening = async () => {
-    await TranscribeService.stopTranscription();
-    setIsListening(false);
-    setConversationComplete(true);
-    // Speech.speak("Okay! I will now create your story.");
-    setTimeout(() => {
-      Speech.speak("Okay! I will now create your story.");
-    }, 1000); // ✅ Delayed to avoid overlap
-  };
-  return (
-    <View style={styles.container}>
-      {!generatedStory ? (
-        <>
-          <Text style={styles.questionText}>{question}</Text>
-  
-          {!conversationComplete && (
-            <View style={styles.buttonContainer}>
-              <TouchableOpacity 
-                style={styles.button} 
-                onPress={startListening} 
-                disabled={isListening}
-              >
-                <Text style={styles.buttonText}>
-                  {isListening ? 'Listening...' : 'Tap to Speak'}
-                </Text>
-              </TouchableOpacity>
-  
-              {isListening && (
-                <TouchableOpacity 
-                  style={[styles.button, styles.stopButton]} 
-                  onPress={stopListening}
-                >
-                  <Text style={styles.buttonText}>Stop Listening</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-  
-          {responses.length > 0 && (
-            <View style={styles.responseContainer}>
-              <Text style={styles.responseLabel}>Your story so far:</Text>
-              {responses.map((res, index) => (
-                <Text key={index} style={styles.responseText}>
-                  {index + 1}. {res}
-                </Text>
-              ))}
-            </View>
-          )}
-  
-          {(conversationComplete || responses.length > 0) && (
-            <TouchableOpacity 
-              style={styles.finishButton} 
-              onPress={generateStoryWithImages}
-              disabled={isGenerating}
-            >
-              <Text style={styles.buttonText}>
-                {isGenerating ? 'Generating...' : 'Generate Story with Images'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </>
-      ) : (
-        <ScrollView style={styles.storyContainer}>
-          {/* ✅ Show loading indicator while story & image are generating */}
-          {isGenerating ? (
-            <ActivityIndicator size="large" color="#3498db" />
-          ) : (
-            <>
-              {/* ✅ Ensure storyContent has valid data */}
-              {storyContent.length > 0 && storyContent[0].imageUrl ? (
-                <>
-                  {/* ✅ Show image first */}
-                  <Image 
-                    source={{ uri: storyContent[0].imageUrl }} 
-                    style={styles.storyImage} 
-                    resizeMode="contain" 
-                  />
-                  {/* ✅ Show text below image */}
-                  <Text style={styles.storyText}>{storyContent[0].text}</Text>
-                </>
-              ) : (
-                <Text style={styles.storyText}>Loading story...</Text>
-              )}
-            </>
-          )}
-        </ScrollView>
+  // Render response list
+  const renderResponses = () => (
+    <View style={styles.responseContainer}>
+      <Text style={styles.responseLabel}>Your story so far:</Text>
+      {storyState.responses.map((res, index) => (
+        <Text key={index} style={styles.responseText}>
+          {index + 1}. {res}
+        </Text>
+      ))}
+    </View>
+  );
+
+  // Render speech input buttons
+  const renderSpeechButtons = () => (
+    <View style={styles.buttonContainer}>
+      <TouchableOpacity 
+        style={styles.button} 
+        onPress={startListening} 
+        disabled={storyState.isListening}
+      >
+        <Text style={styles.buttonText}>
+          {storyState.isListening ? 'Listening...' : 'Tap to Speak'}
+        </Text>
+      </TouchableOpacity>
+      
+      {storyState.isListening && (
+        <TouchableOpacity 
+          style={[styles.button, styles.stopButton]} 
+          onPress={handleConversationComplete}
+        >
+          <Text style={styles.buttonText}>Stop Listening</Text>
+        </TouchableOpacity>
       )}
     </View>
   );
-};  
+
+  // Render generate button
+  const renderGenerateButton = () => (
+    <TouchableOpacity 
+      style={styles.finishButton} 
+      onPress={generateStoryWithImages}
+      disabled={storyState.isGenerating}
+    >
+      <Text style={styles.buttonText}>
+        {storyState.isGenerating ? 'Generating...' : 'Generate Story with Images'}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  // Render story content
+  const renderStoryContent = () => (
+    <ScrollView style={styles.storyContainer}>
+      {storyState.isGenerating ? (
+        <ActivityIndicator size="large" color="#3498db" />
+      ) : (
+        <>
+          {story.sections.length > 0 && story.sections[0].imageUrl ? (
+            <>
+              <Image 
+                source={{ uri: story.sections[0].imageUrl }} 
+                style={styles.storyImage} 
+                resizeMode="contain" 
+              />
+              <Text style={styles.storyText}>{story.sections[0].text}</Text>
+            </>
+          ) : (
+            <Text style={styles.storyText}>Loading story...</Text>
+          )}
+        </>
+      )}
+    </ScrollView>
+  );
+
+  return (
+    <View style={styles.container}>
+      {!story.content ? (
+        <>
+          <Text style={styles.questionText}>{storyState.question}</Text>
+          {!storyState.conversationComplete && renderSpeechButtons()}
+          {storyState.responses.length > 0 && renderResponses()}
+          {(storyState.conversationComplete || storyState.responses.length > 0) && 
+            renderGenerateButton()}
+        </>
+      ) : (
+        renderStoryContent()
+      )}
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -334,24 +274,15 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: '#fff',
   },
-  storyTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 15,
-  },
   storyText: {
     fontSize: 18,
     lineHeight: 26,
     color: '#2c3e50',
   },
   storyImage: {
-    width: '100%', // Set this to full width
-    height: 200,   // Add a fixed height
+    width: '100%',
+    height: 200,
     marginVertical: 10,
-  },
-  sectionContainer: {
-    marginBottom: 20,
   },
   buttonContainer: {
     marginBottom: 20,
