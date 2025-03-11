@@ -139,15 +139,16 @@ export default function StoryScreen() {
 
   const generateStoryWithImages = async () => {
     setIsGenerating(true);
+    setStoryContent([]); // Clear previous content
     try {
       console.log('🔄 Generating story with images...');
     
       // ✅ First, generate the story text
-      // const storyText = await HuggingFaceService.generateResponse(
-      //   `Create a children's story based on: ${responses.join(' ')}`
-      // );
+      const storyText = await HuggingFaceService.generateResponse(
+        `Create a children's story based on: ${responses.join(' ')}`
+      );
       
-      const storyText = await HuggingFaceService.generateResponse(responses.join(' '));
+      //const storyText = await HuggingFaceService.generateResponse(responses.join(' '));
       
       console.log('📝 Story text received:', storyText);
       setGeneratedStory(storyText); // ✅ Set the text immediately
@@ -164,6 +165,8 @@ export default function StoryScreen() {
       
 
     
+
+    
       // ✅ Resolve image promise only for one section
       const storyWithImages = await Promise.all(
         sections.map(async (section, index) => ({
@@ -172,19 +175,15 @@ export default function StoryScreen() {
         }))
       );
 
-      // const storyWithImages = [{
-      //   text: storyText, // ✅ Full story in one block
-      //   imageUrl: await HuggingFaceService.generateImage(storyText), // ✅ One image for the entire story
-      // }];
-      
-      // setStoryContent(storyWithImages); // ✅ Save to state
-      // ✅ Step 3: Update state together (ensures simultaneous rendering)
-      // setStoryContent([{ text: storyText, imageUrl }]);
       
     
       console.log('🖼️ Story sections with images:', storyWithImages);
       
-      setStoryContent(storyWithImages); // ✅ Update state
+      // setStoryContent(storyWithImages); // ✅ Update state
+      // ✅ Step 3: Delay text rendering for synchronization
+    setTimeout(() => {
+      setStoryContent([{ text: storyText, imageUrl }]); // ✅ Updates both at the same time
+    }, 2000); // Delay text update to match image processing
     } catch (error) {
       console.error("❌ Error generating story:", error);
     } finally {
@@ -200,38 +199,37 @@ export default function StoryScreen() {
     // Speech.speak("Okay! I will now create your story.");
     setTimeout(() => {
       Speech.speak("Okay! I will now create your story.");
-    }, 2000); // ✅ Delayed to avoid overlap
+    }, 1000); // ✅ Delayed to avoid overlap
   };
-
   return (
     <View style={styles.container}>
       {!generatedStory ? (
         <>
           <Text style={styles.questionText}>{question}</Text>
-
+  
           {!conversationComplete && (
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity 
-              style={styles.button} 
-              onPress={startListening} 
-              disabled={isListening}
-            >
-              <Text style={styles.buttonText}>
-                {isListening ? 'Listening...' : 'Tap to Speak'}
-              </Text>
-            </TouchableOpacity>
-
-            {isListening && (
+            <View style={styles.buttonContainer}>
               <TouchableOpacity 
-                style={[styles.button, styles.stopButton]} 
-                onPress={stopListening}
+                style={styles.button} 
+                onPress={startListening} 
+                disabled={isListening}
               >
-                <Text style={styles.buttonText}>Stop Listening</Text>
+                <Text style={styles.buttonText}>
+                  {isListening ? 'Listening...' : 'Tap to Speak'}
+                </Text>
               </TouchableOpacity>
-            )}
-          </View>
-        )}
-
+  
+              {isListening && (
+                <TouchableOpacity 
+                  style={[styles.button, styles.stopButton]} 
+                  onPress={stopListening}
+                >
+                  <Text style={styles.buttonText}>Stop Listening</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+  
           {responses.length > 0 && (
             <View style={styles.responseContainer}>
               <Text style={styles.responseLabel}>Your story so far:</Text>
@@ -242,44 +240,48 @@ export default function StoryScreen() {
               ))}
             </View>
           )}
-
+  
           {(conversationComplete || responses.length > 0) && (
             <TouchableOpacity 
               style={styles.finishButton} 
               onPress={generateStoryWithImages}
               disabled={isGenerating}
             >
-                 <Text style={styles.buttonText}>
-                  {isGenerating ? 'Generating...' : 'Generate Story with Images'}
-                </Text>
+              <Text style={styles.buttonText}>
+                {isGenerating ? 'Generating...' : 'Generate Story with Images'}
+              </Text>
             </TouchableOpacity>
           )}
         </>
       ) : (
         <ScrollView style={styles.storyContainer}>
-          <Text style={styles.storyTitle}>Your Story:</Text>
-          <Text style={styles.storyText}>{generatedStory}</Text>
-
-        {/* Debugging: Show JSON of storyContent */}
-        <Text style={{ fontSize: 10, color: 'red' }}>DEBUG: {JSON.stringify(storyContent, null, 2)}</Text>
-
-        {storyContent.map((section, index) => (
-          <View key={index} style={styles.sectionContainer}>
-            {section.imageUrl && section.imageUrl.startsWith("data:image/jpeg;base64,") && (
-              <Image
-                source={{ uri: section.imageUrl }}
-                style={styles.storyImage}
-                resizeMode="contain"
-              />
-            )}
-            <Text style={styles.storyText}>{section.text}</Text>
-          </View>
-        ))}
-      </ScrollView>
+          {/* ✅ Show loading indicator while story & image are generating */}
+          {isGenerating ? (
+            <ActivityIndicator size="large" color="#3498db" />
+          ) : (
+            <>
+              {/* ✅ Ensure storyContent has valid data */}
+              {storyContent.length > 0 && storyContent[0].imageUrl ? (
+                <>
+                  {/* ✅ Show image first */}
+                  <Image 
+                    source={{ uri: storyContent[0].imageUrl }} 
+                    style={styles.storyImage} 
+                    resizeMode="contain" 
+                  />
+                  {/* ✅ Show text below image */}
+                  <Text style={styles.storyText}>{storyContent[0].text}</Text>
+                </>
+              ) : (
+                <Text style={styles.storyText}>Loading story...</Text>
+              )}
+            </>
+          )}
+        </ScrollView>
       )}
     </View>
   );
-}
+};  
 
 const styles = StyleSheet.create({
   container: {
