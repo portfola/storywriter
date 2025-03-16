@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator } from 'react-native';
-import * as Speech from 'expo-speech';
 import HuggingFaceService from '@/services/huggingFaceService';
+import { usePolly } from '@/hooks/usePolly';
 
 declare global {
   interface Window {
@@ -45,7 +45,8 @@ export default function StoryScreen() {
   const [generatedStory, setGeneratedStory] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  
+  const { speak, stop } = usePolly();
+
 
   /**
    * Start listening for voice input using the Web Speech Recognition API.
@@ -75,7 +76,7 @@ export default function StoryScreen() {
       if (isDone) {
         setConversationComplete(true);
         // This is not being spoken at the moment
-        Speech.speak("Okay! I will now create your story.");
+        speak("Okay! I will now create your story.");
       } else {
         setResponses(prev => [...prev, transcript]);
       }
@@ -100,7 +101,7 @@ export default function StoryScreen() {
       const questionText = responses.length > 0 
         ? "Do you have anything to add to your story?" 
         : "What kind of story would you like?";
-      setTimeout(() => Speech.speak(questionText), 2000);
+      setTimeout(() => speak(questionText), 2000);
       setQuestion(questionText);
     }
   }, [responses, conversationComplete]);

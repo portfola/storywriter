@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import * as Speech from 'expo-speech'; // For text-to-speech (TTS)
 import Voice, { SpeechResultsEvent } from '@react-native-voice/voice'; // For voice-to-text
 import { router } from 'expo-router'; // For navigation
 import HuggingFaceService from '@/services/huggingFaceService'; // Service for AI responses
