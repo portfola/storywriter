@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator } from 'react-native';
-import * as Speech from 'expo-speech';
 import TranscribeService from '@/services/transcribe';
 import HuggingFaceService from '@/services/huggingFaceService';
 import { usePolly } from '@/hooks/usePolly';
@@ -85,7 +84,7 @@ export default function StoryScreen() {
 
         if (isDone) {
           TranscribeService.stopTranscription();
-          setStoryState(prev => ({..prev, conversationComplete: true}));
+          setStoryState(prev => ({...prev, conversationComplete: true}));
           speak("Okay! Let's create our story.");
         } else {
           setStoryState(prev => ({
@@ -110,8 +109,8 @@ export default function StoryScreen() {
     }));
     
     setTimeout(() => {
-      Speech.speak("Okay! I will now create your story.");
-    }, 1000);
+      speak("Okay! I will now create your story.");
+    }, 2000);
   };
 
   // Generate story with image
