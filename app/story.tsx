@@ -3,6 +3,9 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIn
 import TranscribeService from '@/services/transcribe';
 import HuggingFaceService from '@/services/huggingFaceService';
 import { usePolly } from '@/hooks/usePolly';
+import VoiceWave from '@/components/VoiceWave';
+import { useConversationStore } from '@/src/stores/conversationStore';
+import { Ionicons } from '@expo/vector-icons';
 
 declare global {
   interface Window {
@@ -52,6 +55,9 @@ export default function StoryScreen() {
     sections: []
   });
 
+  const isSpeaking = useConversationStore(state => state.isSpeaking);
+  const setSpeechState = useConversationStore(state => state.setSpeechState);
+
   // Handle speech prompts
   useEffect(() => {
     if (!storyState.conversationComplete) {
@@ -70,6 +76,35 @@ export default function StoryScreen() {
       stop(); // Cleanup when component unmounts
     };
   }, [stop]);
+
+  // Auto-start reading when story is ready
+  useEffect(() => {
+    if (story.content && story.sections.length > 0 && !isSpeaking && !storyState.isGenerating) {
+      const timer = setTimeout(() => {
+        if (story.content) {
+          speak(story.content);
+        }
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [story.content, story.sections, storyState.isGenerating]);
+
+  // Cleanup when component unmounts
+  useEffect(() => {
+    return () => {
+      stop();
+    };
+  }, []);
+
+  // Toggle speech function
+  const toggleSpeech = () => {
+    if (isSpeaking) {
+      stop();
+    } else if (story.content) {
+      speak(story.content);
+    }
+  };
 
   // Start voice transcription
   const startListening = async () => {
@@ -205,6 +240,23 @@ export default function StoryScreen() {
         <>
           {story.sections.length > 0 && story.sections[0].imageUrl ? (
             <>
+              <View style={styles.headerControls}>
+                <TouchableOpacity 
+                  style={styles.speechButton} 
+                  onPress={toggleSpeech}
+                >
+                  <Ionicons 
+                    name={isSpeaking ? "pause-circle" : "play-circle"} 
+                    size={40} 
+                    color="#3498db" 
+                  />
+                </TouchableOpacity>
+                <VoiceWave 
+                  isListening={false}
+                  isSpeaking={isSpeaking} 
+                />
+              </View>
+
               <Image 
                 source={{ uri: story.sections[0].imageUrl }} 
                 style={styles.storyImage} 
@@ -303,5 +355,18 @@ const styles = StyleSheet.create({
   },
   stopButton: {
     marginTop: 20,
+  },
+  headerControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 5,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    marginBottom: 15,
+  },
+  speechButton: {
+    padding: 10,
   },
 });
