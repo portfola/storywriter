@@ -15,11 +15,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-polly": "^3.758.0",
-<<<<<<< HEAD
-    "@aws-sdk/client-transcribe-streaming": "^3.750.0",
-=======
     "@aws-sdk/client-transcribe-streaming": "^3.758.0",
->>>>>>> d0d38375c33ffc69da2aef7e4ea672c89c411b46
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/slider": "4.5.2",
     "axios": "^1.7.9",

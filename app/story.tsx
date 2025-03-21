@@ -34,17 +34,6 @@ interface StoryContent {
  * StoryScreen: Interactive story creation using voice input and AI generation
  */
 export default function StoryScreen() {
-<<<<<<< HEAD
-  const [question, setQuestion] = useState('What kind of story would you like?');
-  const [responses, setResponses] = useState<string[]>([]);
-  const [isListening, setIsListening] = useState(false);
-  const [conversationComplete, setConversationComplete] = useState(false);
-  const [storyContent, setStoryContent] = useState<StorySection[]>([]);
-  const [generatedStory, setGeneratedStory] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const { speak, stop } = usePolly();
-
-=======
   // Combined state management
   const [storyState, setStoryState] = useState<StoryState>({
     question: 'What kind of story shall we create together?',
@@ -55,7 +44,6 @@ export default function StoryScreen() {
     storyContent: [],
     generatedStory: null
   });
->>>>>>> d0d38375c33ffc69da2aef7e4ea672c89c411b46
   
   const { speak, stop } = usePolly();
 
@@ -120,67 +108,9 @@ export default function StoryScreen() {
       conversationComplete: true
     }));
     
-<<<<<<< HEAD
-  useEffect(() => {
-    if (!conversationComplete) {
-      const questionText = responses.length > 0 
-        ? "Do you have anything to add to your story?" 
-        : "What kind of story would you like?";
-      setTimeout(() => Speech.speak(questionText), 2000);
-      setQuestion(questionText);
-    }
-  }, [responses, conversationComplete]);
-
-  useEffect(() => {
-    return () => {
-      stop(); // Cleanup when component unmounts
-    };
-  }, [stop]);
-
-
-  const generateStory = async () => {
-    try {
-      const fullPrompt = `Create a children's story based on the following details:\n\n${responses.join(' ')}\n\nMake it engaging and appropriate for a 5-year-old.`;
-      const response = await HuggingFaceService.generateResponse(fullPrompt);
-      setGeneratedStory(response);
-    } catch (error) {
-      console.error("Error:", error);
-      alert('Failed to generate story. Please try again.');
-    }
-  };
-
-
-  const generateImage = async (prompt: string): Promise<string | null> => {
-    try {
-      // Assuming HuggingFaceService has an imageGeneration method
-      const imageUrl = await HuggingFaceService.generateImage(
-        `child-friendly, safe, cartoon style illustration of ${prompt}`
-      );
-      console.log(imageUrl);
-      return imageUrl;
-    } catch (error) {
-      console.error('Image generation error:', error);
-      return null;
-    }
-  };
-
-  const splitStoryIntoSections = (story: string): string[] => {
-    // Split story into sections based on paragraphs or sentences
-    return story
-      .split(/(?<=[.!?])\s+/)
-      .reduce((acc: string[], sentence: string, i: number) => {
-        if (i % 2 === 0) {
-          acc.push(sentence);
-        } else {
-          acc[acc.length - 1] += ' ' + sentence;
-        }
-        return acc;
-      }, []);
-=======
     setTimeout(() => {
       speak("Okay! I will now create your story.");
     }, 2000);
->>>>>>> d0d38375c33ffc69da2aef7e4ea672c89c411b46
   };
 
   // Generate story with image
