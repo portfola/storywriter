@@ -39,7 +39,6 @@ export default ({ config }) => ({
       orientation: "landscape"  // Changed from screenOrientation
     },
     plugins: [
-      "expo-router",
       "expo-dev-client"
     ],
     extra: {
