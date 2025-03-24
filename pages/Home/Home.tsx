@@ -7,10 +7,13 @@ import { RootStackParamList } from '../../src/navigation/types';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
+import Layout from '../../components/Layout/Layout';
+
 const HomeScreen = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
 
   return (
+    <Layout>
     <View style={s.container}>
       <Text style={s.title}>StoryWriter</Text>
       <Text style={s.subtitle}>Create amazing stories with your voice!</Text>
@@ -22,6 +25,7 @@ const HomeScreen = () => {
         <Text style={s.buttonText}>Start Writing</Text>
       </TouchableOpacity>
         </View>
+        </Layout>
   );
 };
 

@@ -6,6 +6,8 @@ import TranscribeService from '@/services/transcribe';
 import HuggingFaceService from '@/services/huggingFaceService';
 import { usePolly } from '@/hooks/usePolly';
 
+import Layout from '../../components/Layout/Layout';
+
 declare global {
   interface Window {
     webkitSpeechRecognition: any;
@@ -224,6 +226,7 @@ export default function StoryScreen() {
   );
 
   return (
+    <Layout>
     <View style={s.container}>
       {!story.content ? (
         <>
@@ -237,5 +240,6 @@ export default function StoryScreen() {
         renderStoryContent()
       )}
     </View>
+    </Layout>
   );
 }
