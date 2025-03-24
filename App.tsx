@@ -8,7 +8,16 @@ import { RootStackParamList } from './src/navigation/types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+import * as ScreenOrientation from 'expo-screen-orientation';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
+
 export default function App() {
+    useEffect(() => {
+        if (Platform.OS !== 'web') {
+          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
+        }
+      }, []);
   return (
     <NavigationContainer>
       <Stack.Navigator initialRouteName="Home">
