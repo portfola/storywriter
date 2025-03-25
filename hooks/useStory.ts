@@ -24,6 +24,39 @@ export interface StoryContent {
   sections: StorySection[];
 }
 
+/**
+ * useStory Hook
+ *
+ * Manages the full story creation flow including:
+ * - Voice input handling (start/stop listening)
+ * - Question prompting and state transitions
+ * - AI-based story and image generation
+ * - Polly speech output and cleanup
+ *
+ * Combines state and behavior for:
+ * - User responses
+ * - Listening & generation status
+ * - Final story output and image
+ *
+ * @returns {
+*   storyState: {
+*     question: string,
+*     responses: string[],
+*     isListening: boolean,
+*     conversationComplete: boolean,
+*     isGenerating: boolean,
+*     storyContent: StorySection[],
+*     generatedStory: string | null,
+*   },
+*   story: {
+*     content: string | null,
+*     sections: StorySection[]
+*   },
+*   startListening: () => void,
+*   handleConversationComplete: () => void,
+*   generateStoryWithImages: () => Promise<void>
+* }
+*/
 export function useStory() {
   const { speak, stop } = usePolly();
 

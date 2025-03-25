@@ -1,12 +1,12 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import Layout from '../../components/Layout/Layout';
+import Layout from '../components/Layout/Layout';
 import { useStory } from '@/hooks/useStory';
-import ResponseList from '@/components/ResponseList';
-import SpeechControls from '@/components/SpeechControls';
-import GenerateButton from '@/components/GenerateButton';
-import StoryContent from '@/components/StoryContent';
-import { s } from './StoryScreen.style';
+import ResponseList from '@/components/ResponseList/ResponseList';
+import SpeechControls from '@/components/SpeechControls/SpeechControls';
+import GenerateButton from '@/components/GenerateButton/GenerateButton';
+import StoryContent from '@/components/StoryContent/StoryContent';
+import { s } from '../pages/StoryScreen/StoryScreen.style';
 
 const StoryScreen = () => {
   const {
