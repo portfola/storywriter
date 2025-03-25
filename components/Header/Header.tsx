@@ -7,6 +7,14 @@ import { RootStackParamList } from '../../navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+/**
+ * Header Component
+ *
+ * Displays the app title and navigation links.
+ * Used at the top of every screen via the Layout wrapper.
+ *
+ * @returns React component with navigation and title.
+ */
 const Header = () => {
   const navigation = useNavigation<NavigationProp>();
 

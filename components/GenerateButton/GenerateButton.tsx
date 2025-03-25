@@ -7,6 +7,17 @@ interface Props {
   onGenerate: () => void;
 }
 
+/**
+ * GenerateButton Component
+ *
+ * Button used to trigger story and image generation.
+ * Appears after user has provided input or stopped recording.
+ *
+ * @param {boolean} isGenerating - Whether generation is in progress.
+ * @param {() => void} onGenerate - Called when the button is pressed.
+ *
+ * @returns Story generation button.
+ */
 const GenerateButton: React.FC<Props> = ({ isGenerating, onGenerate }) => (
   <TouchableOpacity style={s.finishButton} onPress={onGenerate} disabled={isGenerating}>
     <Text style={s.buttonText}>{isGenerating ? 'Generating...' : 'Generate Story with Images'}</Text>

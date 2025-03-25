@@ -7,6 +7,17 @@ interface Props {
   sections: { text: string; imageUrl: string | null }[];
 }
 
+/**
+ * StoryContent Component
+ *
+ * Displays the generated story text and image.
+ * Replaces input UI once the story is ready.
+ *
+ * @param {boolean} isGenerating - Whether content is still being generated.
+ * @param {{ text: string; imageUrl: string | null }[]} sections - Generated story sections.
+ *
+ * @returns Scrollable story content view.
+ */
 const StoryContent: React.FC<Props> = ({ isGenerating, sections }) => (
   <ScrollView style={s.storyContainer}>
     {isGenerating ? (
