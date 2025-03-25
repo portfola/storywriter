@@ -2,10 +2,10 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import Layout from '../../components/Layout/Layout';
 import { useStory } from '@/hooks/useStory';
-import ResponseList from '@/components/ResponseList/ResponseList';
-import SpeechControls from '@/components/SpeechControls/SpeechControls';
-import GenerateButton from '@/components/GenerateButton/GenerateButton';
-import StoryContent from '@/components/StoryContent/StoryContent';
+import ResponseList from '@/components/ResponseList';
+import SpeechControls from '@/components/SpeechControls';
+import GenerateButton from '@/components/GenerateButton';
+import StoryContent from '@/components/StoryContent';
 import { s } from './StoryScreen.style';
 
 const StoryScreen = () => {
@@ -17,40 +17,29 @@ const StoryScreen = () => {
     generateStoryWithImages,
   } = useStory();
 
-  const {
-    question,
-    responses,
-    isListening,
-    isGenerating,
-    conversationComplete,
-  } = storyState;
-
   return (
     <Layout>
       <View style={s.container}>
         {!story.content ? (
           <>
-            <Text style={s.questionText}>{question}</Text>
-
-            {!conversationComplete && (
+            <Text style={s.questionText}>{storyState.question}</Text>
+            {!storyState.conversationComplete && (
               <SpeechControls
-                isListening={isListening}
+                isListening={storyState.isListening}
                 onStart={startListening}
                 onStop={handleConversationComplete}
               />
             )}
-
-            {responses.length > 0 && <ResponseList responses={responses} />}
-
-            {(conversationComplete || responses.length > 0) && (
+            {storyState.responses.length > 0 && <ResponseList responses={storyState.responses} />}
+            {(storyState.conversationComplete || storyState.responses.length > 0) && (
               <GenerateButton
-                isGenerating={isGenerating}
+                isGenerating={storyState.isGenerating}
                 onGenerate={generateStoryWithImages}
               />
             )}
           </>
         ) : (
-          <StoryContent isGenerating={isGenerating} sections={story.sections} />
+          <StoryContent isGenerating={storyState.isGenerating} sections={story.sections} />
         )}
       </View>
     </Layout>
