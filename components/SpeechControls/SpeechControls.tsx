@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { s } from '../pages/StoryScreen/StoryScreen.style';
+import { s } from ',,./../pages/StoryScreen/StoryScreen.style';
 
 interface Props {
   isListening: boolean;

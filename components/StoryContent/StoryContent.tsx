@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, Image, Text, ActivityIndicator } from 'react-native';
-import { s } from '../pages/StoryScreen/StoryScreen.style';
+import { s } from '../../pages/StoryScreen/StoryScreen.style';
 
 interface Props {
   isGenerating: boolean;
