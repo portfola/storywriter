@@ -1,4 +1,7 @@
-export default {
+require('dotenv').config();
+
+export default ({ config }) => ({
+  ...config, 
   expo: {
     name: "StoryWriter",
     slug: "storywriter",
@@ -37,14 +40,7 @@ export default {
     },
     plugins: [
       "expo-router",
-      "expo-dev-client",
-      [
-        "@react-native-voice/voice",
-        {
-          microphonePermission: "Allow $(PRODUCT_NAME) to access the microphone",
-          speechRecognitionPermission: "Allow $(PRODUCT_NAME) to securely recognize user speech",
-        },
-      ]
+      "expo-dev-client"
     ],
     extra: {
       HUGGING_FACE_API_KEY: process.env.HUGGING_FACE_API_KEY,
@@ -56,4 +52,4 @@ export default {
       }
     }
   }
-};
+});

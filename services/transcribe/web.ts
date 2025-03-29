@@ -8,6 +8,7 @@ import {
 import Constants from 'expo-constants';
 import { TranscribeServiceInterface } from './types';
 
+
 class ChromeTestTranscribeService implements TranscribeServiceInterface {
   private client: TranscribeStreamingClient;
   private mediaRecorder: MediaRecorder | null = null;
@@ -21,7 +22,9 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
 
   constructor() {
     console.warn('ChromeTestTranscribeService: This is a test implementation for Chrome browser only.');
-    
+
+  //  console.log('Config: ', Config.AWS_ACCESS_KEY_ID);
+
     this.client = new TranscribeStreamingClient({
       region: Constants.expoConfig?.extra?.AWS_REGION || 'us-east-1',
       credentials: {
@@ -30,12 +33,12 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
       }
     });
 
-    // Debug AWS configuration
-    console.log('AWS Config:', {
-      region: Constants.expoConfig?.extra?.AWS_REGION,
-      hasAccessKey: !!Constants.expoConfig?.extra?.AWS_ACCESS_KEY_ID,
-      hasSecretKey: !!Constants.expoConfig?.extra?.AWS_SECRET_ACCESS_KEY
-    });
+    // // Debug AWS configuration
+    // console.log('AWS Config:', {
+    //   region: Constants.expoConfig?.extra?.AWS_REGION,
+    //   hasAccessKey: !!Constants.expoConfig?.extra?.AWS_ACCESS_KEY_ID,
+    //   hasSecretKey: !!Constants.expoConfig?.extra?.AWS_SECRET_ACCESS_KEY
+    // });
   }
 
   private isChromeEnvironment(): boolean {
@@ -83,10 +86,10 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
         1  // Output channels
       );
 
-      console.log('TEST MODE - Audio processing setup:', {
-        sampleRate: this.audioContext.sampleRate,
-        bufferSize: this.CHUNK_SIZE
-      });
+      // console.log('TEST MODE - Audio processing setup:', {
+      //   sampleRate: this.audioContext.sampleRate,
+      //   bufferSize: this.CHUNK_SIZE
+      // });
 
       // Process audio data
       this.audioProcessor.onaudioprocess = (e) => {
@@ -97,7 +100,7 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
         // Debug audio levels
         const audioLevel = Math.max(...inputData.map(Math.abs));
         if (audioLevel > 0.01) {  // Only log when there's significant audio
-          console.log('TEST MODE - Audio level:', audioLevel.toFixed(3));
+          // console.log('TEST MODE - Audio level:', audioLevel.toFixed(3));
         }
         
         // Convert Float32Array to Int16Array (AWS Transcribe format)
@@ -109,18 +112,18 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
         }
 
         // Debug chunk size
-        console.log('TEST MODE - Created audio chunk:', audioData.length, 'samples');
+        // console.log('TEST MODE - Created audio chunk:', audioData.length, 'samples');
 
         // Push the processed audio chunk
         this.audioChunks.push(new Uint8Array(audioData.buffer));
-        console.log('TEST MODE - Audio chunks buffer size:', this.audioChunks.length);
+        // console.log('TEST MODE - Audio chunks buffer size:', this.audioChunks.length);
       };
 
       // Connect the audio nodes
       source.connect(this.audioProcessor);
       this.audioProcessor.connect(this.audioContext.destination);
 
-      console.log('TEST MODE - Audio processing pipeline established');
+      // console.log('TEST MODE - Audio processing pipeline established');
     } catch (error) {
       console.error('TEST MODE - Audio processing setup error:', error);
       throw error;
@@ -128,12 +131,12 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
   }
 
   async startTranscription(onTranscript: (text: string) => void): Promise<void> {
-    console.log('TEST MODE - Starting transcription in Chrome test environment');
+    // console.log('TEST MODE - Starting transcription in Chrome test environment');
     
     if (!this.isChromeEnvironment()) return;
 
     if (this._isTranscribing) {
-      console.warn('TEST MODE - Transcription already in progress');
+      // console.warn('TEST MODE - Transcription already in progress');
       return;
     }
 
@@ -144,7 +147,7 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
 
       // Create an async generator for audio streaming
       const audioStreamGenerator = async function* (this: ChromeTestTranscribeService) {
-        console.log('TEST MODE - Starting audio stream');
+        // console.log('TEST MODE - Starting audio stream');
         let chunkCount = 0;
         
         while (this._isTranscribing) {
@@ -152,7 +155,7 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
             const chunk = this.audioChunks.shift();
             if (chunk) {
               chunkCount++;
-              console.log('TEST MODE - Sending chunk #', chunkCount, 'to AWS');
+              // console.log('TEST MODE - Sending chunk #', chunkCount, 'to AWS');
               yield { AudioEvent: { AudioChunk: chunk } } as AudioStream;
             }
           }
@@ -170,12 +173,12 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
         ShowSpeakerLabel: false // Control speaker identification
       };
 
-      console.log('TEST MODE - Starting AWS Transcribe streaming with params:', params);
+      // console.log('TEST MODE - Starting AWS Transcribe streaming with params:', params);
 
       const command = new StartStreamTranscriptionCommand(params);
       const response = await this.client.send(command);
 
-      console.log('TEST MODE - AWS Response:', response);
+      // console.log('TEST MODE - AWS Response:', response);
       
       if (!response.TranscriptResultStream) {
         console.error('TEST MODE - No TranscriptResultStream in response');
@@ -184,7 +187,7 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
 
       try {
         for await (const event of response.TranscriptResultStream) {
-          console.log('TEST MODE - Raw stream event:', JSON.stringify(event, null, 2));
+          // console.log('TEST MODE - Raw stream event:', JSON.stringify(event, null, 2));
           
           // AWS Transcribe events come in a specific shape
           const transcriptEvent = event as TranscriptEvent;
@@ -201,7 +204,7 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
           }
 
           // Log the full results for debugging
-          console.log('TEST MODE - Full results:', JSON.stringify(results, null, 2));
+          // console.log('TEST MODE - Full results:', JSON.stringify(results, null, 2));
 
           // Get the transcript from the first result's first alternative
           const result = results[0];
@@ -225,7 +228,7 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
   }
 
   async stopTranscription(): Promise<void> {
-    console.log('TEST MODE - Stopping transcription');
+    // console.log('TEST MODE - Stopping transcription');
     
     try {
       this._isTranscribing = false;
