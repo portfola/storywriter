@@ -151,6 +151,11 @@ export function useStory() {
         content: storyText,
         sections: [{ text: storyText, imageUrl }],
       });
+
+      // Add a slight delay to ensure UI updates first
+      setTimeout(() => {
+        speak(storyText);
+      }, 1000);
     } catch (error) {
       console.error('❌ Error generating story:', error);
       alert('Failed to generate story. Please try again.');
