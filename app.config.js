@@ -5,7 +5,7 @@ export default ({ config }) => ({
   expo: {
     name: "StoryWriter",
     slug: "storywriter",
-    version: "1.0.0",
+    version: "0.5.0",
     sdkVersion: "52.0.0",
     orientation: "landscape",
     icon: "./assets/images/icon.png",
@@ -16,6 +16,9 @@ export default ({ config }) => ({
       image: "./assets/images/splash.png",
       resizeMode: "contain",
       backgroundColor: "#ffffff"
+    },
+    web: {
+      "favicon": "./assets/images/favicon.ico"
     },
     ios: {
       supportsTablet: true,
