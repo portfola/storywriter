@@ -18,7 +18,7 @@ export default ({ config }) => ({
       backgroundColor: "#ffffff"
     },
     web: {
-      "favicon": "./assets/images/favicon.ico"
+      "favicon": "./assets/images/favicon.png"
     },
     ios: {
       supportsTablet: true,
