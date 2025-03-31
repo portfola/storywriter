@@ -25,14 +25,25 @@ An active connection to Hugging Face API is required ([https://huggingface.co](h
 
 ## Dev Notes
 
+### Apr 2025
+Planned updates:
+
+- [ ] Display larger image as left-hand page, with text to the right.
+- [ ] Break story into multiple pages
+- [ ] Avoid story cut-off
+- [ ] Improve narration speed and tone
+
 ### Mar 2025
 Tim has got a version working which creates the story and displays on one page with a single image at the top. I've been working on replacing the robot voice with AWS Polly.
 
 Next steps:
 
-- Merge my Polly feature branch into develop
-- Have Polly read the generated story out loud
-- Add play/pause button for reading narration
+- [x] Merge my Polly feature branch in
+- [x] Have Polly read the generated story out loud
+- [ ] Add play/pause button for reading narration
+
+#### Mar 30
+We are now working on the `main` branch, have replaced the expo router, and have added in narration of the generated story.
 
 ### Feb 2025
 I've enlisted help from my (human) friend Tim, who has worked on a refactor of story.tsx to remove unused sections and focus on getting the initial assistant conversation going. We are working on the `develop` branch.
