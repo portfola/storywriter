@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import { s } from "./StoryScreen.style";
+
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect } from 'react';
 import TranscribeService from '@/services/transcribe';
 import HuggingFaceService from '@/services/huggingFaceService';
 import { usePolly } from '@/hooks/usePolly';
-import VoiceWave from '@/components/VoiceWave';
-import { useConversationStore } from '@/src/stores/conversationStore';
-import { Ionicons } from '@expo/vector-icons';
+
+import Layout from '../../components/Layout/Layout';
 
 declare global {
   interface Window {
@@ -38,6 +39,7 @@ interface StoryContent {
  */
 export default function StoryScreen() {
   // Combined state management
+  // Shouldn't `useState` be called somwhere?
   const [storyState, setStoryState] = useState<StoryState>({
     question: 'What kind of story shall we create together?',
     responses: [],
@@ -54,9 +56,6 @@ export default function StoryScreen() {
     content: null,
     sections: []
   });
-
-  const isSpeaking = useConversationStore(state => state.isSpeaking);
-  const setSpeechState = useConversationStore(state => state.setSpeechState);
 
   // Handle speech prompts
   useEffect(() => {
@@ -76,35 +75,6 @@ export default function StoryScreen() {
       stop(); // Cleanup when component unmounts
     };
   }, [stop]);
-
-  // Auto-start reading when story is ready
-  useEffect(() => {
-    if (story.content && story.sections.length > 0 && !isSpeaking && !storyState.isGenerating) {
-      const timer = setTimeout(() => {
-        if (story.content) {
-          speak(story.content);
-        }
-      }, 1000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [story.content, story.sections, storyState.isGenerating]);
-
-  // Cleanup when component unmounts
-  useEffect(() => {
-    return () => {
-      stop();
-    };
-  }, []);
-
-  // Toggle speech function
-  const toggleSpeech = () => {
-    if (isSpeaking) {
-      stop();
-    } else if (story.content) {
-      speak(story.content);
-    }
-  };
 
   // Start voice transcription
   const startListening = async () => {
@@ -184,10 +154,10 @@ export default function StoryScreen() {
 
   // Render response list
   const renderResponses = () => (
-    <View style={styles.responseContainer}>
-      <Text style={styles.responseLabel}>Your story so far:</Text>
+    <View style={s.responseContainer}>
+      <Text style={s.responseLabel}>Your story so far:</Text>
       {storyState.responses.map((res, index) => (
-        <Text key={index} style={styles.responseText}>
+        <Text key={index} style={s.responseText}>
           {index + 1}. {res}
         </Text>
       ))}
@@ -196,23 +166,23 @@ export default function StoryScreen() {
 
   // Render speech input buttons
   const renderSpeechButtons = () => (
-    <View style={styles.buttonContainer}>
+    <View style={s.buttonContainer}>
       <TouchableOpacity 
-        style={styles.button} 
+        style={s.button} 
         onPress={startListening} 
         disabled={storyState.isListening}
       >
-        <Text style={styles.buttonText}>
+        <Text style={s.buttonText}>
           {storyState.isListening ? 'Listening...' : 'Tap to Speak'}
         </Text>
       </TouchableOpacity>
       
       {storyState.isListening && (
         <TouchableOpacity 
-          style={[styles.button, styles.stopButton]} 
+          style={[s.button, s.stopButton]} 
           onPress={handleConversationComplete}
         >
-          <Text style={styles.buttonText}>Stop Listening</Text>
+          <Text style={s.buttonText}>Stop Listening</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -221,11 +191,11 @@ export default function StoryScreen() {
   // Render generate button
   const renderGenerateButton = () => (
     <TouchableOpacity 
-      style={styles.finishButton} 
+      style={s.finishButton} 
       onPress={generateStoryWithImages}
       disabled={storyState.isGenerating}
     >
-      <Text style={styles.buttonText}>
+      <Text style={s.buttonText}>
         {storyState.isGenerating ? 'Generating...' : 'Generate Story with Images'}
       </Text>
     </TouchableOpacity>
@@ -233,39 +203,22 @@ export default function StoryScreen() {
 
   // Render story content
   const renderStoryContent = () => (
-    <ScrollView style={styles.storyContainer}>
+    <ScrollView style={s.storyContainer}>
       {storyState.isGenerating ? (
         <ActivityIndicator size="large" color="#3498db" />
       ) : (
         <>
           {story.sections.length > 0 && story.sections[0].imageUrl ? (
             <>
-              <View style={styles.headerControls}>
-                <TouchableOpacity 
-                  style={styles.speechButton} 
-                  onPress={toggleSpeech}
-                >
-                  <Ionicons 
-                    name={isSpeaking ? "pause-circle" : "play-circle"} 
-                    size={40} 
-                    color="#3498db" 
-                  />
-                </TouchableOpacity>
-                <VoiceWave 
-                  isListening={false}
-                  isSpeaking={isSpeaking} 
-                />
-              </View>
-
               <Image 
                 source={{ uri: story.sections[0].imageUrl }} 
-                style={styles.storyImage} 
+                style={s.storyImage} 
                 resizeMode="contain" 
               />
-              <Text style={styles.storyText}>{story.sections[0].text}</Text>
+              <Text style={s.storyText}>{story.sections[0].text}</Text>
             </>
           ) : (
-            <Text style={styles.storyText}>Loading story...</Text>
+            <Text style={s.storyText}>Loading story...</Text>
           )}
         </>
       )}
@@ -273,10 +226,11 @@ export default function StoryScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <Layout>
+    <View style={s.container}>
       {!story.content ? (
         <>
-          <Text style={styles.questionText}>{storyState.question}</Text>
+          <Text style={s.questionText}>{storyState.question}</Text>
           {!storyState.conversationComplete && renderSpeechButtons()}
           {storyState.responses.length > 0 && renderResponses()}
           {(storyState.conversationComplete || storyState.responses.length > 0) && 
@@ -286,87 +240,6 @@ export default function StoryScreen() {
         renderStoryContent()
       )}
     </View>
+    </Layout>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f0f8ff',
-    padding: 20,
-  },
-  questionText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#2c3e50',
-  },
-  button: {
-    backgroundColor: '#3498db',
-    padding: 15,
-    borderRadius: 10,
-  },
-  finishButton: {
-    backgroundColor: '#2ecc71',
-    padding: 15,
-    borderRadius: 10,
-    marginTop: 20,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  responseContainer: {
-    marginTop: 20,
-    paddingHorizontal: 20,
-  },
-  responseLabel: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#2c3e50',
-  },
-  responseText: {
-    fontSize: 16,
-    color: '#34495e',
-    marginBottom: 5,
-  },
-  storyContainer: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: '#fff',
-  },
-  storyText: {
-    fontSize: 18,
-    lineHeight: 26,
-    color: '#2c3e50',
-  },
-  storyImage: {
-    width: '100%',
-    height: 200,
-    marginVertical: 10,
-  },
-  buttonContainer: {
-    marginBottom: 20,
-  },
-  stopButton: {
-    marginTop: 20,
-  },
-  headerControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 5,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 10,
-    marginBottom: 15,
-  },
-  speechButton: {
-    padding: 10,
-  },
-});

@@ -14,7 +14,3 @@ repomix*
 
 # macOS
 .DS_Store
-
-# packages
-package-lock.json
-
