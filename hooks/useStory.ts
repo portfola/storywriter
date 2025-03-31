@@ -139,22 +139,39 @@ export function useStory() {
     setStoryState((prev) => ({ ...prev, isGenerating: true }));
 
     try {
-      const storyText = await HuggingFaceService.generateResponse(
+      // Get the raw response from Hugging Face
+      const rawStoryText = await HuggingFaceService.generateResponse(
         `Create a children's story based on: ${storyState.responses.join(' ')}`
       );
 
-      setStory((prev) => ({ ...prev, content: storyText }));
+      // Process the story to remove the prompt and extract just the story content
+      let processedStoryText = rawStoryText;
 
-      const imageUrl = await HuggingFaceService.generateImage(storyText);
+      // Look for "Title: " as the marker to start the actual story
+      const titleIndex = rawStoryText.indexOf("Title: ");
+      if (titleIndex !== -1) {
+        // Found the title marker, extract everything from this point onward
+        processedStoryText = rawStoryText.substring(titleIndex + 7);
+        console.log('Extracted story from title marker');
+      } else {
+        console.log('No title marker found, using full response');
+      }
 
+      // Update the story state with the processed content
+      setStory((prev) => ({ ...prev, content: processedStoryText }));
+
+      // Generate image based on the processed story
+      const imageUrl = await HuggingFaceService.generateImage(processedStoryText);
+
+      // Update story with content and image
       setStory({
-        content: storyText,
-        sections: [{ text: storyText, imageUrl }],
+        content: processedStoryText,
+        sections: [{ text: processedStoryText, imageUrl }],
       });
 
       // Add a slight delay to ensure UI updates first
       setTimeout(() => {
-        speak(storyText);
+        speak(processedStoryText);
       }, 1000);
     } catch (error) {
       console.error('❌ Error generating story:', error);
