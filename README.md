@@ -32,6 +32,10 @@ Planned updates:
 - [ ] Break story into multiple pages
 - [ ] Avoid story cut-off
 - [ ] Improve narration speed and tone
+- [ ] Add a web deployment pipeline
+
+#### April 1
+Working on a deployment pipeline for develop. Got `npm run validate` to work.
 
 ### Mar 2025
 Tim has got a version working which creates the story and displays on one page with a single image at the top. I've been working on replacing the robot voice with AWS Polly.

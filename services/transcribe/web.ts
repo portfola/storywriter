@@ -192,11 +192,13 @@ class ChromeTestTranscribeService implements TranscribeServiceInterface {
           // AWS Transcribe events come in a specific shape
           const transcriptEvent = event as TranscriptEvent;
           
+          // @ts-ignore - AWS SDK types don't match actual response structure
           if (!transcriptEvent.TranscriptEvent?.Transcript) {
             console.log('TEST MODE - No transcript in event');
             continue;
           }
 
+          // @ts-ignore - AWS SDK types don't match actual response structure
           const results = transcriptEvent.TranscriptEvent.Transcript.Results;
           if (!results || results.length === 0) {
             console.log('TEST MODE - No results in transcript');
