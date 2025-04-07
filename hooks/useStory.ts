@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+// Do we need Platform?
+// import { Platform } from 'react-native';
 import TranscribeService from '@/services/transcribe';
 import HuggingFaceService from '@/services/huggingFaceService';
 import { usePolly } from '@/hooks/usePolly';
