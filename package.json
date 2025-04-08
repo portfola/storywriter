@@ -23,6 +23,7 @@
     "@react-navigation/native-stack": "^7.3.2",
     "axios": "^1.7.9",
     "base64-js": "^1.5.1",
+    "dot-env": "^0.0.1",
     "expo": "~52.0.20",
     "expo-build-properties": "~0.13.1",
     "expo-constants": "~17.0.3",

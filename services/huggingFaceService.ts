@@ -16,7 +16,14 @@ class HuggingFaceService {
     if (!prompt.trim()) throw new Error('Invalid prompt');
     const { data } = await this.client.post('', {
       inputs: prompt,
-      parameters: { max_new_tokens: 500 },
+      // parameters: { max_new_tokens: 500 },
+      parameters: {
+        max_new_tokens: 1024,      // 🔼 increase this value
+        temperature: 0.7,          // (optional: improves creativity)
+        top_p: 0.95,
+        do_sample: true
+      },
+      
     });
     return data[0]?.generated_text.trim() || 'No response';
   }
