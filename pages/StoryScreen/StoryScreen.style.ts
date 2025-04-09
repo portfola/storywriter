@@ -58,7 +58,7 @@ export const s = StyleSheet.create({
   },
   storyImage: {
     width: '100%',
-    height: 200,
+    height: '100%',
     marginVertical: 10,
   },
   buttonContainer: {

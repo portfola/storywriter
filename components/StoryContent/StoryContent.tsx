@@ -26,7 +26,7 @@ const StoryContent: React.FC<Props> = ({ isGenerating, sections }) => (
       <>
         {sections.length > 0 && sections[0].imageUrl ? (
           <>
-            <Image source={{ uri: sections[0].imageUrl }} style={s.storyImage} resizeMode="contain" />
+            <Image source={{ uri: sections[0].imageUrl }} style={s.storyImage} resizeMode="cover" />
             <Text style={s.storyText}>{sections[0].text}</Text>
           </>
         ) : (
