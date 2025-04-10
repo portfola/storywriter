@@ -1,10 +1,11 @@
 name: Deploy Frontend (Dev)
 
 on:
-  push:
-    branches: [ develop ]
-  pull_request:
-    branches: [ develop ]
+  workflow_dispatch: # Temporarily pausing this pipeline
+  # push:
+  #   branches: [ develop ]
+  # pull_request:
+  #   branches: [ develop ]
 
 jobs:
   test:
