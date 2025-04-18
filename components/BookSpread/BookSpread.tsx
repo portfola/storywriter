@@ -27,6 +27,14 @@ interface BookSpreadProps {
   showCover?: boolean;
   coverTitle?: string;
   coverSubtitle?: string;
+  coverImageUrl?: string;
+  
+  // Story sections for multi-page display
+  sections?: Array<{
+    text: string;
+    imageUrl: string | null;
+    pageNumber: number;
+  }>;
 }
 
 /**
@@ -42,7 +50,7 @@ const BookSpread: React.FC<BookSpreadProps> = ({
   imageUrl,
   title,
   text,
-  pageNumber,
+  pageNumber = 0,
   totalPages = Infinity,
   isLoading = false,
   onNextPage,
@@ -50,17 +58,24 @@ const BookSpread: React.FC<BookSpreadProps> = ({
   showCover = false,
   coverTitle,
   coverSubtitle,
+  coverImageUrl,
+  sections = [],
 }) => {
-  // If we're showing the cover, render a special cover view
-  if (showCover) {
+  // If showCover is explicitly set to true, show the cover page
+  if (showCover || pageNumber === 0) {
     return (
       <TouchableOpacity 
         style={s.bookCover}
-        onPress={onNextPage} // Clicking the cover opens the book
+        onPress={onNextPage}
         activeOpacity={0.9}
       >
         <PaperBackground texture="leather">
-          <Text style={s.coverTitle}>{coverTitle || 'My Story'}</Text>
+          {coverImageUrl ? (
+            <Image source={{ uri: coverImageUrl }} style={s.coverImage} resizeMode="contain" />
+          ) : (
+            <ActivityIndicator size="large" color="#8B4513" />
+          )}
+          <Text style={s.coverTitle}>{coverTitle || title || 'My Story'}</Text>
           <Text style={s.coverSubtitle}>{coverSubtitle || 'Tap to open'}</Text>
         </PaperBackground>
       </TouchableOpacity>
@@ -82,6 +97,11 @@ const BookSpread: React.FC<BookSpreadProps> = ({
     );
   }
   
+  // Get the current section data based on pageNumber
+  const currentSection = sections && sections.length > 0 && pageNumber > 0 
+    ? sections.find(s => s.pageNumber === pageNumber) || null
+    : null;
+    
   // Determine what to show on left page (image by default)
   const renderLeftPage = () => {
     // If custom left content is provided, use that
@@ -89,15 +109,21 @@ const BookSpread: React.FC<BookSpreadProps> = ({
       return leftContent;
     }
     
+    // If we have a section with an image, use that
+    if (currentSection && currentSection.imageUrl) {
+      return <Image source={{ uri: currentSection.imageUrl }} style={s.pageImage} resizeMode="contain" />;
+    }
+    
     // Otherwise, show image if available
     if (imageUrl) {
       return <Image source={{ uri: imageUrl }} style={s.pageImage} resizeMode="contain" />;
     }
     
-    // Fallback to placeholder
+    // Fallback to placeholder with message
     return (
       <View style={s.imagePlaceholder}>
-        <ActivityIndicator size="small" color="#8B4513" />
+        <ActivityIndicator size="large" color="#8B4513" />
+        <Text style={s.placeholderText}>Creating illustration...</Text>
       </View>
     );
   };
@@ -107,6 +133,17 @@ const BookSpread: React.FC<BookSpreadProps> = ({
     // If custom right content is provided, use that
     if (rightContent) {
       return rightContent;
+    }
+    
+    // If we have a section with text, use that
+    if (currentSection) {
+      return (
+        <View style={s.textContainer}>
+          <Text style={s.storyText}>{currentSection.text}</Text>
+          {/* Optional decorative corner fold */}
+          <View style={s.pageCorner} />
+        </View>
+      );
     }
     
     // If we have a title, assume this is the title page
@@ -135,7 +172,7 @@ const BookSpread: React.FC<BookSpreadProps> = ({
       {/* Left page with paper texture */}
       <TouchableOpacity 
         activeOpacity={1}
-        onPress={pageNumber && pageNumber > 1 ? onPrevPage : undefined}
+        onPress={pageNumber > 1 ? onPrevPage : undefined}
         style={{flex: 1}}
       >
         <PaperBackground style={s.leftPage} texture="paper">
@@ -149,7 +186,7 @@ const BookSpread: React.FC<BookSpreadProps> = ({
       {/* Right page with paper texture */}
       <TouchableOpacity 
         activeOpacity={1}
-        onPress={pageNumber && pageNumber < totalPages ? onNextPage : undefined}
+        onPress={pageNumber < totalPages ? onNextPage : undefined}
         style={{flex: 1}}
       >
         <PaperBackground style={s.rightPage} texture="paper">
@@ -158,7 +195,7 @@ const BookSpread: React.FC<BookSpreadProps> = ({
       </TouchableOpacity>
       
       {/* Page number (if applicable) */}
-      {pageNumber && totalPages && (
+      {pageNumber > 0 && totalPages && (
         <Text style={s.pageNumber}>
           {pageNumber} of {totalPages}
         </Text>

@@ -2,12 +2,19 @@
 
 Create your own digital storybooks with the help of a cyber assistant!
 
-This app is designed for kids to use on a tablet. They can speak with an AI assistant to generate text and images in a storybook display.
+This app is designed for kids to use on a tablet (currently testing as a web browser app). They can speak with an AI assistant to generate text and images in a storybook display.
 
 ## Project Description
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
-An active connection to Hugging Face API is required ([https://huggingface.co](https://huggingface.co)). Add a .env file to the root directory with contents: [`HUGGING_FACE_API_KEY=xxxxxx'].
+An active connection to Hugging Face API is required ([https://huggingface.co](https://huggingface.co)), as well as Amazon Web Services (specifically, Transcribe and Polly). Add a .env file to the root directory with contents:
+
+```
+HUGGING_FACE_API_KEY=xxxxxx
+AWS_ACCESS_KEY_ID=xxxxxx
+AWS_SECRET_ACCESS_KEY=xxxxxx
+AWS_REGION=xxxxxx
+```
 
 ## Get started
 
@@ -30,9 +37,13 @@ Planned updates:
 
 - [ ] Display larger image as left-hand page, with text to the right.
 - [ ] Break story into multiple pages
-- [ ] Avoid story cut-off
+- [x] Avoid story cut-off
 - [ ] Improve narration speed and tone
 - [ ] Add a web deployment pipeline
+
+#### April 17
+- Abandoned the earlier attempt at a pipeline and will go with a Laravel site wrapper
+- Working on the storybook display in multi-page
 
 #### April 1
 Working on a deployment pipeline for develop. Got `npm run validate` to work.

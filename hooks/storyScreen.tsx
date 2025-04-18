@@ -5,7 +5,7 @@ import { useStory } from '@/hooks/useStory';
 import ResponseList from '@/components/ResponseList/ResponseList';
 import SpeechControls from '@/components/SpeechControls/SpeechControls';
 import GenerateButton from '@/components/GenerateButton/GenerateButton';
-import StoryContent from '@/components/StoryContent/StoryContent';
+import BookSpread from '@/components/BookSpread/BookSpread'; // Add this import
 import { s } from '../pages/StoryScreen/StoryScreen.style';
 
 const StoryScreen = () => {
@@ -15,12 +15,26 @@ const StoryScreen = () => {
     startListening,
     handleConversationComplete,
     generateStoryWithImages,
+    nextPage,
+    previousPage
   } = useStory();
 
   return (
     <Layout>
       <View style={s.container}>
-        {!story.content ? (
+        {story.content ? (
+          // If we have story content, show the book
+          <BookSpread
+            title={story.title}
+            coverImageUrl={story.coverImageUrl || undefined}
+            sections={story.sections}
+            pageNumber={story.currentPage}
+            totalPages={story.sections.length}
+            onNextPage={nextPage}
+            onPrevPage={previousPage}
+          />
+        ) : (
+          // Otherwise, show the story creation UI
           <>
             <Text style={s.questionText}>{storyState.question}</Text>
             {!storyState.conversationComplete && (
@@ -38,8 +52,6 @@ const StoryScreen = () => {
               />
             )}
           </>
-        ) : (
-          <StoryContent isGenerating={storyState.isGenerating} sections={story.sections} />
         )}
       </View>
     </Layout>

@@ -180,4 +180,21 @@ export const s = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
+
+  // In BookSpread.style.ts
+  coverImage: {
+    width: '80%',
+    height: '60%',
+    marginBottom: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#D2B48C',
+  },
+
+  placeholderText: {
+    marginTop: 10,
+    color: '#8B4513',
+    fontSize: 16,
+    textAlign: 'center',
+  },
 });
