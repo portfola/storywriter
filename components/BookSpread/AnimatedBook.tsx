@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, View, StyleSheet } from 'react-native';
 import BookSpread from './BookSpread';
 import BookCover from './BookCover';
+import { Platform } from 'react-native';
 
 // Extend the original props
 interface AnimatedBookProps extends React.ComponentProps<typeof BookSpread> {
@@ -23,12 +24,12 @@ const AnimatedBook: React.FC<AnimatedBookProps> = (props) => {
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 800,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web', // Only use native driver on non-web platforms
       }),
       Animated.timing(scaleAnim, {
         toValue: 1,
         duration: 600,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web', // Only use native driver on non-web platforms
       }),
     ]).start();
   }, [fadeAnim, scaleAnim]);

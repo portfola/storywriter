@@ -158,24 +158,32 @@ export function useStory() {
       let storyTitle = "My Story"; // Default title
       let storyContent = rawStoryText;
 
-      // Look for "Title: " marker followed by a line break
-    const titleRegex = /Title:\s*(.*?)(?:\n|$)/;
-    const titleMatch = rawStoryText.match(titleRegex);
-    
-    if (titleMatch && titleMatch[1]) {
-      storyTitle = titleMatch[1].trim();
-      console.log('📚 Extracted title:', storyTitle);
+      // Find the index of "Title:" in the text
+      const titleIndex = rawStoryText.indexOf('Title:');
+      if (titleIndex !== -1) {
+        // If "Title:" is found, discard everything before it
+        storyContent = rawStoryText.substring(titleIndex);
+
+        // Look for "Title: " marker followed by a line break
+        const titleRegex = /Title:\s*(.*?)(?:\n|$)/;
+        const titleMatch = rawStoryText.match(titleRegex);
       
-      // Remove the title line from the content
-      storyContent = rawStoryText.replace(titleRegex, '').trim();
-    } else {
-      console.log('⚠️ No title found, using default');
-    }
+        if (titleMatch && titleMatch[1]) {
+          storyTitle = titleMatch[1].trim();
+          console.log('📚 Extracted title:', storyTitle);
+        
+          // Remove the title line from the content
+          storyContent = storyContent.replace(titleRegex, '').trim();
+        } 
+      } else {
+          console.log('⚠️ No title found, using default');
+        }
     
     // Generate a cover image using just the title
     console.log('🖼️ Generating cover image based on title...');
     const coverImagePrompt = `Children's book cover illustration for "${storyTitle}"`;
     const coverImageUrl = await HuggingFaceService.generateImage(coverImagePrompt);
+    console.log('✅ Cover image URL:', coverImageUrl ? 'Successfully generated' : 'Failed to generate');
     
     // Split the story content into pages (5-10 sections)
     const storyPages = splitIntoPages(storyContent, 7); // Try to get about 7 pages
@@ -252,12 +260,13 @@ const splitIntoPages = (content: string, targetPageCount: number): string[] => {
 
 // Add this to the useStory hook
 const navigateToPage = async (pageIndex: number) => {
+  console.log(`Navigation requested to page ${pageIndex}`);
   if (pageIndex < 0 || pageIndex > story.sections.length) {
-    console.warn('Invalid page index:', pageIndex);
+    console.warn('❌ Invalid page index: ${pageIndex}');
     return;
   }
   
-  // Update current page
+  // Update current page immediately for responsive UX
   setStory(prev => ({
     ...prev,
     currentPage: pageIndex
@@ -265,6 +274,7 @@ const navigateToPage = async (pageIndex: number) => {
   
   // If this is page 0 (cover), no need to generate an image
   if (pageIndex === 0) {
+    console.log(`📘 Showing cover page, no image generation needed`);
     return;
   }
   
@@ -273,7 +283,7 @@ const navigateToPage = async (pageIndex: number) => {
   
   // If the image is already generated, don't regenerate
   if (pageObject.imageUrl) {
-    console.log(`Image for page ${pageIndex} already exists`);
+    console.log(`🖼️ Image for page ${pageIndex} already exists`);
     return;
   }
   
@@ -314,8 +324,14 @@ const nextPage = () => {
 
 const previousPage = () => {
   const prevIndex = story.currentPage - 1;
+  console.log(`Attempting to navigate from page ${story.currentPage} to page ${prevIndex}`);
+
+  // Make sure we can navigate to the cover (page 0)
   if (prevIndex >= 0) {
+    console.log(`Navigating to page ${prevIndex}`);
     navigateToPage(prevIndex);
+  } else {
+    console.log('Already at the first page, cannot go back further');
   }
 };
 

@@ -1,7 +1,7 @@
 // Additional component for the book cover
 // components/BookSpread/BookCover.tsx
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import PaperBackground from './PaperBackground';
 
 interface BookCoverProps {
@@ -24,13 +24,22 @@ const BookCover: React.FC<BookCoverProps> = ({
       activeOpacity={0.9}
     >
       <PaperBackground style={styles.cover} texture="leather">
-        {/* Decorative elements */}
-        <View style={styles.borderFrame}>
-          <View style={styles.innerFrame}>
-            <Text style={styles.title}>{title}</Text>
-            {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-          </View>
-        </View>
+        {/* Title at the top */}
+        <Text style={styles.title}>{title}</Text>
+        
+        {/* Cover image centered below title */}
+        {coverImage && (
+          <Image 
+            source={{ uri: coverImage }} 
+            style={styles.coverImageStyle} 
+            resizeMode="contain"
+          />
+        )}
+        
+        {/* Subtitle or tap instruction */}
+        <Text style={styles.subtitle}>
+          {subtitle || "Tap to open"}
+        </Text>
         
         {/* Book binding details */}
         <View style={styles.bindingEdge} />
@@ -54,41 +63,27 @@ const styles = StyleSheet.create({
   },
   cover: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     borderRadius: 8,
     overflow: 'hidden',
     padding: 20,
   },
   coverImageStyle: {
-    resizeMode: 'cover',
-    opacity: 0.8, // Let the texture show a bit
-  },
-  textureStyle: {
-    resizeMode: 'repeat',
-  },
-  borderFrame: {
-    width: '90%',
-    height: '90%',
-    borderWidth: 3,
-    borderColor: 'rgba(255, 215, 0, 0.6)', // Gold-ish border
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  innerFrame: {
-    width: '90%',
-    height: '90%',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    width: '80%',
+    height: '60%',
+    marginVertical: 20,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 215, 0, 0.6)', // Gold border to match the theme
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
     color: '#FFF',
     textAlign: 'center',
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 10,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
@@ -97,6 +92,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#FFF',
     textAlign: 'center',
+    marginTop: 10,
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
