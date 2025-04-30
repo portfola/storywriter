@@ -7,11 +7,14 @@ const TEXT_API_URL = 'https://api-inference.huggingface.co/models/mistralai/Mist
 const IMAGE_API_URL = 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0';
 
 class HuggingFaceService {
+
+
+  
   private client = axios.create({
     baseURL: TEXT_API_URL,
     headers: { 'Authorization': `Bearer ${API_KEY}` },
   });
-
+  
   async generateResponse(prompt: string): Promise<string> {
     if (!prompt.trim()) throw new Error('Invalid prompt');
     const { data } = await this.client.post('', {
@@ -34,6 +37,12 @@ class HuggingFaceService {
       { inputs: `child-friendly, cartoon illustration of ${prompt}` },
       { headers: { 'Authorization': `Bearer ${API_KEY}` }, responseType: 'arraybuffer' }
     );
+
+    await axios.post('http://127.0.0.1:8001/api/stories', {
+      title: 'Auto-generated',
+      content: generatedText,
+      image_url: imageUrl || null,
+    });
 
     // Convert the array buffer into a base64 string
     const base64String = base64.fromByteArray(new Uint8Array(data));
