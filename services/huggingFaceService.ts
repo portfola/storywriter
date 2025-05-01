@@ -8,46 +8,51 @@ const IMAGE_API_URL = 'https://api-inference.huggingface.co/models/stabilityai/s
 
 class HuggingFaceService {
 
-
-  
   private client = axios.create({
     baseURL: TEXT_API_URL,
     headers: { 'Authorization': `Bearer ${API_KEY}` },
   });
-  
-  async generateResponse(prompt: string): Promise<string> {
-    if (!prompt.trim()) throw new Error('Invalid prompt');
-    const { data } = await this.client.post('', {
-      inputs: prompt,
-      // parameters: { max_new_tokens: 500 },
-      parameters: {
-        max_new_tokens: 1024,      // 🔼 increase this value
-        temperature: 0.7,          // (optional: improves creativity)
-        top_p: 0.95,
-        do_sample: true
-      },
-      
-    });
-    return data[0]?.generated_text.trim() || 'No response';
-  }
 
-  async generateImage(prompt: string): Promise<string | null> {
-    const { data } = await axios.post(
+  async generateFullStory(prompt: string): Promise<{ text: string; imageUrl: string | null }> {
+    if (!prompt.trim()) throw new Error('Invalid prompt');
+  
+    // Step 1: Generate the story text
+    const textResponse = await this.client.post('', {
+      inputs: prompt,
+      parameters: {
+        max_new_tokens: 1024,
+        temperature: 0.7,
+        top_p: 0.95,
+        do_sample: true,
+      },
+    });
+  
+    const generatedText = textResponse.data[0]?.generated_text.trim() || 'No response';
+  
+    // Step 2: Generate the image
+    const imageRes = await axios.post(
       IMAGE_API_URL,
       { inputs: `child-friendly, cartoon illustration of ${prompt}` },
-      { headers: { 'Authorization': `Bearer ${API_KEY}` }, responseType: 'arraybuffer' }
+      {
+        headers: { Authorization: `Bearer ${API_KEY}` },
+        responseType: 'arraybuffer',
+      }
     );
-
+  
+    const base64Image = base64.fromByteArray(new Uint8Array(imageRes.data));
+    const imageUrl = `data:image/jpeg;base64,${base64Image}`;
+  
+    // Step 3: Persist the story to Laravel backend
     await axios.post('http://127.0.0.1:8001/api/stories', {
-      title: 'Auto-generated',
+      title: prompt.slice(0, 50), // Trim title from prompt or improve this logic
       content: generatedText,
-      image_url: imageUrl || null,
+      image_url: imageUrl,
     });
-
-    // Convert the array buffer into a base64 string
-    const base64String = base64.fromByteArray(new Uint8Array(data));
-    return `data:image/jpeg;base64,${base64String}`;
+  
+    return { text: generatedText, imageUrl };
   }
+  
+  
 }
 
 export default new HuggingFaceService();
