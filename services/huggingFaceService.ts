@@ -6,6 +6,12 @@ const API_KEY = Constants.expoConfig?.extra?.HUGGING_FACE_API_KEY;
 const TEXT_API_URL = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3';
 const IMAGE_API_URL = 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0';
 
+// ✅ Dynamic backend URL
+const BACKEND_URL =
+  Constants.expoConfig?.extra?.BACKEND_URL ?? 'http://127.0.0.1:8001'; // default to localhost:8001
+
+console.log(BACKEND_URL); 
+
 class HuggingFaceService {
 
   private client = axios.create({
@@ -41,7 +47,7 @@ class HuggingFaceService {
     const base64Image = base64.fromByteArray(new Uint8Array(imageRes.data));
     const imageUrl = `data:image/jpeg;base64,${base64Image}`;
 
-    axios.post('http://127.0.0.1:8001/api/stories', {
+    axios.post(`${BACKEND_URL}/api/stories`, {
       title: prompt.slice(0, 50),
       body: generatedText,
       images: imageUrl,
