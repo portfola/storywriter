@@ -141,9 +141,16 @@ export function useStory() {
 
     try {
       // Get the raw response from Hugging Face
-      const rawStoryText = await HuggingFaceService.generateResponse(
+      // const rawStoryText = await HuggingFaceService.generateResponse(
+      //   `Create a children's story based on: ${storyState.responses.join(' ')}`
+      // );
+
+      const { text: rawStoryText, imageUrl } = await HuggingFaceService.generateResponse(
         `Create a children's story based on: ${storyState.responses.join(' ')}`
       );
+
+      // console.log('rawStoryText:', rawStoryText);
+      // console.log('imageUrl:', imageUrl);
 
       // Process the story to remove the prompt and extract just the story content
       let processedStoryText = rawStoryText;
@@ -161,8 +168,8 @@ export function useStory() {
       // Update the story state with the processed content
       setStory((prev) => ({ ...prev, content: processedStoryText }));
 
-      // Generate image based on the processed story
-      const imageUrl = await HuggingFaceService.generateImage(processedStoryText);
+      // // Generate image based on the processed story
+      // const imageUrl = await HuggingFaceService.generateImage(processedStoryText);
 
       // Update story with content and image
       setStory({

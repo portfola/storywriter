@@ -13,7 +13,7 @@ class HuggingFaceService {
     headers: { 'Authorization': `Bearer ${API_KEY}` },
   });
 
-  async generateFullStory(prompt: string): Promise<{ text: string; imageUrl: string | null }> {
+  async generateResponse(prompt: string): Promise<{ text: string; imageUrl: string | null }> {
     if (!prompt.trim()) throw new Error('Invalid prompt');
   
     // Step 1: Generate the story text
@@ -28,7 +28,6 @@ class HuggingFaceService {
     });
   
     const generatedText = textResponse.data[0]?.generated_text.trim() || 'No response';
-  
     // Step 2: Generate the image
     const imageRes = await axios.post(
       IMAGE_API_URL,
@@ -41,13 +40,14 @@ class HuggingFaceService {
   
     const base64Image = base64.fromByteArray(new Uint8Array(imageRes.data));
     const imageUrl = `data:image/jpeg;base64,${base64Image}`;
-  
-    // Step 3: Persist the story to Laravel backend
-    await axios.post('http://127.0.0.1:8001/api/stories', {
-      title: prompt.slice(0, 50), // Trim title from prompt or improve this logic
-      content: generatedText,
-      image_url: imageUrl,
-    });
+
+    axios.post('http://127.0.0.1:8001/api/stories', {
+      title: prompt.slice(0, 50),
+      body: generatedText,
+      images: imageUrl,
+  }).catch((err) => {
+      console.error('Failed to save to Laravel, but proceeding anyway', err);
+  });
   
     return { text: generatedText, imageUrl };
   }
