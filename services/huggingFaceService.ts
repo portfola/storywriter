@@ -4,7 +4,8 @@ import base64 from 'base64-js'; // ✅ Use base64-js instead of Buffer
 
 const API_KEY = Constants.expoConfig?.extra?.HUGGING_FACE_API_KEY;
 //const TEXT_API_URL = 'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3';
-const TEXT_API_URL  = 'moonshotai/Kimi-K2-Instruct';
+// const TEXT_API_URL  = 'moonshotai/Kimi-K2-Instruct';
+const TEXT_API_URL = 'meta-llama/Llama-2-70b-chat-hf';
 const IMAGE_API_URL = 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0';
 
 // ✅ Dynamic backend URL
