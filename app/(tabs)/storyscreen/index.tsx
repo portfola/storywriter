@@ -6,7 +6,7 @@ import ResponseList from '@/components/ResponseList/ResponseList';
 import SpeechControls from '@/components/SpeechControls/SpeechControls';
 import GenerateButton from '@/components/GenerateButton/GenerateButton';
 import StoryContent from '@/components/StoryContent/StoryContent';
-import { s } from './storyscreen.style';
+import { s } from '@/assets/styles/storyscreen.style';
 
 
 const StoryScreen = () => {

@@ -18,7 +18,9 @@ export default ({ config }) => ({
       backgroundColor: "#ffffff"
     },
     web: {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "output": "static",
+      "publicPath": "/storywriter/"
     },
     ios: {
       supportsTablet: true,
