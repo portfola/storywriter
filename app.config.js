@@ -45,6 +45,8 @@ export default ({ config }) => ({
       "expo-dev-client"
     ],
     extra: {
+      TOGETHER_API_KEY: process.env.TOGETHER_API_KEY,
+      ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY,
       HUGGING_FACE_API_KEY: process.env.HUGGING_FACE_API_KEY,
       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,

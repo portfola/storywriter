@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import Layout from '../../components/Layout/Layout';
 import { useStory } from '@/hooks/useStory';
 import ResponseList from '@/components/ResponseList/ResponseList';
@@ -7,12 +7,13 @@ import SpeechControls from '@/components/SpeechControls/SpeechControls';
 import GenerateButton from '@/components/GenerateButton/GenerateButton';
 import StoryContent from '@/components/StoryContent/StoryContent';
 import { s } from './StoryScreen.style';
+import ElevenLabsWidget from '@/components/ElevenLabsWidget/ElevenLabsWidget';
 
 const StoryScreen = () => {
   const {
     storyState,
     story,
-    startListening,
+    // startElevenLabsConversation,
     handleConversationComplete,
     generateStoryWithImages,
   } = useStory();
@@ -20,7 +21,6 @@ const StoryScreen = () => {
   const {
     question,
     responses,
-    isListening,
     isGenerating,
     conversationComplete,
   } = storyState;
@@ -33,16 +33,22 @@ const StoryScreen = () => {
             <Text style={s.questionText}>{question}</Text>
 
             {!conversationComplete && (
-              <SpeechControls
-                isListening={isListening}
-                onStart={startListening}
-                onStop={handleConversationComplete}
-              />
+              <View style={{ flex: 1, width: '100%' }}>
+              <ElevenLabsWidget onConversationComplete={handleConversationComplete} />
+              
+              {/* Test button for manual completion */}
+              <TouchableOpacity 
+                style={[s.button, { marginTop: 10 }]} 
+                onPress={() => handleConversationComplete("I want a story about a brave dragon who helps children learn to read")}
+              >
+                <Text style={s.buttonText}>Skip to Story Generation (Test)</Text>
+              </TouchableOpacity>
+            </View>
             )}
 
             {responses.length > 0 && <ResponseList responses={responses} />}
 
-            {(conversationComplete || responses.length > 0) && (
+            {conversationComplete && (
               <GenerateButton
                 isGenerating={isGenerating}
                 onGenerate={generateStoryWithImages}

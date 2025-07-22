@@ -25,6 +25,9 @@ An active connection to Hugging Face API is required ([https://huggingface.co](h
 
 ## Dev Notes
 
+### Jul 2025
+We've got a bit sidetracked as we tried to work out a web deployment using PHP Laravel as a back end. While Tim has been working on that, I've started trying to rework the initial story prompting using a conversational agent from ElevenLabs.
+
 ### Apr 2025
 Planned updates:
 
