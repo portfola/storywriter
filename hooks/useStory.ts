@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import TogetherAIService from '@/services/togetherAiService';
 import ElevenLabsService from '@/services/elevenLabsService';
+import { AudioGenerationResult, ElevenLabsError } from '@/types/elevenlabs';
 
 export interface StorySection {
   text: string;
@@ -15,6 +16,8 @@ export interface StoryState {
   isGenerating: boolean;
   storyContent: StorySection[];
   generatedStory: string | null;
+  isGeneratingAudio: boolean;
+  audioError: string | null;
 }
 
 export interface StoryContent {
@@ -31,6 +34,8 @@ export function useStory() {
     isGenerating: false,
     storyContent: [],
     generatedStory: null,
+    isGeneratingAudio: false,
+    audioError: null,
   });
 
   const [story, setStory] = useState<StoryContent>({
@@ -38,11 +43,59 @@ export function useStory() {
     sections: [],
   });
 
-  // Function to start ElevenLabs conversation (placeholder)
-  // const startElevenLabsConversation = () => {
-  //   console.log('Starting StoryWriter Agent conversation...');
-  //   ElevenLabsService.startConversation(handleConversationComplete);
-  // };
+  // Generate audio for story prompt using ElevenLabs TTS
+  const generateStoryPromptAudio = async (prompt: string): Promise<AudioGenerationResult | null> => {
+    setStoryState(prev => ({ 
+      ...prev, 
+      isGeneratingAudio: true, 
+      audioError: null 
+    }));
+
+    try {
+      const audioResult = await ElevenLabsService.generateStoryPromptSpeech(prompt);
+      console.log('✅ Story prompt audio generated successfully');
+      return audioResult;
+    } catch (error) {
+      const elevenlabsError = error as ElevenLabsError;
+      console.error('❌ Failed to generate story prompt audio:', elevenlabsError.message);
+      
+      setStoryState(prev => ({ 
+        ...prev, 
+        audioError: elevenlabsError.message || 'Failed to generate audio' 
+      }));
+      
+      return null;
+    } finally {
+      setStoryState(prev => ({ ...prev, isGeneratingAudio: false }));
+    }
+  };
+
+  // Generate audio for the complete story
+  const generateStoryAudio = async (storyText: string): Promise<AudioGenerationResult | null> => {
+    setStoryState(prev => ({ 
+      ...prev, 
+      isGeneratingAudio: true, 
+      audioError: null 
+    }));
+
+    try {
+      const audioResult = await ElevenLabsService.generateSpeech(storyText);
+      console.log('✅ Story audio generated successfully');
+      return audioResult;
+    } catch (error) {
+      const elevenlabsError = error as ElevenLabsError;
+      console.error('❌ Failed to generate story audio:', elevenlabsError.message);
+      
+      setStoryState(prev => ({ 
+        ...prev, 
+        audioError: elevenlabsError.message || 'Failed to generate audio' 
+      }));
+      
+      return null;
+    } finally {
+      setStoryState(prev => ({ ...prev, isGeneratingAudio: false }));
+    }
+  };
 
   // Handle when ElevenLabs conversation is complete
   const handleConversationComplete = (transcript: string) => {
@@ -88,8 +141,9 @@ export function useStory() {
   return {
     storyState,
     story,
-    // startElevenLabsConversation,
     handleConversationComplete,
     generateStoryWithImages,
+    generateStoryPromptAudio,
+    generateStoryAudio,
   };
 }

@@ -15,6 +15,7 @@
     "build:web": "expo export:web"
   },
   "dependencies": {
+    "@elevenlabs/client": "^0.3.0",
     "@elevenlabs/elevenlabs-js": "^2.5.0",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/slider": "4.5.2",

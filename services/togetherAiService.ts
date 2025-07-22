@@ -7,6 +7,10 @@ class TogetherAIService {
   private client: Together;
 
   constructor() {
+    if (!TOGETHER_API_KEY) {
+      throw new Error('TOGETHER_API_KEY is not configured in environment variables. Please add it to your app.config.js and environment.');
+    }
+
     this.client = new Together({
       apiKey: TOGETHER_API_KEY,
     });
