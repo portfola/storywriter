@@ -1,38 +1,46 @@
+/**
+ * AWS Transcribe Native Service (Optional - Not Currently Used)
+ * 
+ * This service would provide AWS Transcribe speech-to-text functionality for native platforms.
+ * Currently disabled in favor of ElevenLabs Conversational AI, but available for future use.
+ */
+
 import { TranscribeServiceInterface } from './types';
 
-/**
- * Native implementation of the TranscribeService for iOS/Android
- * 
- * This is a placeholder implementation that will be properly
- * implemented in the future for native platforms.
- */
-class NativeTranscribeService implements TranscribeServiceInterface {
-  private _isTranscribing: boolean = false;
+class TranscribeNativeService implements TranscribeServiceInterface {
+  private isActive = false;
 
   async startTranscription(onTranscript: (text: string) => void): Promise<void> {
-    console.warn('Native transcription is not yet implemented. Please use web version for now.');
-    this._isTranscribing = true;
-    
-    // This is where you would implement native voice recognition
-    // For now, we'll just simulate this with a timeout to avoid blocking
-    setTimeout(() => {
-      if (this._isTranscribing) {
-        onTranscript('Native transcription not implemented yet.');
-        this._isTranscribing = false;
-      }
-    }, 2000);
+    console.warn('⚠️ AWS Transcribe native implementation not yet built');
+    throw new Error('AWS Transcribe native service not implemented. Use ElevenLabs Conversational AI instead.');
   }
 
   async stopTranscription(): Promise<void> {
-    console.warn('Stopping native transcription (not fully implemented)');
-    this._isTranscribing = false;
-    // Future implementation will include stopping the native voice recognition
+    this.isActive = false;
+    console.log('📝 Transcription stopped (placeholder)');
   }
 
   isTranscribing(): boolean {
-    return this._isTranscribing;
+    return this.isActive;
+  }
+
+  /**
+   * Check if native Transcribe service is available
+   */
+  isConfigured(): boolean {
+    return false; // Native implementation not built yet
+  }
+
+  /**
+   * Get service configuration status
+   */
+  getStatus(): { configured: boolean; active: boolean; platform: string } {
+    return {
+      configured: false,
+      active: this.isActive,
+      platform: 'native (not implemented)'
+    };
   }
 }
 
-// Export a singleton instance as the default export
-export default new NativeTranscribeService();
+export default new TranscribeNativeService();

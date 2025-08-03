@@ -1,18 +1,11 @@
-import { s } from "@/assets/styles/home.style";
 import React from 'react';
-import { View, Text, TouchableOpacity, Pressable, StyleSheet } from 'react-native';
-import { useRouter, Link } from 'expo-router';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '@/src/navigation/types';
-
-type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
-
-
+import { View, Text, TouchableOpacity } from 'react-native';
+import { Link } from 'expo-router';
 import Layout from '../../components/Layout/Layout';
+import { s } from '../../pages/Home/Home.style';
 
 
 export default function HomeScreen() {
-  const router = useRouter();
   
   return (
     <Layout>
