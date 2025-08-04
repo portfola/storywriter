@@ -2,14 +2,17 @@ import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StoryPage } from '@/src/utils/storyGenerator';
+import TogetherAIService from '@/services/togetherAiService';
+import ElevenLabsService from '@/services/elevenLabsService';
+import { AudioGenerationResult, ElevenLabsError } from '@/types/elevenlabs';
 
 // Define all possible states of our conversation
 export type ConversationPhase = 
-  | 'INITIAL'           // Just started, no interaction yet
-  | 'INTERVIEWING'      // Actively asking questions
-  | 'PROCESSING'        // Processing user's response
-  | 'GENERATING_STORY'  // Creating the story
-  | 'DISPLAYING_STORY'; // Showing the generated story
+  | 'INITIAL'              // Just started, no interaction yet
+  | 'CONVERSATION_ACTIVE'  // Actively asking questions and getting responses
+  | 'TRANSCRIPT_READY'     // Transcript is ready, can generate story
+  | 'STORY_GENERATING'     // Creating the story
+  | 'STORY_COMPLETE';      // Story has been generated and is ready
 
 // Define the structure of our conversation turns
 export interface ConversationTurn {
@@ -30,6 +33,18 @@ export interface SavedStory {
 // Define story elements structure
 export interface StoryElements {
   [key: string]: string;
+}
+
+// Define story section structure from useStory
+export interface StorySection {
+  text: string;
+  imageUrl: string | null;
+}
+
+// Define story content structure from useStory
+export interface StoryContent {
+  content: string | null;
+  sections: StorySection[];
 }
 
 // Define what information we need to track about speech
@@ -53,7 +68,18 @@ export interface ConversationState extends SpeechState, StoryState {
   phase: ConversationPhase;
   conversationHistory: ConversationTurn[];
   currentQuestion: string;
+  transcript: string;
   error: string | null;
+  
+  // New unified story state from useStory
+  responses: string[];
+  conversationComplete: boolean;
+  isGenerating: boolean;
+  storyContent: StorySection[];
+  generatedStory: string | null;
+  isGeneratingAudio: boolean;
+  audioError: string | null;
+  story: StoryContent;
   
   // Story management actions
   setStoryPages: (pages: StoryPage[]) => void;
@@ -73,6 +99,12 @@ export interface ConversationState extends SpeechState, StoryState {
   setSpeechState: (speechState: Partial<SpeechState>) => void;
   resetConversation: () => void;
   setError: (error: string | null) => void;
+  
+  // New actions from useStory
+  handleConversationComplete: (transcript: string) => void;
+  generateStoryWithImages: () => Promise<void>;
+  generateStoryPromptAudio: (prompt: string) => Promise<AudioGenerationResult | null>;
+  generateStoryAudio: (storyText: string) => Promise<AudioGenerationResult | null>;
 }
 
 const useConversationStore = create<ConversationState>()(
@@ -80,7 +112,8 @@ const useConversationStore = create<ConversationState>()(
     (set, get) => ({
       phase: 'INITIAL',
       conversationHistory: [],
-      currentQuestion: '',
+      currentQuestion: 'What kind of story shall we create together?',
+      transcript: '',
       error: null,
       isListening: false,
       isSpeaking: false,
@@ -91,27 +124,43 @@ const useConversationStore = create<ConversationState>()(
       storyElements: {},
       savedStories: [],
       
+      // New unified story state from useStory
+      responses: [],
+      conversationComplete: false,
+      isGenerating: false,
+      storyContent: [],
+      generatedStory: null,
+      isGeneratingAudio: false,
+      audioError: null,
+      story: {
+        content: null,
+        sections: [],
+      },
+      
       // Actions are simplified to avoid nested updates
       startConversation: () => {
         set({
-          phase: 'INTERVIEWING',
+          phase: 'CONVERSATION_ACTIVE',
           conversationHistory: [{
             role: 'system',
             content: 'You are a friendly children\'s story creator assistant.',
             timestamp: Date.now()
           }],
-          currentQuestion: 'What kind of story would you like to create today?',
+          currentQuestion: 'What kind of story shall we create together?',
           error: null,
           isListening: false,
-          isSpeaking: false
+          isSpeaking: false,
+          responses: [],
+          conversationComplete: false,
+          transcript: ''
         });
       },
 
       addUserResponse: (response: string) => {
-        const { conversationHistory, phase } = get();
+        const { conversationHistory, phase, responses } = get();
         
         // Only add response if we're in the right phase
-        if (phase !== 'INTERVIEWING' && phase !== 'PROCESSING') {
+        if (phase !== 'CONVERSATION_ACTIVE') {
           console.warn('Attempted to add user response in invalid phase:', phase);
           return;
         }
@@ -125,7 +174,7 @@ const useConversationStore = create<ConversationState>()(
               timestamp: Date.now()
             }
           ],
-          phase: 'PROCESSING'
+          responses: [...responses, response]
         });
       },
 
@@ -142,7 +191,7 @@ const useConversationStore = create<ConversationState>()(
               timestamp: Date.now()
             }
           ],
-          phase: 'INTERVIEWING'
+          phase: 'CONVERSATION_ACTIVE'
         });
       },
 
@@ -161,10 +210,22 @@ const useConversationStore = create<ConversationState>()(
         set({
           phase: 'INITIAL',
           conversationHistory: [],
-          currentQuestion: '',
+          currentQuestion: 'What kind of story shall we create together?',
+          transcript: '',
           error: null,
           isListening: false,
-          isSpeaking: false
+          isSpeaking: false,
+          responses: [],
+          conversationComplete: false,
+          isGenerating: false,
+          storyContent: [],
+          generatedStory: null,
+          isGeneratingAudio: false,
+          audioError: null,
+          story: {
+            content: null,
+            sections: [],
+          }
         });
       },
 
@@ -176,7 +237,7 @@ const useConversationStore = create<ConversationState>()(
         set({
           storyPages: pages,
           currentPageIndex: 0,  // Reset to first page when setting new pages
-          phase: 'DISPLAYING_STORY'
+          phase: 'STORY_COMPLETE'
         });
       },
 
@@ -243,7 +304,7 @@ const useConversationStore = create<ConversationState>()(
           storyPages: story.content,
           storyElements: story.elements,
           currentPageIndex: 0,
-          phase: 'DISPLAYING_STORY'
+          phase: 'STORY_COMPLETE'
         });
       },
 
@@ -257,6 +318,102 @@ const useConversationStore = create<ConversationState>()(
         } catch (error) {
           console.error('Failed to load saved stories:', error);
           throw new Error('Failed to load saved stories');
+        }
+      },
+      
+      // New actions from useStory
+      handleConversationComplete: (transcript: string) => {
+        set({
+          responses: [transcript],
+          transcript,
+          isListening: false,
+          conversationComplete: true,
+          phase: 'TRANSCRIPT_READY'
+        });
+      },
+
+      generateStoryWithImages: async () => {
+        const { responses } = get();
+        set({ isGenerating: true, phase: 'STORY_GENERATING' });
+
+        try {
+          const { text: rawStoryText, imageUrl } = await TogetherAIService.generateResponse(
+            `Create a children's story based on: ${responses.join(' ')}`
+          );
+
+          // Process story text (remove prompt if needed)
+          let processedStoryText = rawStoryText;
+
+          // Look for "Title: " as the marker to start the actual story
+          const titleIndex = rawStoryText.indexOf("Title: ");
+          if (titleIndex !== -1) {
+            // Found the title marker, extract everything from this point onward
+            processedStoryText = rawStoryText.substring(titleIndex + 7);
+          }
+
+          // Update the story state with the processed content
+          set({
+            story: {
+              content: processedStoryText,
+              sections: [{ text: processedStoryText, imageUrl }],
+            },
+            generatedStory: processedStoryText,
+            storyContent: [{ text: processedStoryText, imageUrl }],
+            phase: 'STORY_COMPLETE'
+          });
+        } catch (error) {
+          console.error('❌ Error generating story:', error);
+          set({ error: 'Failed to generate story. Please try again.' });
+        } finally {
+          set({ isGenerating: false });
+        }
+      },
+
+      generateStoryPromptAudio: async (prompt: string): Promise<AudioGenerationResult | null> => {
+        set({ 
+          isGeneratingAudio: true, 
+          audioError: null 
+        });
+
+        try {
+          const audioResult = await ElevenLabsService.generateStoryPromptSpeech(prompt);
+          console.log('✅ Story prompt audio generated successfully');
+          return audioResult;
+        } catch (error) {
+          const elevenlabsError = error as ElevenLabsError;
+          console.error('❌ Failed to generate story prompt audio:', elevenlabsError.message);
+          
+          set({ 
+            audioError: elevenlabsError.message || 'Failed to generate audio' 
+          });
+          
+          return null;
+        } finally {
+          set({ isGeneratingAudio: false });
+        }
+      },
+
+      generateStoryAudio: async (storyText: string): Promise<AudioGenerationResult | null> => {
+        set({ 
+          isGeneratingAudio: true, 
+          audioError: null 
+        });
+
+        try {
+          const audioResult = await ElevenLabsService.generateSpeech(storyText);
+          console.log('✅ Story audio generated successfully');
+          return audioResult;
+        } catch (error) {
+          const elevenlabsError = error as ElevenLabsError;
+          console.error('❌ Failed to generate story audio:', elevenlabsError.message);
+          
+          set({ 
+            audioError: elevenlabsError.message || 'Failed to generate audio' 
+          });
+          
+          return null;
+        } finally {
+          set({ isGeneratingAudio: false });
         }
       }
     })

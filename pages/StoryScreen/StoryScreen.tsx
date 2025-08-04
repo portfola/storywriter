@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import Layout from '../../components/Layout/Layout';
-import { useStory } from '@/hooks/useStory';
+import { useConversationStore } from '@/src/stores/conversationStore';
 import ResponseList from '@/components/ResponseList/ResponseList';
 import GenerateButton from '@/components/GenerateButton/GenerateButton';
 import StoryContent from '@/components/StoryContent/StoryContent';
@@ -10,19 +10,14 @@ import { s } from './StoryScreen.style';
 
 const StoryScreen = () => {
   const {
-    storyState,
-    story,
-    // startElevenLabsConversation,
-    handleConversationComplete,
-    generateStoryWithImages,
-  } = useStory();
-
-  const {
-    question,
+    currentQuestion: question,
     responses,
     isGenerating,
     conversationComplete,
-  } = storyState;
+    story,
+    handleConversationComplete,
+    generateStoryWithImages,
+  } = useConversationStore();
 
   return (
     <Layout>
