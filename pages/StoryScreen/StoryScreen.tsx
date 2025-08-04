@@ -3,16 +3,16 @@ import { View, Text } from 'react-native';
 import Layout from '../../components/Layout/Layout';
 import { useStory } from '@/hooks/useStory';
 import ResponseList from '@/components/ResponseList/ResponseList';
-import SpeechControls from '@/components/SpeechControls/SpeechControls';
 import GenerateButton from '@/components/GenerateButton/GenerateButton';
 import StoryContent from '@/components/StoryContent/StoryContent';
+import ConversationInterface from '@/components/ConversationInterface/ConversationInterface';
 import { s } from './StoryScreen.style';
 
 const StoryScreen = () => {
   const {
     storyState,
     story,
-    startListening,
+    // startElevenLabsConversation,
     handleConversationComplete,
     generateStoryWithImages,
   } = useStory();
@@ -20,7 +20,6 @@ const StoryScreen = () => {
   const {
     question,
     responses,
-    isListening,
     isGenerating,
     conversationComplete,
   } = storyState;
@@ -33,16 +32,15 @@ const StoryScreen = () => {
             <Text style={s.questionText}>{question}</Text>
 
             {!conversationComplete && (
-              <SpeechControls
-                isListening={isListening}
-                onStart={startListening}
-                onStop={handleConversationComplete}
+              <ConversationInterface 
+                onConversationComplete={handleConversationComplete}
+                disabled={isGenerating}
               />
             )}
 
             {responses.length > 0 && <ResponseList responses={responses} />}
 
-            {(conversationComplete || responses.length > 0) && (
+            {conversationComplete && (
               <GenerateButton
                 isGenerating={isGenerating}
                 onGenerate={generateStoryWithImages}

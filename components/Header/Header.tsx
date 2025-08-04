@@ -21,7 +21,6 @@ const Header = () => {
             <Text style={s.link}>Home</Text>
           </TouchableOpacity>
         </Link>
-
         <Link href="/storyscreen" asChild>
           <TouchableOpacity>
             <Text style={s.link}>Story</Text>
