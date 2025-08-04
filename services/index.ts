@@ -8,6 +8,7 @@
 // === ACTIVE SERVICES ===
 export { default as ElevenLabsService } from './elevenLabsService';
 export { default as TogetherAIService } from './togetherAiService';
+export { default as StoryGenerationService } from './storyGenerationService';
 
 // === FUTURE/ALTERNATIVE SERVICES ===
 // These are available but not currently used
@@ -21,6 +22,7 @@ export { default as TranscribeService } from './transcribe';
  * CURRENTLY ACTIVE:
  * - ElevenLabsService: Conversational AI agent + TTS (Primary)
  * - TogetherAIService: Text + Image generation (Primary)
+ * - StoryGenerationService: Conversation-to-story pipeline (Primary)
  * 
  * AVAILABLE FOR FUTURE USE:
  * - HuggingFaceService: Alternative text + image generation
