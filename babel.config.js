@@ -3,17 +3,18 @@ module.exports = function(api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      [
-        'module-resolver',
-        {
-          root: ['.'],
-          alias: {
-            '@': '.',
-            "@env": "./.env", // ✅ Explicitly add @env alias
-          },
+      '@babel/plugin-transform-class-static-block', // ✅ AWS SDK support
+
+      ['module-resolver', {
+        root: ['.'],
+        alias: {
+          '@': '.',
+          '@env': './.env',
         },
-      ],
-      "module:react-native-dotenv",
+      }],
+
+      'module:react-native-dotenv', // ✅ Environment variables
+      'expo-router/babel'           // ✅ Required for expo-router
     ],
   };
-}
+};

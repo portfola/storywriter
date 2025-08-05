@@ -11,5 +11,7 @@ npm-debug.*
 web-build/
 .env
 repomix*
+CLAUDE.md
+
 # macOS
 .DS_Store

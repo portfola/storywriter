@@ -18,7 +18,9 @@ export default ({ config }) => ({
       backgroundColor: "#ffffff"
     },
     web: {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "output": "static",
+      "publicPath": "/storywriter/"
     },
     ios: {
       supportsTablet: true,
@@ -45,10 +47,19 @@ export default ({ config }) => ({
       "expo-dev-client"
     ],
     extra: {
+      // Primary AI Services (Currently Active)
+      TOGETHER_API_KEY: process.env.TOGETHER_API_KEY,
+      ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY,
+      
+      // Alternative AI Services (Available for Future Use)
       HUGGING_FACE_API_KEY: process.env.HUGGING_FACE_API_KEY,
       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
       AWS_REGION: process.env.AWS_REGION,
+      
+      // Backend Integration (Optional)
+      BACKEND_URL: process.env.BACKEND_URL,
+      
       eas: {
         projectId: "ddc93476-3b8d-4b46-8ffa-de979a17a116"
       }
