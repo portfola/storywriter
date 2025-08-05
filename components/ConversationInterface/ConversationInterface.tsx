@@ -1,7 +1,110 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import ElevenLabsService from '@/services/elevenLabsService';
 import { ConversationSession } from '@/types/elevenlabs';
+import { useConversationStore } from '@/src/stores/conversationStore';
+
+// Enhanced function to detect when the agent is signaling conversation end
+const detectConversationEnd = (agentText: string): boolean => {
+  const lowercaseText = agentText.toLowerCase();
+  console.log('🔍 Analyzing agent message for end patterns:', agentText);
+  
+  // Story processing/creation keywords (broader matching)
+  const storyKeywords = [
+    'story', 'stories', 'tale', 'narrative', 'book'
+  ];
+  
+  // Action verbs that indicate story creation/processing
+  const creationVerbs = [
+    'create', 'creating', 'generate', 'generating', 'write', 'writing',
+    'craft', 'crafting', 'make', 'making', 'build', 'building',
+    'work on', 'working on', 'process', 'processing', 'develop', 'developing'
+  ];
+  
+  // Processing/system references (like "story machine")
+  const systemReferences = [
+    'machine', 'system', 'generator', 'creator', 'engine',
+    'processor', 'builder', 'maker', 'program'
+  ];
+  
+  // Transition phrases that indicate moving to next step
+  const transitionPhrases = [
+    'i\'m going to', 'i\'ll go ahead and', 'let me', 'i\'ll', 'time to',
+    'ready to', 'going to', 'about to', 'now i\'ll', 'i\'m going to go ahead',
+    'enter this into', 'put this into', 'send this to', 'input this'
+  ];
+  
+  // Farewell patterns (polite endings)
+  const farewellPatterns = [
+    'have fun', 'have a great', 'have a wonderful', 'have a nice',
+    'enjoy', 'thanks for', 'thank you for', 'goodbye', 'bye',
+    'talk to you later', 'see you later', 'until next time', 'take care',
+    'chat soon', 'speak soon'
+  ];
+  
+  // High-confidence patterns (exact phrases we've seen)
+  const exactPatterns = [
+    'create that story now',
+    'story machine',
+    'story generator',
+    'story creation',
+    'story generation',
+    'enter this into the story',
+    'put this into the story',
+    'going to create your story',
+    'time to create',
+    'ready to create'
+  ];
+  
+  // Check for exact patterns first
+  if (exactPatterns.some(pattern => lowercaseText.includes(pattern))) {
+    console.log('✅ EXACT PATTERN MATCH FOUND!');
+    return true;
+  }
+  
+  // Check for combinations that indicate story processing
+  const hasStoryKeyword = storyKeywords.some(keyword => lowercaseText.includes(keyword));
+  const hasCreationVerb = creationVerbs.some(verb => lowercaseText.includes(verb));
+  const hasSystemRef = systemReferences.some(ref => lowercaseText.includes(ref));
+  const hasTransition = transitionPhrases.some(phrase => lowercaseText.includes(phrase));
+  const hasFarewell = farewellPatterns.some(pattern => lowercaseText.includes(pattern));
+  
+  console.log('📊 Pattern analysis:', {
+    hasStoryKeyword,
+    hasCreationVerb,
+    hasSystemRef,
+    hasTransition,
+    hasFarewell
+  });
+  
+  // Advanced pattern matching
+  // Pattern 1: Transition + Story + (Creation OR System)
+  if (hasTransition && hasStoryKeyword && (hasCreationVerb || hasSystemRef)) {
+    console.log('✅ PATTERN 1 MATCH: Transition + Story + (Creation OR System)');
+    return true;
+  }
+  
+  // Pattern 2: "enter/put this into" + story-related
+  if ((lowercaseText.includes('enter this') || lowercaseText.includes('put this')) && hasStoryKeyword) {
+    console.log('✅ PATTERN 2 MATCH: Enter/Put + Story');
+    return true;
+  }
+  
+  // Pattern 3: Farewell + story context (like "have fun" with story mention)
+  if (hasFarewell && hasStoryKeyword) {
+    console.log('✅ PATTERN 3 MATCH: Farewell + Story');
+    return true;
+  }
+  
+  // Pattern 4: System reference + story processing
+  if (hasSystemRef && hasStoryKeyword && (hasCreationVerb || hasTransition)) {
+    console.log('✅ PATTERN 4 MATCH: System + Story + (Creation OR Transition)');
+    return true;
+  }
+  
+  console.log('❌ No end pattern detected');
+  return false;
+};
 
 interface Props {
   onConversationComplete: (transcript: string) => void;
@@ -10,55 +113,106 @@ interface Props {
 
 const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabled = false }) => {
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isConversationActive, setIsConversationActive] = useState(false);
   const [conversationSession, setConversationSession] = useState<ConversationSession | null>(null);
-  const [messages, setMessages] = useState<string[]>([]);
+  const [lastAgentMessage, setLastAgentMessage] = useState<number>(0);
+  const [inactivityTimeout, setInactivityTimeout] = useState<NodeJS.Timeout | null>(null);
+  
+  // Use the enhanced conversation store
+  const {
+    phase,
+    dialogue,
+    addDialogueTurn,
+    endConversation,
+    normalizedTranscript,
+    startConversation: storeStartConversation,
+    setError
+  } = useConversationStore();
+  
+  const isConversationActive = phase === 'CONVERSATION_ACTIVE';
+
+  // Auto-trigger onConversationComplete when transcript is ready
+  useEffect(() => {
+    if (normalizedTranscript && phase === 'STORY_GENERATING') {
+      onConversationComplete(normalizedTranscript);
+    }
+  }, [normalizedTranscript, phase, onConversationComplete]);
+
+  // Cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      // Clean up timeout
+      if (inactivityTimeout) {
+        clearTimeout(inactivityTimeout);
+      }
+      
+      // Clean up conversation
+      if (conversationSession) {
+        console.log('🧹 Component unmounting - cleaning up conversation session');
+        ElevenLabsService.forceCleanup();
+      }
+    };
+  }, [conversationSession, inactivityTimeout]);
 
   const startConversation = async () => {
     if (disabled || isConnecting || isConversationActive) return;
 
     setIsConnecting(true);
-    setMessages([]);
+    storeStartConversation();
 
     try {
       const session = await ElevenLabsService.startConversationAgent({
         onConnect: () => {
           console.log('✅ Connected to StoryWriter Agent');
           setIsConnecting(false);
-          setIsConversationActive(true);
         },
         
         onDisconnect: () => {
-          console.log('❌ Disconnected from StoryWriter Agent');
-          setIsConversationActive(false);
+          console.log('❌ Disconnected from StoryWriter Agent - ending conversation');
           setConversationSession(null);
+          
+          // Auto-end conversation when disconnected (only if currently active)
+          endConversation();
         },
         
         onMessage: (message) => {
           console.log('💬 Message received:', message);
           
-          // Handle different message types
-          if (message.type === 'conversation_ended' || message.type === 'agent_response_end') {
-            // Extract user responses from the conversation
-            const userMessages = messages.filter(msg => !msg.startsWith('[Agent]'));
-            const transcript = userMessages.join(' ').trim();
-            
-            if (transcript) {
-              console.log('📝 Conversation transcript:', transcript);
-              onConversationComplete(transcript);
-              endConversation();
-            }
-          } else if (message.type === 'user_transcript' || message.type === 'user_message') {
-            // Add user message to transcript
+          // Capture all message types in structured dialogue
+          if (message.type === 'user_transcript' || message.type === 'user_message') {
             const userText = message.text || message.content || '';
             if (userText.trim()) {
-              setMessages(prev => [...prev, userText]);
+              console.log('👤 User:', userText);
+              addDialogueTurn('user', userText);
             }
           } else if (message.type === 'agent_response' || message.type === 'agent_message') {
-            // Log agent responses but don't include in final transcript
             const agentText = message.text || message.content || '';
             if (agentText.trim()) {
-              setMessages(prev => [...prev, `[Agent]: ${agentText}`]);
+              console.log('🤖 Agent:', agentText);
+              addDialogueTurn('agent', agentText);
+              setLastAgentMessage(Date.now());
+              
+              // Clear any existing inactivity timeout
+              if (inactivityTimeout) {
+                clearTimeout(inactivityTimeout);
+                setInactivityTimeout(null);
+              }
+              
+              // Intelligent conversation end detection based on agent closing statements
+              if (detectConversationEnd(agentText)) {
+                console.log('🔚 DETECTED CONVERSATION END!');
+                console.log('📝 Agent message that triggered end:', agentText);
+                console.log('⏰ Auto-ending conversation in 2 seconds...');
+                setTimeout(() => {
+                  handleEndConversation();
+                }, 2000); // Give 2 seconds for the agent to finish speaking
+              } else {
+                // Set inactivity timeout as backup (30 seconds after last agent message)
+                const timeout = setTimeout(() => {
+                  console.log('⏰ Conversation inactivity timeout - auto-ending conversation');
+                  handleEndConversation();
+                }, 30000);
+                setInactivityTimeout(timeout);
+              }
             }
           }
         },
@@ -66,8 +220,8 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
         onError: (error) => {
           console.error('❌ Conversation error:', error);
           setIsConnecting(false);
-          setIsConversationActive(false);
           setConversationSession(null);
+          setError('Failed to connect to the StoryWriter Agent. Please try again or use the test button.');
           
           Alert.alert(
             'Conversation Error',
@@ -99,7 +253,13 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
     }
   };
 
-  const endConversation = async () => {
+  const handleEndConversation = async () => {
+    // Clean up inactivity timeout
+    if (inactivityTimeout) {
+      clearTimeout(inactivityTimeout);
+      setInactivityTimeout(null);
+    }
+    
     if (conversationSession) {
       try {
         await conversationSession.endSession();
@@ -108,8 +268,8 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
       }
     }
     
-    setIsConversationActive(false);
     setConversationSession(null);
+    endConversation(); // Use store's endConversation method
   };
 
   const handleTestMode = () => {
@@ -143,30 +303,52 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
         </Text>
       </TouchableOpacity>
 
-      {/* Active Conversation Status */}
+      {/* Enhanced Conversation Status */}
       {isConversationActive && (
         <View style={styles.statusContainer}>
           <Text style={styles.statusText}>
-            🎙️ Listening... Speak your story ideas!
+            🎙️ Conversation Active - Speak naturally with the StoryWriter Agent!
           </Text>
           <TouchableOpacity
             style={styles.endButton}
-            onPress={endConversation}
+            onPress={handleEndConversation}
           >
             <Text style={styles.endButtonText}>End Conversation</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Messages Display */}
-      {messages.length > 0 && (
+      {/* Enhanced Status Display */}
+      {phase === 'CONVERSATION_ENDED' && (
+        <View style={styles.processingContainer}>
+          <Text style={styles.processingText}>
+            📝 Conversation ended - processing transcript...
+          </Text>
+        </View>
+      )}
+
+      {phase === 'TRANSCRIPT_PROCESSING' && (
+        <View style={styles.processingContainer}>
+          <Text style={styles.processingText}>
+            🔄 Normalizing transcript and preparing story generation...
+          </Text>
+        </View>
+      )}
+
+      {/* Live Conversation Display */}
+      {dialogue.length > 0 && isConversationActive && (
         <View style={styles.messagesContainer}>
-          <Text style={styles.messagesTitle}>Conversation:</Text>
-          {messages.slice(-3).map((message, index) => (
+          <Text style={styles.messagesTitle}>Live Conversation:</Text>
+          {dialogue.slice(-3).map((turn, index) => (
             <Text key={index} style={styles.messageText}>
-              {message}
+              {turn.role === 'user' ? '👤 You' : '🤖 Agent'}: {turn.content}
             </Text>
           ))}
+          {dialogue.length > 3 && (
+            <Text style={styles.moreMessagesText}>
+              ... and {dialogue.length - 3} more exchanges
+            </Text>
+          )}
         </View>
       )}
 
@@ -297,6 +479,28 @@ const styles = {
     color: '#666',
     textAlign: 'center' as const,
     fontStyle: 'italic' as const,
+  },
+  processingContainer: {
+    backgroundColor: '#fff3cd',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 15,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: '#ffeaa7',
+  },
+  processingText: {
+    fontSize: 14,
+    color: '#856404',
+    textAlign: 'center' as const,
+    fontWeight: '500' as const,
+  },
+  moreMessagesText: {
+    fontSize: 11,
+    color: '#999',
+    fontStyle: 'italic' as const,
+    textAlign: 'center' as const,
+    marginTop: 5,
   },
 };
 

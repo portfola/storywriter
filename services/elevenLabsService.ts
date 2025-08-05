@@ -270,15 +270,38 @@ export class ElevenLabsService {
   }
 
   /**
-   * End the current conversation session
+   * End the current conversation session with proper cleanup
    */
   async endConversationAgent(): Promise<void> {
     if (this.currentConversation) {
       try {
+        // Properly dispose of the conversation session
         await this.currentConversation.endSession();
         console.log('✅ Conversation ended successfully');
       } catch (error) {
         console.error('❌ Error ending conversation:', error);
+        // Continue with cleanup even if endSession fails
+      } finally {
+        // Ensure cleanup happens regardless of success/failure
+        this.currentConversation = null;
+      }
+    }
+  }
+
+  /**
+   * Force cleanup of any active conversation resources
+   */
+  forceCleanup(): void {
+    if (this.currentConversation) {
+      console.log('🧹 Force cleaning up conversation resources');
+      
+      try {
+        // Attempt graceful shutdown first
+        this.currentConversation.endSession().catch((error) => {
+          console.warn('⚠️ Error during force cleanup:', error);
+        });
+      } catch (error) {
+        console.warn('⚠️ Error during force cleanup attempt:', error);
       } finally {
         this.currentConversation = null;
       }

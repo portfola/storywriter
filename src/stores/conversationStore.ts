@@ -5,18 +5,20 @@ import { StoryPage } from '@/src/utils/storyGenerator';
 import TogetherAIService from '@/services/togetherAiService';
 import ElevenLabsService from '@/services/elevenLabsService';
 import { AudioGenerationResult, ElevenLabsError } from '@/types/elevenlabs';
+import { TranscriptNormalizer, DialogueTurn } from '@/src/utils/transcriptNormalizer';
 
-// Define all possible states of our conversation
+// Define all possible states of our conversation - enhanced for better conversation management
 export type ConversationPhase = 
-  | 'INITIAL'              // Just started, no interaction yet
-  | 'CONVERSATION_ACTIVE'  // Actively asking questions and getting responses
-  | 'TRANSCRIPT_READY'     // Transcript is ready, can generate story
-  | 'STORY_GENERATING'     // Creating the story
-  | 'STORY_COMPLETE';      // Story has been generated and is ready
+  | 'INITIAL'                // Just started, no interaction yet
+  | 'CONVERSATION_ACTIVE'    // Actively talking with the agent
+  | 'CONVERSATION_ENDED'     // Conversation ended, transcript captured
+  | 'TRANSCRIPT_PROCESSING'  // Processing and normalizing transcript
+  | 'STORY_GENERATING'       // Creating the story
+  | 'STORY_COMPLETE';        // Story has been generated and is ready
 
-// Define the structure of our conversation turns
+// Define the structure of our conversation turns - enhanced for dialogue management
 export interface ConversationTurn {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'agent';
   content: string;
   timestamp: number;
 }
@@ -63,12 +65,14 @@ export interface StoryState {
   savedStories: SavedStory[];
 }
 
-// Define our complete store state shape
+// Define our complete store state shape - enhanced with structured dialogue
 export interface ConversationState extends SpeechState, StoryState {
   phase: ConversationPhase;
   conversationHistory: ConversationTurn[];
+  dialogue: DialogueTurn[]; // Structured dialogue for better conversation tracking
   currentQuestion: string;
   transcript: string;
+  normalizedTranscript: string; // Cleaned up transcript
   error: string | null;
   
   // New unified story state from useStory
@@ -91,14 +95,18 @@ export interface ConversationState extends SpeechState, StoryState {
   loadStory: (id: string) => Promise<void>;
   loadSavedStories: () => Promise<void>;
   
-  // Existing conversation actions
+  // Enhanced conversation actions
   startConversation: () => void;
   addUserResponse: (response: string) => void;
+  addAgentResponse: (response: string) => void; // New method for agent responses
+  addDialogueTurn: (role: 'user' | 'agent', content: string) => void; // New structured dialogue method
   setQuestion: (question: string) => void;
   setPhase: (phase: ConversationPhase) => void;
   setSpeechState: (speechState: Partial<SpeechState>) => void;
   resetConversation: () => void;
   setError: (error: string | null) => void;
+  endConversation: () => void; // New method to properly end conversations
+  processTranscript: () => void; // New method to normalize transcript
   
   // New actions from useStory
   handleConversationComplete: (transcript: string) => void;
@@ -112,8 +120,10 @@ const useConversationStore = create<ConversationState>()(
     (set, get) => ({
       phase: 'INITIAL',
       conversationHistory: [],
+      dialogue: [], // Initialize structured dialogue array
       currentQuestion: 'What kind of story shall we create together?',
       transcript: '',
+      normalizedTranscript: '', // Initialize normalized transcript
       error: null,
       isListening: false,
       isSpeaking: false,
@@ -146,18 +156,21 @@ const useConversationStore = create<ConversationState>()(
             content: 'You are a friendly children\'s story creator assistant.',
             timestamp: Date.now()
           }],
+          dialogue: [], // Reset structured dialogue
           currentQuestion: 'What kind of story shall we create together?',
           error: null,
           isListening: false,
           isSpeaking: false,
           responses: [],
           conversationComplete: false,
-          transcript: ''
+          transcript: '',
+          normalizedTranscript: ''
         });
       },
 
       addUserResponse: (response: string) => {
-        const { conversationHistory, phase, responses } = get();
+        const { conversationHistory, dialogue, phase, responses } = get();
+        const timestamp = Date.now();
         
         // Only add response if we're in the right phase
         if (phase !== 'CONVERSATION_ACTIVE') {
@@ -171,7 +184,15 @@ const useConversationStore = create<ConversationState>()(
             {
               role: 'user',
               content: response,
-              timestamp: Date.now()
+              timestamp
+            }
+          ],
+          dialogue: [
+            ...dialogue,
+            {
+              role: 'user',
+              content: response,
+              timestamp
             }
           ],
           responses: [...responses, response]
@@ -210,8 +231,10 @@ const useConversationStore = create<ConversationState>()(
         set({
           phase: 'INITIAL',
           conversationHistory: [],
+          dialogue: [], // Reset dialogue
           currentQuestion: 'What kind of story shall we create together?',
           transcript: '',
+          normalizedTranscript: '', // Reset normalized transcript
           error: null,
           isListening: false,
           isSpeaking: false,
@@ -231,6 +254,81 @@ const useConversationStore = create<ConversationState>()(
 
       setError: (error: string | null) => {
         set({ error });
+      },
+
+      // New enhanced conversation methods
+      addAgentResponse: (response: string) => {
+        const { conversationHistory, dialogue } = get();
+        const timestamp = Date.now();
+        
+        set({
+          conversationHistory: [
+            ...conversationHistory,
+            {
+              role: 'agent',
+              content: response,
+              timestamp
+            }
+          ],
+          dialogue: [
+            ...dialogue,
+            {
+              role: 'agent',
+              content: response,
+              timestamp
+            }
+          ]
+        });
+      },
+
+      addDialogueTurn: (role: 'user' | 'agent', content: string) => {
+        const { dialogue } = get();
+        const timestamp = Date.now();
+        
+        set({
+          dialogue: [
+            ...dialogue,
+            {
+              role,
+              content,
+              timestamp
+            }
+          ]
+        });
+      },
+
+      endConversation: () => {
+        set({
+          phase: 'CONVERSATION_ENDED',
+          isListening: false,
+          isSpeaking: false
+        });
+        
+        // Process the transcript after ending
+        get().processTranscript();
+      },
+
+      processTranscript: () => {
+        const { dialogue } = get();
+        
+        set({ phase: 'TRANSCRIPT_PROCESSING' });
+        
+        // Generate normalized transcript using the utility
+        const normalizedTranscript = TranscriptNormalizer.extractUserContent(dialogue);
+        const fullTranscript = TranscriptNormalizer.generateTranscript(dialogue);
+        
+        set({
+          transcript: fullTranscript,
+          normalizedTranscript,
+          responses: [normalizedTranscript],
+          conversationComplete: true,
+          phase: 'STORY_GENERATING'
+        });
+        
+        // Auto-trigger story generation
+        setTimeout(() => {
+          get().generateStoryWithImages();
+        }, 100);
       },
       // Story management actions
       setStoryPages: (pages: StoryPage[]) => {
@@ -328,7 +426,7 @@ const useConversationStore = create<ConversationState>()(
           transcript,
           isListening: false,
           conversationComplete: true,
-          phase: 'TRANSCRIPT_READY'
+          phase: 'STORY_GENERATING'
         });
       },
 
