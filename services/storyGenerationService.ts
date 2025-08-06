@@ -4,7 +4,7 @@ import { Story, StoryPage, StoryGenerationResult, StoryGenerationOptions } from 
 
 const TOGETHER_API_KEY = Constants.expoConfig?.extra?.TOGETHER_API_KEY;
 
-const STORY_PROMPT_TEMPLATE = "You are a professional children's book author. Using the following conversation transcript as inspiration, write a 5-page children's storybook that is entertaining, educational, and appropriate for ages 4-8. Guidelines: Each page should be 2-3 sentences. Include vivid descriptions for illustrations. Maintain consistent characters throughout. End with a positive message. Transcript: [TRANSCRIPT]";
+const STORY_PROMPT_TEMPLATE = "You are a professional children's book author. Using the following conversation between a child and a story assistant, write a 5-page children's storybook. The conversation reveals the child's interests and ideas. Create an engaging story that incorporates their input naturally. Guidelines: Each page should be 2-3 sentences. Include vivid descriptions for illustrations. Maintain consistent characters. End positively. Conversation: [FULL_DIALOGUE]";
 
 class StoryGenerationService {
   private client: Together;
@@ -151,7 +151,7 @@ class StoryGenerationService {
     }
 
     try {
-      const prompt = STORY_PROMPT_TEMPLATE.replace('[TRANSCRIPT]', transcript.trim());
+      const prompt = STORY_PROMPT_TEMPLATE.replace('[FULL_DIALOGUE]', transcript.trim());
       const generatedText = await this.generateWithRetry(prompt, options);
       const story = this.parseStoryResponse(generatedText, transcript);
 
@@ -172,6 +172,54 @@ class StoryGenerationService {
         },
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred during story generation'
+      };
+    }
+  }
+
+  async generateStoryAutomatically(
+    transcript: string, 
+    options: StoryGenerationOptions = {},
+    onProgress?: (message: string) => void
+  ): Promise<StoryGenerationResult> {
+    onProgress?.("Creating your story...");
+    
+    try {
+      // Enhanced generation with progress updates
+      const result = await this.generateStoryFromTranscript(transcript, {
+        ...options,
+        maxRetries: 3,
+        temperature: 0.7
+      });
+      
+      if (result.success) {
+        onProgress?.("Story created successfully!");
+        return result;
+      } else {
+        // If generation failed, try with fallback options
+        onProgress?.("Trying with different settings...");
+        
+        const fallbackResult = await this.generateStoryFromTranscript(transcript, {
+          ...options,
+          maxRetries: 2,
+          temperature: 0.5,
+          maxTokens: 800
+        });
+        
+        return fallbackResult;
+      }
+    } catch (error) {
+      console.error('Automatic story generation failed:', error);
+      
+      return {
+        story: {
+          id: this.generateStoryId(),
+          title: "Generation Failed",
+          pages: [],
+          createdAt: new Date(),
+          transcript
+        },
+        success: false,
+        error: 'Story generation failed. Please try again.'
       };
     }
   }

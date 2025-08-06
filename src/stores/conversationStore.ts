@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StoryPage } from '@/src/utils/storyGenerator';
 import TogetherAIService from '@/services/togetherAiService';
 import ElevenLabsService from '@/services/elevenLabsService';
+import StoryGenerationService from '@/services/storyGenerationService';
 import { AudioGenerationResult, ElevenLabsError } from '@/types/elevenlabs';
 import { TranscriptNormalizer, DialogueTurn } from '@/src/utils/transcriptNormalizer';
 
@@ -85,6 +86,11 @@ export interface ConversationState extends SpeechState, StoryState {
   audioError: string | null;
   story: StoryContent;
   
+  // New automatic story generation state
+  storyGenerationError: string | null;
+  storyGenerationProgress: string | null;
+  automaticGenerationActive: boolean;
+  
   // Story management actions
   setStoryPages: (pages: StoryPage[]) => void;
   setCurrentPage: (index: number) => void;
@@ -113,6 +119,11 @@ export interface ConversationState extends SpeechState, StoryState {
   generateStoryWithImages: () => Promise<void>;
   generateStoryPromptAudio: (prompt: string) => Promise<AudioGenerationResult | null>;
   generateStoryAudio: (storyText: string) => Promise<AudioGenerationResult | null>;
+  
+  // New automatic story generation actions
+  generateStoryAutomatically: () => Promise<void>;
+  retryStoryGeneration: () => Promise<void>;
+  clearStoryGenerationError: () => void;
 }
 
 const useConversationStore = create<ConversationState>()(
@@ -146,6 +157,11 @@ const useConversationStore = create<ConversationState>()(
         content: null,
         sections: [],
       },
+      
+      // Initialize new automatic generation state
+      storyGenerationError: null,
+      storyGenerationProgress: null,
+      automaticGenerationActive: false,
       
       // Actions are simplified to avoid nested updates
       startConversation: () => {
@@ -248,7 +264,11 @@ const useConversationStore = create<ConversationState>()(
           story: {
             content: null,
             sections: [],
-          }
+          },
+          // Reset automatic generation state
+          storyGenerationError: null,
+          storyGenerationProgress: null,
+          automaticGenerationActive: false,
         });
       },
 
@@ -322,13 +342,15 @@ const useConversationStore = create<ConversationState>()(
           normalizedTranscript,
           responses: [normalizedTranscript],
           conversationComplete: true,
-          phase: 'STORY_GENERATING'
+          phase: 'STORY_GENERATING',
+          storyGenerationError: null,
+          automaticGenerationActive: true
         });
         
-        // Auto-trigger story generation
+        // Auto-trigger the new automatic story generation
         setTimeout(() => {
-          get().generateStoryWithImages();
-        }, 100);
+          get().generateStoryAutomatically();
+        }, 500);
       },
       // Story management actions
       setStoryPages: (pages: StoryPage[]) => {
@@ -513,6 +535,76 @@ const useConversationStore = create<ConversationState>()(
         } finally {
           set({ isGeneratingAudio: false });
         }
+      },
+
+      // New automatic story generation methods
+      generateStoryAutomatically: async () => {
+        const { transcript } = get();
+        
+        if (!transcript?.trim()) {
+          set({
+            storyGenerationError: 'No conversation transcript available',
+            automaticGenerationActive: false,
+            phase: 'INITIAL'
+          });
+          return;
+        }
+
+        set({
+          isGenerating: true,
+          storyGenerationError: null,
+          storyGenerationProgress: 'Creating your story...'
+        });
+
+        try {
+          const result = await StoryGenerationService.generateStoryAutomatically(
+            transcript,
+            { maxRetries: 3, temperature: 0.7 },
+            (progress) => {
+              set({ storyGenerationProgress: progress });
+            }
+          );
+
+          if (result.success && result.story) {
+            // Convert to the format expected by the UI
+            const storyContent = result.story.pages.map(page => ({
+              text: page.content,
+              imageUrl: null // We'll need to integrate image generation later
+            }));
+
+            set({
+              story: {
+                content: result.story.pages.map(p => p.content).join('\n\n'),
+                sections: storyContent
+              },
+              storyContent,
+              generatedStory: result.story.pages.map(p => p.content).join('\n\n'),
+              phase: 'STORY_COMPLETE',
+              automaticGenerationActive: false,
+              storyGenerationProgress: null
+            });
+          } else {
+            throw new Error(result.error || 'Story generation failed');
+          }
+        } catch (error) {
+          console.error('❌ Automatic story generation failed:', error);
+          set({
+            storyGenerationError: error instanceof Error ? error.message : 'Story generation failed',
+            automaticGenerationActive: false,
+            storyGenerationProgress: null
+          });
+        } finally {
+          set({ isGenerating: false });
+        }
+      },
+
+      retryStoryGeneration: async () => {
+        set({ storyGenerationError: null });
+        await get().generateStoryAutomatically();
+      },
+
+      clearStoryGenerationError: () => {
+        set({ storyGenerationError: null });
       }
     })
   )

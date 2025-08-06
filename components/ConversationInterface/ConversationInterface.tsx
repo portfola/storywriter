@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import ElevenLabsService from '@/services/elevenLabsService';
-import { ConversationSession } from '@/types/elevenlabs';
+import { ConversationSession, ConversationMessage } from '@/types/elevenlabs';
 import { useConversationStore } from '@/src/stores/conversationStore';
 
-// Enhanced function to detect when the agent is signaling conversation end
+// Fallback function to detect when the agent is signaling conversation end via text patterns
+// Primary method should be the agent calling an end_call tool via client_tool_call message
+// 
+// TO CONFIGURE: In your ElevenLabs agent, add a client tool called "end_call" or "end_conversation"
+// with the following configuration:
+// - Tool Name: "end_call" or "end_conversation" 
+// - Description: "Call this tool when you want to end the conversation and proceed to story generation"
+// - Parameters: {} (no parameters needed)
 const detectConversationEnd = (agentText: string): boolean => {
   const lowercaseText = agentText.toLowerCase();
   console.log('🔍 Analyzing agent message for end patterns:', agentText);
@@ -174,46 +181,95 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
           endConversation();
         },
         
-        onMessage: (message) => {
+        onMessage: (message: ConversationMessage) => {
           console.log('💬 Message received:', message);
           
-          // Capture all message types in structured dialogue
-          if (message.type === 'user_transcript' || message.type === 'user_message') {
-            const userText = message.text || message.content || '';
-            if (userText.trim()) {
-              console.log('👤 User:', userText);
-              addDialogueTurn('user', userText);
-            }
-          } else if (message.type === 'agent_response' || message.type === 'agent_message') {
-            const agentText = message.text || message.content || '';
-            if (agentText.trim()) {
-              console.log('🤖 Agent:', agentText);
-              addDialogueTurn('agent', agentText);
-              setLastAgentMessage(Date.now());
-              
-              // Clear any existing inactivity timeout
-              if (inactivityTimeout) {
-                clearTimeout(inactivityTimeout);
-                setInactivityTimeout(null);
+          // Handle different message types
+          switch (message.type) {
+            case 'user_transcript':
+            case 'user_message':
+              const userText = message.user_transcription_event?.user_transcript || 
+                              message.text || message.content || '';
+              if (userText.trim()) {
+                console.log('👤 User:', userText);
+                console.log('📝 Adding user message to transcript at:', new Date().toISOString());
+                addDialogueTurn('user', userText);
               }
+              break;
               
-              // Intelligent conversation end detection based on agent closing statements
-              if (detectConversationEnd(agentText)) {
-                console.log('🔚 DETECTED CONVERSATION END!');
-                console.log('📝 Agent message that triggered end:', agentText);
-                console.log('⏰ Auto-ending conversation in 2 seconds...');
-                setTimeout(() => {
-                  handleEndConversation();
-                }, 2000); // Give 2 seconds for the agent to finish speaking
-              } else {
-                // Set inactivity timeout as backup (30 seconds after last agent message)
-                const timeout = setTimeout(() => {
-                  console.log('⏰ Conversation inactivity timeout - auto-ending conversation');
-                  handleEndConversation();
-                }, 30000);
-                setInactivityTimeout(timeout);
+            case 'agent_response':
+            case 'agent_message':
+              const agentText = message.agent_response_event?.agent_response ||
+                              message.text || message.content || '';
+              if (agentText.trim()) {
+                console.log('🤖 Agent:', agentText);
+                console.log('📝 Adding agent response to transcript at:', new Date().toISOString());
+                addDialogueTurn('agent', agentText);
+                setLastAgentMessage(Date.now());
+                
+                // Clear any existing inactivity timeout
+                if (inactivityTimeout) {
+                  clearTimeout(inactivityTimeout);
+                  setInactivityTimeout(null);
+                }
+                
+                // Fallback: Intelligent conversation end detection based on agent closing statements
+                if (detectConversationEnd(agentText)) {
+                  console.log('🔚 FALLBACK: Pattern-based conversation end detected!');
+                  console.log('📝 Agent message that triggered end:', agentText);
+                  console.log('⏰ Auto-ending conversation in 2 seconds...');
+                  setTimeout(() => {
+                    handleEndConversation();
+                  }, 2000); // Give 2 seconds for the agent to finish speaking
+                } else {
+                  // Set inactivity timeout as backup (30 seconds after last agent message)
+                  const timeout = setTimeout(() => {
+                    console.log('⏰ Conversation inactivity timeout - auto-ending conversation');
+                    handleEndConversation();
+                  }, 30000);
+                  setInactivityTimeout(timeout);
+                }
               }
-            }
+              break;
+              
+            case 'client_tool_call':
+              const toolCall = message.client_tool_call;
+              console.log('🔧 Tool call received from agent:', toolCall);
+              
+              // Handle end conversation tool call
+              if (toolCall && (toolCall.tool_name === 'end_conversation' || toolCall.tool_name === 'end_call')) {
+                console.log('🔚 AGENT CALLED END TOOL:', toolCall.tool_name);
+                console.log('📝 Tool call parameters:', toolCall.parameters);
+                console.log('⏰ Ending conversation immediately...');
+                
+                // Clear any existing timeout
+                if (inactivityTimeout) {
+                  clearTimeout(inactivityTimeout);
+                  setInactivityTimeout(null);
+                }
+                
+                // End conversation immediately when agent calls the end tool
+                handleEndConversation();
+              } else if (toolCall) {
+                // Handle other potential tool calls
+                console.log('🔧 Other tool call:', toolCall.tool_name, toolCall.parameters);
+                // You can extend this to handle other tools your agent might call
+              }
+              break;
+              
+            case 'audio':
+              // Handle audio messages if needed
+              console.log('🔊 Audio message received');
+              break;
+              
+            case 'ping':
+              // Handle ping messages if needed
+              console.log('🏓 Ping message received');
+              break;
+              
+            default:
+              // Capture any other message types for comprehensive logging
+              console.log('📋 Other message type received:', message.type, message);
           }
         },
         
@@ -335,20 +391,35 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
         </View>
       )}
 
-      {/* Live Conversation Display */}
+      {/* Enhanced Live Conversation Display */}
       {dialogue.length > 0 && isConversationActive && (
         <View style={styles.messagesContainer}>
-          <Text style={styles.messagesTitle}>Live Conversation:</Text>
-          {dialogue.slice(-3).map((turn, index) => (
+          <Text style={styles.messagesTitle}>
+            Complete Conversation Transcript ({dialogue.length} messages):
+          </Text>
+          {dialogue.slice(-5).map((turn, index) => (
             <Text key={index} style={styles.messageText}>
               {turn.role === 'user' ? '👤 You' : '🤖 Agent'}: {turn.content}
             </Text>
           ))}
-          {dialogue.length > 3 && (
+          {dialogue.length > 5 && (
             <Text style={styles.moreMessagesText}>
-              ... and {dialogue.length - 3} more exchanges
+              ... and {dialogue.length - 5} more exchanges (complete transcript will be saved)
             </Text>
           )}
+        </View>
+      )}
+
+      {/* Complete Transcript Summary */}
+      {dialogue.length > 0 && !isConversationActive && phase !== 'INITIAL' && (
+        <View style={styles.transcriptSummary}>
+          <Text style={styles.transcriptTitle}>
+            📝 Captured Transcript: {dialogue.length} total messages
+          </Text>
+          <Text style={styles.transcriptStats}>
+            User messages: {dialogue.filter(turn => turn.role === 'user').length} | 
+            Agent responses: {dialogue.filter(turn => turn.role === 'agent').length}
+          </Text>
         </View>
       )}
 
@@ -501,6 +572,27 @@ const styles = {
     fontStyle: 'italic' as const,
     textAlign: 'center' as const,
     marginTop: 5,
+  },
+  transcriptSummary: {
+    backgroundColor: '#e8f5e8',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 15,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: '#c3e6c3',
+  },
+  transcriptTitle: {
+    fontSize: 14,
+    color: '#2d5a2d',
+    fontWeight: 'bold' as const,
+    textAlign: 'center' as const,
+    marginBottom: 5,
+  },
+  transcriptStats: {
+    fontSize: 12,
+    color: '#4a7a4a',
+    textAlign: 'center' as const,
   },
 };
 
