@@ -14,7 +14,6 @@ import { useConversationStore } from '@/src/stores/conversationStore';
 // - Parameters: {} (no parameters needed)
 const detectConversationEnd = (agentText: string): boolean => {
   const lowercaseText = agentText.toLowerCase();
-  console.log('🔍 Analyzing agent message for end patterns:', agentText);
   
   // Story processing/creation keywords (broader matching)
   const storyKeywords = [
@@ -65,7 +64,7 @@ const detectConversationEnd = (agentText: string): boolean => {
   
   // Check for exact patterns first
   if (exactPatterns.some(pattern => lowercaseText.includes(pattern))) {
-    console.log('✅ EXACT PATTERN MATCH FOUND!');
+    console.log('🔚 Conversation end detected via exact pattern match');
     return true;
   }
   
@@ -76,40 +75,31 @@ const detectConversationEnd = (agentText: string): boolean => {
   const hasTransition = transitionPhrases.some(phrase => lowercaseText.includes(phrase));
   const hasFarewell = farewellPatterns.some(pattern => lowercaseText.includes(pattern));
   
-  console.log('📊 Pattern analysis:', {
-    hasStoryKeyword,
-    hasCreationVerb,
-    hasSystemRef,
-    hasTransition,
-    hasFarewell
-  });
-  
   // Advanced pattern matching
   // Pattern 1: Transition + Story + (Creation OR System)
   if (hasTransition && hasStoryKeyword && (hasCreationVerb || hasSystemRef)) {
-    console.log('✅ PATTERN 1 MATCH: Transition + Story + (Creation OR System)');
+    console.log('🔚 Conversation end detected via transition + story pattern');
     return true;
   }
   
   // Pattern 2: "enter/put this into" + story-related
   if ((lowercaseText.includes('enter this') || lowercaseText.includes('put this')) && hasStoryKeyword) {
-    console.log('✅ PATTERN 2 MATCH: Enter/Put + Story');
+    console.log('🔚 Conversation end detected via input + story pattern');
     return true;
   }
   
   // Pattern 3: Farewell + story context (like "have fun" with story mention)
   if (hasFarewell && hasStoryKeyword) {
-    console.log('✅ PATTERN 3 MATCH: Farewell + Story');
+    console.log('🔚 Conversation end detected via farewell + story pattern');
     return true;
   }
   
   // Pattern 4: System reference + story processing
   if (hasSystemRef && hasStoryKeyword && (hasCreationVerb || hasTransition)) {
-    console.log('✅ PATTERN 4 MATCH: System + Story + (Creation OR Transition)');
+    console.log('🔚 Conversation end detected via system + story pattern');
     return true;
   }
   
-  console.log('❌ No end pattern detected');
   return false;
 };
 
@@ -182,8 +172,6 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
         },
         
         onMessage: (message: ConversationMessage) => {
-          console.log('💬 Message received:', message);
-          
           // Handle different message types
           switch (message.type) {
             case 'user_transcript':
@@ -192,7 +180,6 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
                               message.text || message.content || '';
               if (userText.trim()) {
                 console.log('👤 User:', userText);
-                console.log('📝 Adding user message to transcript at:', new Date().toISOString());
                 addDialogueTurn('user', userText);
               }
               break;
@@ -203,7 +190,6 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
                               message.text || message.content || '';
               if (agentText.trim()) {
                 console.log('🤖 Agent:', agentText);
-                console.log('📝 Adding agent response to transcript at:', new Date().toISOString());
                 addDialogueTurn('agent', agentText);
                 setLastAgentMessage(Date.now());
                 
@@ -215,8 +201,6 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
                 
                 // Fallback: Intelligent conversation end detection based on agent closing statements
                 if (detectConversationEnd(agentText)) {
-                  console.log('🔚 FALLBACK: Pattern-based conversation end detected!');
-                  console.log('📝 Agent message that triggered end:', agentText);
                   console.log('⏰ Auto-ending conversation in 2 seconds...');
                   setTimeout(() => {
                     handleEndConversation();
@@ -238,9 +222,7 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
               
               // Handle end conversation tool call
               if (toolCall && (toolCall.tool_name === 'end_conversation' || toolCall.tool_name === 'end_call')) {
-                console.log('🔚 AGENT CALLED END TOOL:', toolCall.tool_name);
-                console.log('📝 Tool call parameters:', toolCall.parameters);
-                console.log('⏰ Ending conversation immediately...');
+                console.log('🔚 Agent called end tool - ending conversation immediately');
                 
                 // Clear any existing timeout
                 if (inactivityTimeout) {
