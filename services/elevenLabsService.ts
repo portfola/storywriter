@@ -217,34 +217,28 @@ export class ElevenLabsService {
         agentId: this.agentId,
         
         onConnect: () => {
-          console.log('✅ Connected to StoryWriter Agent');
           callbacks.onConnect?.();
         },
         
         onDisconnect: () => {
-          console.log('❌ Disconnected from StoryWriter Agent');
           this.currentConversation = null;
           callbacks.onDisconnect?.();
         },
         
         onMessage: (message) => {
-          console.log('💬 Message from agent:', message);
           callbacks.onMessage?.(message);
         },
         
         onError: (error) => {
-          console.error('❌ Conversation error:', error);
           this.currentConversation = null;
           callbacks.onError?.(error);
         },
         
         onStatusChange: (status) => {
-          console.log('📊 Status change:', status);
           callbacks.onStatusChange?.(status.toString());
         },
         
         onModeChange: (mode) => {
-          console.log('🔄 Mode change:', mode);
           callbacks.onModeChange?.(mode.toString());
         }
       });
