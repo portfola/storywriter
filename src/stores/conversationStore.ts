@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StoryPage } from '@/src/utils/storyGenerator';
+import { StoryPage } from '@/types/story';
 import ElevenLabsService from '@/services/elevenLabsService';
 import StoryGenerationService from '@/services/storyGenerationService';
 import { AudioGenerationResult, ElevenLabsError } from '@/types/elevenlabs';
