@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StoryPage } from '@/src/utils/storyGenerator';
-import TogetherAIService from '@/services/togetherAiService';
 import ElevenLabsService from '@/services/elevenLabsService';
 import StoryGenerationService from '@/services/storyGenerationService';
 import { AudioGenerationResult, ElevenLabsError } from '@/types/elevenlabs';
@@ -117,8 +116,6 @@ export interface ConversationState extends SpeechState, StoryState {
   processTranscript: () => void; // New method to normalize transcript
   
   // Story generation actions
-  handleConversationComplete: (transcript: string) => void;
-  generateStoryWithImages: () => Promise<void>;
   generateStoryPromptAudio: (prompt: string) => Promise<AudioGenerationResult | null>;
   generateStoryAudio: (storyText: string) => Promise<AudioGenerationResult | null>;
   
@@ -468,57 +465,7 @@ const useConversationStore = create<ConversationState>()(
         }
       },
       
-      // Story generation actions
-      handleConversationComplete: (transcript: string) => {
-        set({
-          transcript,
-          isListening: false,
-          conversationComplete: true,
-          phase: 'STORY_GENERATING'
-        });
-      },
-
-      generateStoryWithImages: async () => {
-        const { transcript } = get();
-        set({ isGenerating: true, phase: 'STORY_GENERATING' });
-
-        try {
-          const { text: rawStoryText, imageUrl } = await TogetherAIService.generateResponse(
-            `Create a children's story based on: ${transcript}`
-          );
-
-          // Process story text (remove prompt if needed)
-          let processedStoryText = rawStoryText;
-
-          // Look for "Title: " as the marker to start the actual story
-          const titleIndex = rawStoryText.indexOf("Title: ");
-          if (titleIndex !== -1) {
-            // Found the title marker, extract everything from this point onward
-            processedStoryText = rawStoryText.substring(titleIndex + 7);
-          }
-
-          // Update the story state with the processed content
-          set({
-            story: {
-              content: processedStoryText,
-              sections: [{ text: processedStoryText, imageUrl }],
-            },
-            generatedStory: processedStoryText,
-            storyContent: [{ text: processedStoryText, imageUrl }],
-            phase: 'STORY_COMPLETE'
-          });
-        } catch (error) {
-          const appError = ErrorHandler.fromUnknown(
-            error,
-            ErrorType.STORY_GENERATION,
-            ErrorSeverity.MEDIUM,
-            { action: 'generate_story_with_images', transcript: transcript.substring(0, 100) }
-          );
-          get().addError('story_generation', appError);
-        } finally {
-          set({ isGenerating: false });
-        }
-      },
+      // Audio generation actions
 
       generateStoryPromptAudio: async (prompt: string): Promise<AudioGenerationResult | null> => {
         set({ isGeneratingAudio: true });

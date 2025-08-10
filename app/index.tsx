@@ -12,7 +12,6 @@ const StoryScreen = () => {
     isGenerating,
     conversationComplete,
     story,
-    handleConversationComplete,
     phase,
     automaticGenerationActive,
     retryStoryGeneration,
@@ -45,7 +44,6 @@ const StoryScreen = () => {
 
             {!conversationComplete && (
               <ConversationInterface 
-                onConversationComplete={handleConversationComplete}
                 disabled={isGenerating}
               />
             )}

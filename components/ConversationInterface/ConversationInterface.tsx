@@ -106,11 +106,10 @@ const detectConversationEnd = (agentText: string): boolean => {
 };
 
 interface Props {
-  onConversationComplete: (transcript: string) => void;
   disabled?: boolean;
 }
 
-const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabled = false }) => {
+const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [conversationSession, setConversationSession] = useState<ConversationSession | null>(null);
   const [lastAgentMessage, setLastAgentMessage] = useState<number>(0);
@@ -135,12 +134,8 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
   
   const isConversationActive = phase === 'CONVERSATION_ACTIVE';
 
-  // Auto-trigger onConversationComplete when transcript is ready
-  useEffect(() => {
-    if (normalizedTranscript && phase === 'STORY_GENERATING') {
-      onConversationComplete(normalizedTranscript);
-    }
-  }, [normalizedTranscript, phase, onConversationComplete]);
+  // Story generation is now fully automatic via processTranscript()
+  // No manual triggering needed
 
   // Cleanup on component unmount
   useEffect(() => {
@@ -316,7 +311,13 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
     
     const testTranscript = "I want a story about a brave dragon who helps children learn to read";
     console.log('🧪 Using test mode with transcript:', testTranscript);
-    onConversationComplete(testTranscript);
+    
+    // Add test dialogue to trigger automatic story generation
+    addDialogueTurn('user', 'I want to create a story');
+    addDialogueTurn('agent', testTranscript);
+    
+    // Trigger the automatic flow
+    endConversation();
   };
 
   return (
