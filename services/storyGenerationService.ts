@@ -102,7 +102,7 @@ class StoryGenerationService {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const response = await this.client.chat.completions.create({
-          model: "meta-llama/Meta-Llama-3.1-70B-Instruct",
+          model: "openai/gpt-oss-20b",
           messages: [
             {
               role: "user",
