@@ -71,7 +71,6 @@ export interface ConversationState extends SpeechState, StoryState {
   phase: ConversationPhase;
   conversationHistory: ConversationTurn[];
   dialogue: DialogueTurn[]; // Structured dialogue for better conversation tracking
-  currentQuestion: string;
   transcript: string;
   normalizedTranscript: string; // Cleaned up transcript
   error: string | null;
@@ -106,7 +105,6 @@ export interface ConversationState extends SpeechState, StoryState {
   addUserResponse: (response: string) => void;
   addAgentResponse: (response: string) => void; // New method for agent responses
   addDialogueTurn: (role: 'user' | 'agent', content: string) => void; // New structured dialogue method
-  setQuestion: (question: string) => void;
   setPhase: (phase: ConversationPhase) => void;
   setSpeechState: (speechState: Partial<SpeechState>) => void;
   resetConversation: () => void;
@@ -132,7 +130,6 @@ const useConversationStore = create<ConversationState>()(
       phase: 'INITIAL',
       conversationHistory: [],
       dialogue: [], // Initialize structured dialogue array
-      currentQuestion: 'What kind of story shall we create together?',
       transcript: '',
       normalizedTranscript: '', // Initialize normalized transcript
       error: null,
@@ -173,7 +170,6 @@ const useConversationStore = create<ConversationState>()(
             timestamp: Date.now()
           }],
           dialogue: [], // Reset structured dialogue
-          currentQuestion: 'What kind of story shall we create together?',
           error: null,
           isListening: false,
           isSpeaking: false,
@@ -215,22 +211,6 @@ const useConversationStore = create<ConversationState>()(
         });
       },
 
-      setQuestion: (question: string) => {
-        const { conversationHistory } = get();
-        
-        set({
-          currentQuestion: question,
-          conversationHistory: [
-            ...conversationHistory,
-            {
-              role: 'assistant',
-              content: question,
-              timestamp: Date.now()
-            }
-          ],
-          phase: 'CONVERSATION_ACTIVE'
-        });
-      },
 
       setPhase: (phase: ConversationPhase) => {
         set({ phase });
@@ -248,7 +228,6 @@ const useConversationStore = create<ConversationState>()(
           phase: 'INITIAL',
           conversationHistory: [],
           dialogue: [], // Reset dialogue
-          currentQuestion: 'What kind of story shall we create together?',
           transcript: '',
           normalizedTranscript: '', // Reset normalized transcript
           error: null,
