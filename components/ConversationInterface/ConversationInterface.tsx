@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import ElevenLabsService from '@/services/elevenLabsService';
 import { ConversationSession, ConversationMessage } from '@/types/elevenlabs';
 import { useConversationStore } from '@/src/stores/conversationStore';
+import { useErrorHandler } from '@/src/hooks/useErrorHandler';
+import { ErrorType, ErrorSeverity } from '@/src/utils/errorHandler';
 
 // Fallback function to detect when the agent is signaling conversation end via text patterns
 // Primary method should be the agent calling an end_call tool via client_tool_call message
@@ -122,8 +124,14 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
     endConversation,
     normalizedTranscript,
     startConversation: storeStartConversation,
-    setError
+    addError
   } = useConversationStore();
+  
+  // Use standardized error handling
+  const { handleError } = useErrorHandler({
+    showAlert: true,
+    useChildFriendlyMessages: true
+  });
   
   const isConversationActive = phase === 'CONVERSATION_ACTIVE';
 
@@ -256,16 +264,11 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
         },
         
         onError: (error) => {
-          console.error('❌ Conversation error:', error);
           setIsConnecting(false);
           setConversationSession(null);
-          setError('Failed to connect to the StoryWriter Agent. Please try again or use the test button.');
-          
-          Alert.alert(
-            'Conversation Error',
-            'Failed to connect to the StoryWriter Agent. Please try again or use the test button.',
-            [{ text: 'OK' }]
-          );
+          handleError(error, ErrorType.CONVERSATION, ErrorSeverity.MEDIUM, {
+            action: 'conversation_connection'
+          });
         },
         
         onStatusChange: (status) => {
@@ -280,14 +283,10 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
       setConversationSession(session);
       
     } catch (error) {
-      console.error('❌ Failed to start conversation:', error);
       setIsConnecting(false);
-      
-      Alert.alert(
-        'Connection Error',
-        'Could not start conversation with StoryWriter Agent. Please check your internet connection and try again.',
-        [{ text: 'OK' }]
-      );
+      handleError(error, ErrorType.CONVERSATION, ErrorSeverity.MEDIUM, {
+        action: 'start_conversation'
+      });
     }
   };
 
@@ -302,7 +301,9 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
       try {
         await conversationSession.endSession();
       } catch (error) {
-        console.error('❌ Error ending conversation:', error);
+        handleError(error, ErrorType.CONVERSATION, ErrorSeverity.LOW, {
+          action: 'end_conversation'
+        });
       }
     }
     

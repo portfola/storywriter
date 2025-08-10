@@ -15,10 +15,13 @@ const StoryScreen = () => {
     story,
     handleConversationComplete,
     phase,
-    storyGenerationError,
     automaticGenerationActive,
     retryStoryGeneration,
+    getError
   } = useConversationStore();
+  
+  // Get story generation error using new error handling
+  const storyGenerationError = getError('story_generation');
   
   const currentPhase: ConversationPhase = phase;
 
@@ -29,7 +32,7 @@ const StoryScreen = () => {
         <ErrorBoundary>
           <StoryGenerationSplash
             isVisible={true}
-            error={storyGenerationError}
+            error={storyGenerationError?.userMessage || null}
             onRetry={retryStoryGeneration}
           />
         </ErrorBoundary>
