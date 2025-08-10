@@ -38,13 +38,13 @@ export interface StoryElements {
   [key: string]: string;
 }
 
-// Define story section structure from useStory
+// Define story section structure
 export interface StorySection {
   text: string;
   imageUrl: string | null;
 }
 
-// Define story content structure from useStory
+// Define story content structure
 export interface StoryContent {
   content: string | null;
   sections: StorySection[];
@@ -75,7 +75,7 @@ export interface ConversationState extends SpeechState, StoryState {
   normalizedTranscript: string; // Cleaned up transcript
   error: string | null;
   
-  // New unified story state from useStory
+  // Unified story state
   conversationComplete: boolean;
   isGenerating: boolean;
   storyContent: StorySection[];
@@ -114,7 +114,7 @@ export interface ConversationState extends SpeechState, StoryState {
   endConversation: () => void; // New method to properly end conversations
   processTranscript: () => void; // New method to normalize transcript
   
-  // New actions from useStory
+  // Story generation actions
   handleConversationComplete: (transcript: string) => void;
   generateStoryWithImages: () => Promise<void>;
   generateStoryPromptAudio: (prompt: string) => Promise<AudioGenerationResult | null>;
@@ -144,7 +144,7 @@ const useConversationStore = create<ConversationState>()(
       storyElements: {},
       savedStories: [],
       
-      // New unified story state from useStory
+      // Unified story state
       conversationComplete: false,
       isGenerating: false,
       storyContent: [],
@@ -422,7 +422,7 @@ const useConversationStore = create<ConversationState>()(
         }
       },
       
-      // New actions from useStory
+      // Story generation actions
       handleConversationComplete: (transcript: string) => {
         set({
           transcript,

@@ -1,21 +1,3 @@
-## Bug Fix: Splash Screen Animation
-### Task 1: Refactor Store Timing Logic
-- Move minimum display time logic entirely into `conversationStore.ts`
-- Add `minDisplayStartTime` state to track when story generation began
-- Ensure `phase` transitions respect minimum display time across all platforms
-- Remove setTimeout from `generateStoryAutomatically()` and handle timing in state transitions
-
-### Task 2: Simplify Splash Component
-- Remove `forceVisible` state and `minDisplayTime` logic from component
-- Component should only handle animations and display based on `isVisible` prop
-- Add proper animation cleanup in useEffect return functions
-- Fix animation performance by using transform properties consistently
-
-### Task 3: Fix Parent State Management
-- Ensure `index.tsx` doesn't change phase until minimum display time is met
-- Add proper error boundary around splash screen
-- Implement proper loading state management
-
 # StoryWriter
 
 Create your own digital storybooks with the help of a cyber assistant!
