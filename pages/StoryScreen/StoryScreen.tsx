@@ -5,6 +5,7 @@ import { useConversationStore, ConversationPhase } from '@/src/stores/conversati
 import StoryContent from '@/components/StoryContent/StoryContent';
 import ConversationInterface from '@/components/ConversationInterface/ConversationInterface';
 import StoryGenerationSplash from '@/components/StoryGenerationSplash/StoryGenerationSplash';
+import ErrorBoundary from '@/components/ErrorBoundary/ErrorBoundary';
 import { s } from './StoryScreen.style';
 
 const StoryScreen = () => {
@@ -25,11 +26,13 @@ const StoryScreen = () => {
   if (currentPhase === 'STORY_GENERATING' || currentPhase === 'TRANSCRIPT_PROCESSING') {
     return (
       <Layout>
-        <StoryGenerationSplash
-          isVisible={true}
-          error={storyGenerationError}
-          onRetry={retryStoryGeneration}
-        />
+        <ErrorBoundary>
+          <StoryGenerationSplash
+            isVisible={true}
+            error={storyGenerationError}
+            onRetry={retryStoryGeneration}
+          />
+        </ErrorBoundary>
       </Layout>
     );
   }

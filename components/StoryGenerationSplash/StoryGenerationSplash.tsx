@@ -16,14 +16,9 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
   const [fadeAnim] = useState(new Animated.Value(1));
   const [bounceAnim] = useState(new Animated.Value(0));
   const [pulseAnim] = useState(new Animated.Value(1));
-  const [showTime] = useState(() => Date.now());
-  const [forceVisible, setForceVisible] = useState(false);
 
   // Web compatibility: use native driver only on mobile platforms
   const useNativeDriver = Platform.OS !== 'web';
-
-  // Minimum display time for web (3 seconds)
-  const minDisplayTime = Platform.OS === 'web' ? 3000 : 0;
 
   const loadingMessages = [
     {
@@ -51,32 +46,24 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
     "Don't worry - your story is still being crafted with extra care! 🎨"
   ];
 
-  // Handle minimum display time for web
-  useEffect(() => {
-    if (isVisible && !forceVisible) {
-      setForceVisible(true);
-      
-      if (minDisplayTime > 0) {
-        const timer = setTimeout(() => {
-          setForceVisible(false);
-        }, minDisplayTime);
-        
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [isVisible, minDisplayTime, forceVisible]);
 
   // Animate loading messages
   useEffect(() => {
     if (!isVisible || error) return;
 
+    let isMounted = true;
+
     const animateMessage = () => {
+      if (!isMounted) return;
+
       // Fade out current message
       Animated.timing(fadeAnim, {
         toValue: 0,
         duration: 500,
         useNativeDriver,
-      }).start(() => {
+      }).start((finished) => {
+        if (!finished || !isMounted) return;
+
         // Update message index
         setCurrentMessageIndex((prev) => {
           const next = (prev + 1) % loadingMessages.length;
@@ -95,8 +82,11 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
     const currentMessage = loadingMessages[currentMessageIndex];
     const timer = setTimeout(animateMessage, currentMessage.duration);
 
-    return () => clearTimeout(timer);
-  }, [currentMessageIndex, fadeAnim, isVisible, error, loadingMessages]);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [currentMessageIndex, fadeAnim, isVisible, error, loadingMessages, useNativeDriver]);
 
   // Bounce animation for character
   useEffect(() => {
@@ -121,8 +111,11 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
 
     bounceAnimation.start();
 
-    return () => bounceAnimation.stop();
-  }, [bounceAnim, isVisible]);
+    return () => {
+      bounceAnimation.stop();
+      bounceAnimation.reset();
+    };
+  }, [bounceAnim, isVisible, useNativeDriver]);
 
   // Pulse animation for progress indicator
   useEffect(() => {
@@ -145,13 +138,14 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
 
     pulseAnimation.start();
 
-    return () => pulseAnimation.stop();
-  }, [pulseAnim, isVisible]);
+    return () => {
+      pulseAnimation.stop();
+      pulseAnimation.reset();
+    };
+  }, [pulseAnim, isVisible, useNativeDriver]);
 
-  // Show splash if explicitly visible or if we're forcing visibility (web minimum time)
-  const shouldShow = isVisible || forceVisible;
-  
-  if (!shouldShow) return null;
+  // Component only shows based on isVisible prop
+  if (!isVisible) return null;
 
   const currentMessage = loadingMessages[currentMessageIndex];
   const randomErrorMessage = childFriendlyErrorMessages[

@@ -89,6 +89,9 @@ export interface ConversationState extends SpeechState, StoryState {
   storyGenerationProgress: string | null;
   automaticGenerationActive: boolean;
   
+  // Timing state for minimum display time
+  minDisplayStartTime: number | null;
+  
   // Story management actions
   setStoryPages: (pages: StoryPage[]) => void;
   setCurrentPage: (index: number) => void;
@@ -157,6 +160,9 @@ const useConversationStore = create<ConversationState>()(
       storyGenerationError: null,
       storyGenerationProgress: null,
       automaticGenerationActive: false,
+      
+      // Initialize timing state
+      minDisplayStartTime: null,
       
       // Actions are simplified to avoid nested updates
       startConversation: () => {
@@ -243,6 +249,7 @@ const useConversationStore = create<ConversationState>()(
           storyGenerationError: null,
           storyGenerationProgress: null,
           automaticGenerationActive: false,
+          minDisplayStartTime: null,
         });
       },
 
@@ -317,7 +324,8 @@ const useConversationStore = create<ConversationState>()(
           conversationComplete: true,
           phase: 'STORY_GENERATING',
           storyGenerationError: null,
-          automaticGenerationActive: true
+          automaticGenerationActive: true,
+          minDisplayStartTime: Date.now() // Track when story generation begins
         });
         
         // Auto-trigger the new automatic story generation
@@ -511,13 +519,14 @@ const useConversationStore = create<ConversationState>()(
 
       // New automatic story generation methods
       generateStoryAutomatically: async () => {
-        const { transcript } = get();
+        const { transcript, minDisplayStartTime } = get();
         
         if (!transcript?.trim()) {
           set({
             storyGenerationError: 'No conversation transcript available',
             automaticGenerationActive: false,
-            phase: 'INITIAL'
+            phase: 'INITIAL',
+            minDisplayStartTime: null
           });
           return;
         }
@@ -527,9 +536,6 @@ const useConversationStore = create<ConversationState>()(
           storyGenerationError: null,
           storyGenerationProgress: 'Creating your story...'
         });
-
-        // Ensure splash screen shows for minimum 3 seconds
-        const startTime = Date.now();
 
         try {
           const result = await StoryGenerationService.generateStoryAutomatically(
@@ -560,13 +566,13 @@ const useConversationStore = create<ConversationState>()(
               imageUrl: null // We'll need to integrate image generation later
             }));
 
-            // Calculate remaining time to show splash screen (minimum 3 seconds)
-            const elapsedTime = Date.now() - startTime;
+            // Check minimum display time requirement (3 seconds minimum)
+            const elapsedTime = minDisplayStartTime ? Date.now() - minDisplayStartTime : 0;
             const minDisplayTime = 3000; // 3 seconds
             const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
 
-            // Story generation completed successfully - now wait for minimum display time
-            setTimeout(() => {
+            // Handle phase transition with proper timing
+            const completeStoryGeneration = () => {
               set({
                 story: {
                   content: result.story.pages.map(p => p.content).join('\n\n'),
@@ -577,9 +583,18 @@ const useConversationStore = create<ConversationState>()(
                 phase: 'STORY_COMPLETE',
                 automaticGenerationActive: false,
                 storyGenerationProgress: null,
-                isGenerating: false
+                isGenerating: false,
+                minDisplayStartTime: null
               });
-            }, remainingTime);
+            };
+
+            if (remainingTime > 0) {
+              // Wait for minimum display time
+              setTimeout(completeStoryGeneration, remainingTime);
+            } else {
+              // Minimum time already elapsed, complete immediately
+              completeStoryGeneration();
+            }
           } else {
             throw new Error(result.error || 'Story generation failed');
           }
@@ -589,7 +604,8 @@ const useConversationStore = create<ConversationState>()(
             storyGenerationError: error instanceof Error ? error.message : 'Story generation failed',
             automaticGenerationActive: false,
             storyGenerationProgress: null,
-            isGenerating: false
+            isGenerating: false,
+            minDisplayStartTime: null
           });
         }
       },
