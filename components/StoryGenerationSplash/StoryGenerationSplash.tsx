@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Animated, Easing } from 'react-native';
+import { View, Text, Animated, Easing, Platform } from 'react-native';
 
 interface StoryGenerationSplashProps {
   isVisible: boolean;
@@ -16,6 +16,14 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
   const [fadeAnim] = useState(new Animated.Value(1));
   const [bounceAnim] = useState(new Animated.Value(0));
   const [pulseAnim] = useState(new Animated.Value(1));
+  const [showTime] = useState(() => Date.now());
+  const [forceVisible, setForceVisible] = useState(false);
+
+  // Web compatibility: use native driver only on mobile platforms
+  const useNativeDriver = Platform.OS !== 'web';
+
+  // Minimum display time for web (3 seconds)
+  const minDisplayTime = Platform.OS === 'web' ? 3000 : 0;
 
   const loadingMessages = [
     {
@@ -43,6 +51,21 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
     "Don't worry - your story is still being crafted with extra care! 🎨"
   ];
 
+  // Handle minimum display time for web
+  useEffect(() => {
+    if (isVisible && !forceVisible) {
+      setForceVisible(true);
+      
+      if (minDisplayTime > 0) {
+        const timer = setTimeout(() => {
+          setForceVisible(false);
+        }, minDisplayTime);
+        
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isVisible, minDisplayTime, forceVisible]);
+
   // Animate loading messages
   useEffect(() => {
     if (!isVisible || error) return;
@@ -52,7 +75,7 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
       Animated.timing(fadeAnim, {
         toValue: 0,
         duration: 500,
-        useNativeDriver: true,
+        useNativeDriver,
       }).start(() => {
         // Update message index
         setCurrentMessageIndex((prev) => {
@@ -64,7 +87,7 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
         Animated.timing(fadeAnim, {
           toValue: 1,
           duration: 500,
-          useNativeDriver: true,
+          useNativeDriver,
         }).start();
       });
     };
@@ -85,13 +108,13 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
           toValue: 1,
           duration: 800,
           easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver,
         }),
         Animated.timing(bounceAnim, {
           toValue: 0,
           duration: 800,
           easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
+          useNativeDriver,
         }),
       ])
     );
@@ -110,12 +133,12 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
         Animated.timing(pulseAnim, {
           toValue: 1.2,
           duration: 1000,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
           duration: 1000,
-          useNativeDriver: true,
+          useNativeDriver,
         }),
       ])
     );
@@ -125,7 +148,10 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
     return () => pulseAnimation.stop();
   }, [pulseAnim, isVisible]);
 
-  if (!isVisible) return null;
+  // Show splash if explicitly visible or if we're forcing visibility (web minimum time)
+  const shouldShow = isVisible || forceVisible;
+  
+  if (!shouldShow) return null;
 
   const currentMessage = loadingMessages[currentMessageIndex];
   const randomErrorMessage = childFriendlyErrorMessages[
