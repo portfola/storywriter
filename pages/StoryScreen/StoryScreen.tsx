@@ -10,17 +10,11 @@ import { s } from './StoryScreen.style';
 
 const StoryScreen = () => {
   const {
-    isGenerating,
     conversationComplete,
     story,
     phase,
-    automaticGenerationActive,
-    retryStoryGeneration,
-    getError
+    isGenerating
   } = useConversationStore();
-  
-  // Get story generation error using new error handling
-  const storyGenerationError = getError('story_generation');
   
   const currentPhase: ConversationPhase = phase;
 
@@ -31,8 +25,6 @@ const StoryScreen = () => {
         <ErrorBoundary>
           <StoryGenerationSplash
             isVisible={true}
-            error={storyGenerationError?.userMessage || null}
-            onRetry={retryStoryGeneration}
           />
         </ErrorBoundary>
       </Layout>
@@ -66,7 +58,7 @@ const StoryScreen = () => {
             )}
           </>
         ) : (
-          <StoryContent isGenerating={isGenerating} sections={story.sections} />
+          <StoryContent />
         )}
       </View>
     </Layout>

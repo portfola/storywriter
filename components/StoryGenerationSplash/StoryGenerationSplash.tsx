@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Animated, Easing, Platform } from 'react-native';
+import { useConversationStore } from '@/src/stores/conversationStore';
 
 interface StoryGenerationSplashProps {
   isVisible: boolean;
-  error?: string | null;
-  onRetry?: () => void;
 }
 
 const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
-  isVisible,
-  error,
-  onRetry
+  isVisible
 }) => {
+  const { getError, retryStoryGeneration } = useConversationStore();
+  const error = getError('story_generation')?.userMessage || null;
+  const onRetry = retryStoryGeneration;
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0);
   const [fadeAnim] = useState(new Animated.Value(1));
   const [bounceAnim] = useState(new Animated.Value(0));
@@ -159,15 +159,13 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
           <View style={styles.errorContainer}>
             <Text style={styles.errorEmoji}>😊</Text>
             <Text style={styles.errorMessage}>{randomErrorMessage}</Text>
-            {onRetry && (
-              <Animated.View 
-                style={[styles.retryButton, { transform: [{ scale: pulseAnim }] }]}
-              >
-                <Text style={styles.retryButtonText} onPress={onRetry}>
-                  Try Again! 🚀
-                </Text>
-              </Animated.View>
-            )}
+            <Animated.View 
+              style={[styles.retryButton, { transform: [{ scale: pulseAnim }] }]}
+            >
+              <Text style={styles.retryButtonText} onPress={onRetry}>
+                Try Again! 🚀
+              </Text>
+            </Animated.View>
           </View>
         ) : (
           <>
