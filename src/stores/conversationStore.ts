@@ -76,7 +76,6 @@ export interface ConversationState extends SpeechState, StoryState {
   error: string | null;
   
   // New unified story state from useStory
-  responses: string[];
   conversationComplete: boolean;
   isGenerating: boolean;
   storyContent: StorySection[];
@@ -143,7 +142,6 @@ const useConversationStore = create<ConversationState>()(
       savedStories: [],
       
       // New unified story state from useStory
-      responses: [],
       conversationComplete: false,
       isGenerating: false,
       storyContent: [],
@@ -173,7 +171,6 @@ const useConversationStore = create<ConversationState>()(
           error: null,
           isListening: false,
           isSpeaking: false,
-          responses: [],
           conversationComplete: false,
           transcript: '',
           normalizedTranscript: ''
@@ -181,7 +178,7 @@ const useConversationStore = create<ConversationState>()(
       },
 
       addUserResponse: (response: string) => {
-        const { conversationHistory, dialogue, phase, responses } = get();
+        const { conversationHistory, dialogue, phase } = get();
         const timestamp = Date.now();
         
         // Only add response if we're in the right phase
@@ -206,8 +203,7 @@ const useConversationStore = create<ConversationState>()(
               content: response,
               timestamp
             }
-          ],
-          responses: [...responses, response]
+          ]
         });
       },
 
@@ -233,7 +229,6 @@ const useConversationStore = create<ConversationState>()(
           error: null,
           isListening: false,
           isSpeaking: false,
-          responses: [],
           conversationComplete: false,
           isGenerating: false,
           storyContent: [],
@@ -319,7 +314,6 @@ const useConversationStore = create<ConversationState>()(
         set({
           transcript: fullTranscript,
           normalizedTranscript,
-          responses: [normalizedTranscript],
           conversationComplete: true,
           phase: 'STORY_GENERATING',
           storyGenerationError: null,
@@ -423,7 +417,6 @@ const useConversationStore = create<ConversationState>()(
       // New actions from useStory
       handleConversationComplete: (transcript: string) => {
         set({
-          responses: [transcript],
           transcript,
           isListening: false,
           conversationComplete: true,
@@ -432,12 +425,12 @@ const useConversationStore = create<ConversationState>()(
       },
 
       generateStoryWithImages: async () => {
-        const { responses } = get();
+        const { transcript } = get();
         set({ isGenerating: true, phase: 'STORY_GENERATING' });
 
         try {
           const { text: rawStoryText, imageUrl } = await TogetherAIService.generateResponse(
-            `Create a children's story based on: ${responses.join(' ')}`
+            `Create a children's story based on: ${transcript}`
           );
 
           // Process story text (remove prompt if needed)
@@ -535,6 +528,9 @@ const useConversationStore = create<ConversationState>()(
           storyGenerationProgress: 'Creating your story...'
         });
 
+        // Ensure splash screen shows for minimum 3 seconds
+        const startTime = Date.now();
+
         try {
           const result = await StoryGenerationService.generateStoryAutomatically(
             transcript,
@@ -545,23 +541,45 @@ const useConversationStore = create<ConversationState>()(
           );
 
           if (result.success && result.story) {
+            // Validate the story content
+            if (!result.story.pages || result.story.pages.length === 0) {
+              throw new Error('Generated story has no content');
+            }
+            
+            const hasValidContent = result.story.pages.some(page => 
+              page.content && page.content.trim().length > 0
+            );
+            
+            if (!hasValidContent) {
+              throw new Error('Generated story contains no valid content');
+            }
+
             // Convert to the format expected by the UI
             const storyContent = result.story.pages.map(page => ({
               text: page.content,
               imageUrl: null // We'll need to integrate image generation later
             }));
 
-            set({
-              story: {
-                content: result.story.pages.map(p => p.content).join('\n\n'),
-                sections: storyContent
-              },
-              storyContent,
-              generatedStory: result.story.pages.map(p => p.content).join('\n\n'),
-              phase: 'STORY_COMPLETE',
-              automaticGenerationActive: false,
-              storyGenerationProgress: null
-            });
+            // Calculate remaining time to show splash screen (minimum 3 seconds)
+            const elapsedTime = Date.now() - startTime;
+            const minDisplayTime = 3000; // 3 seconds
+            const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
+
+            // Story generation completed successfully - now wait for minimum display time
+            setTimeout(() => {
+              set({
+                story: {
+                  content: result.story.pages.map(p => p.content).join('\n\n'),
+                  sections: storyContent
+                },
+                storyContent,
+                generatedStory: result.story.pages.map(p => p.content).join('\n\n'),
+                phase: 'STORY_COMPLETE',
+                automaticGenerationActive: false,
+                storyGenerationProgress: null,
+                isGenerating: false
+              });
+            }, remainingTime);
           } else {
             throw new Error(result.error || 'Story generation failed');
           }
@@ -570,10 +588,9 @@ const useConversationStore = create<ConversationState>()(
           set({
             storyGenerationError: error instanceof Error ? error.message : 'Story generation failed',
             automaticGenerationActive: false,
-            storyGenerationProgress: null
+            storyGenerationProgress: null,
+            isGenerating: false
           });
-        } finally {
-          set({ isGenerating: false });
         }
       },
 
