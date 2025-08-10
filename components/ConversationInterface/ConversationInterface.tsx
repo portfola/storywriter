@@ -5,6 +5,7 @@ import { ConversationSession, ConversationMessage } from '@/types/elevenlabs';
 import { useConversationStore } from '@/src/stores/conversationStore';
 import { useErrorHandler } from '@/src/hooks/useErrorHandler';
 import { ErrorType, ErrorSeverity } from '@/src/utils/errorHandler';
+import { conversationLogger, logger, LogCategory } from '@/src/utils/logger';
 
 // Fallback function to detect when the agent is signaling conversation end via text patterns
 // Primary method should be the agent calling an end_call tool via client_tool_call message
@@ -66,7 +67,7 @@ const detectConversationEnd = (agentText: string): boolean => {
   
   // Check for exact patterns first
   if (exactPatterns.some(pattern => lowercaseText.includes(pattern))) {
-    console.log('🔚 Conversation end detected via exact pattern match');
+    conversationLogger.endDetected('exact pattern match', { agentText: agentText.substring(0, 100) });
     return true;
   }
   
@@ -80,25 +81,25 @@ const detectConversationEnd = (agentText: string): boolean => {
   // Advanced pattern matching
   // Pattern 1: Transition + Story + (Creation OR System)
   if (hasTransition && hasStoryKeyword && (hasCreationVerb || hasSystemRef)) {
-    console.log('🔚 Conversation end detected via transition + story pattern');
+    conversationLogger.endDetected('transition + story pattern', { agentText: agentText.substring(0, 100) });
     return true;
   }
   
   // Pattern 2: "enter/put this into" + story-related
   if ((lowercaseText.includes('enter this') || lowercaseText.includes('put this')) && hasStoryKeyword) {
-    console.log('🔚 Conversation end detected via input + story pattern');
+    conversationLogger.endDetected('input + story pattern', { agentText: agentText.substring(0, 100) });
     return true;
   }
   
   // Pattern 3: Farewell + story context (like "have fun" with story mention)
   if (hasFarewell && hasStoryKeyword) {
-    console.log('🔚 Conversation end detected via farewell + story pattern');
+    conversationLogger.endDetected('farewell + story pattern', { agentText: agentText.substring(0, 100) });
     return true;
   }
   
   // Pattern 4: System reference + story processing
   if (hasSystemRef && hasStoryKeyword && (hasCreationVerb || hasTransition)) {
-    console.log('🔚 Conversation end detected via system + story pattern');
+    conversationLogger.endDetected('system + story pattern', { agentText: agentText.substring(0, 100) });
     return true;
   }
   
@@ -147,7 +148,7 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
       
       // Clean up conversation
       if (conversationSession) {
-        console.log('🧹 Component unmounting - cleaning up conversation session');
+        conversationLogger.cleanup({ sessionId: conversationSession.conversation?.conversationId });
         ElevenLabsService.forceCleanup();
       }
     };
@@ -162,12 +163,12 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
     try {
       const session = await ElevenLabsService.startConversationAgent({
         onConnect: () => {
-          console.log('✅ Connected to StoryWriter Agent');
+          conversationLogger.connected();
           setIsConnecting(false);
         },
         
         onDisconnect: () => {
-          console.log('❌ Disconnected from StoryWriter Agent - ending conversation');
+          conversationLogger.disconnected();
           setConversationSession(null);
           
           // Auto-end conversation when disconnected (only if currently active)
@@ -182,7 +183,7 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
               const userText = message.user_transcription_event?.user_transcript || 
                               message.text || message.content || '';
               if (userText.trim()) {
-                console.log('👤 User:', userText);
+                conversationLogger.userMessage(userText);
                 addDialogueTurn('user', userText);
               }
               break;
@@ -192,7 +193,7 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
               const agentText = message.agent_response_event?.agent_response ||
                               message.text || message.content || '';
               if (agentText.trim()) {
-                console.log('🤖 Agent:', agentText);
+                conversationLogger.agentMessage(agentText);
                 addDialogueTurn('agent', agentText);
                 setLastAgentMessage(Date.now());
                 
@@ -204,14 +205,17 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
                 
                 // Fallback: Intelligent conversation end detection based on agent closing statements
                 if (detectConversationEnd(agentText)) {
-                  console.log('⏰ Auto-ending conversation in 2 seconds...');
+                  logger.info(LogCategory.CONVERSATION, 'Auto-ending conversation in 2 seconds', { 
+                    trigger: 'agent_closing_statement',
+                    agentText: agentText.substring(0, 100) 
+                  }, '⏰');
                   setTimeout(() => {
                     handleEndConversation();
                   }, 2000); // Give 2 seconds for the agent to finish speaking
                 } else {
                   // Set inactivity timeout as backup (30 seconds after last agent message)
                   const timeout = setTimeout(() => {
-                    console.log('⏰ Conversation inactivity timeout - auto-ending conversation');
+                    conversationLogger.timeout();
                     handleEndConversation();
                   }, 30000);
                   setInactivityTimeout(timeout);
@@ -221,11 +225,15 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
               
             case 'client_tool_call':
               const toolCall = message.client_tool_call;
-              console.log('🔧 Tool call received from agent:', toolCall);
+              if (toolCall) {
+                conversationLogger.toolCall(toolCall.tool_name, { parameters: toolCall.parameters });
+              }
               
               // Handle end conversation tool call
               if (toolCall && (toolCall.tool_name === 'end_conversation' || toolCall.tool_name === 'end_call')) {
-                console.log('🔚 Agent called end tool - ending conversation immediately');
+                logger.info(LogCategory.CONVERSATION, 'Agent called end tool - ending conversation immediately', {
+                  toolName: toolCall.tool_name
+                }, '🔚');
                 
                 // Clear any existing timeout
                 if (inactivityTimeout) {
@@ -237,24 +245,30 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
                 handleEndConversation();
               } else if (toolCall) {
                 // Handle other potential tool calls
-                console.log('🔧 Other tool call:', toolCall.tool_name, toolCall.parameters);
+                logger.debug(LogCategory.CONVERSATION, 'Other tool call received', {
+                  toolName: toolCall.tool_name,
+                  parameters: toolCall.parameters
+                }, '🔧');
                 // You can extend this to handle other tools your agent might call
               }
               break;
               
             case 'audio':
               // Handle audio messages if needed
-              console.log('🔊 Audio message received');
+              logger.debug(LogCategory.CONVERSATION, 'Audio message received', { messageType: message.type }, '🔊');
               break;
               
             case 'ping':
               // Handle ping messages if needed
-              console.log('🏓 Ping message received');
+              logger.debug(LogCategory.CONVERSATION, 'Ping message received', { messageType: message.type }, '🏓');
               break;
               
             default:
               // Capture any other message types for comprehensive logging
-              console.log('📋 Other message type received:', message.type, message);
+              logger.debug(LogCategory.CONVERSATION, 'Other message type received', { 
+                messageType: message.type,
+                messageContent: JSON.stringify(message).substring(0, 200)
+              }, '📋');
           }
         },
         
@@ -267,11 +281,11 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
         },
         
         onStatusChange: (status) => {
-          console.log('📊 Status:', status);
+          logger.debug(LogCategory.CONVERSATION, 'Status change', { status }, '📊');
         },
         
         onModeChange: (mode) => {
-          console.log('🔄 Mode:', mode);
+          logger.debug(LogCategory.CONVERSATION, 'Mode change', { mode }, '🔄');
         }
       });
 
@@ -310,7 +324,7 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
     if (disabled) return;
     
     const testTranscript = "I want a story about a brave dragon who helps children learn to read";
-    console.log('🧪 Using test mode with transcript:', testTranscript);
+    logger.testEvent('Using test mode with transcript', { transcript: testTranscript });
     
     // Add test dialogue to trigger automatic story generation
     addDialogueTurn('user', 'I want to create a story');

@@ -1,6 +1,7 @@
 import Together from 'together-ai';
 import Constants from 'expo-constants';
 import { Story, StoryPage, StoryGenerationResult, StoryGenerationOptions } from '../types/story';
+import { storyLogger } from '@/src/utils/logger';
 
 const TOGETHER_API_KEY = Constants.expoConfig?.extra?.TOGETHER_API_KEY;
 
@@ -120,7 +121,7 @@ class StoryGenerationService {
         return generatedText;
       } catch (error) {
         lastError = error as Error;
-        console.warn(`Story generation attempt ${attempt} failed:`, error);
+        storyLogger.retry(attempt, { error: error instanceof Error ? error.message : String(error) });
         
         if (attempt < maxRetries) {
           // Exponential backoff: 1s, 2s, 4s
@@ -160,7 +161,7 @@ class StoryGenerationService {
         success: true
       };
     } catch (error) {
-      console.error('Story generation error:', error);
+      storyLogger.error(error, { transcript: transcript.substring(0, 100) });
       
       return {
         story: {
@@ -208,7 +209,10 @@ class StoryGenerationService {
         return fallbackResult;
       }
     } catch (error) {
-      console.error('Automatic story generation failed:', error);
+      storyLogger.error(error, { 
+        transcript: transcript.substring(0, 100),
+        action: 'automatic_generation'
+      });
       
       return {
         story: {

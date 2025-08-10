@@ -7,6 +7,7 @@ import StoryGenerationService from '@/services/storyGenerationService';
 import { AudioGenerationResult, ElevenLabsError } from '@/types/elevenlabs';
 import { TranscriptNormalizer, DialogueTurn } from '@/src/utils/transcriptNormalizer';
 import { ErrorHandler, ErrorType, ErrorSeverity, AppError } from '@/src/utils/errorHandler';
+import { logger, audioLogger, LogCategory } from '@/src/utils/logger';
 
 // Define all possible states of our conversation - enhanced for better conversation management
 export type ConversationPhase = 
@@ -185,7 +186,7 @@ const useConversationStore = create<ConversationState>()(
         
         // Only add response if we're in the right phase
         if (phase !== 'CONVERSATION_ACTIVE') {
-          console.warn('Attempted to add user response in invalid phase:', phase);
+          logger.warn(LogCategory.CONVERSATION, 'Attempted to add user response in invalid phase', { phase, response });
           return;
         }
 
@@ -473,7 +474,7 @@ const useConversationStore = create<ConversationState>()(
 
         try {
           const audioResult = await ElevenLabsService.generateStoryPromptSpeech(prompt);
-          console.log('✅ Story prompt audio generated successfully');
+          audioLogger.complete('story prompt', { promptLength: prompt.length });
           return audioResult;
         } catch (error) {
           const appError = ErrorHandler.fromUnknown(
@@ -495,7 +496,7 @@ const useConversationStore = create<ConversationState>()(
 
         try {
           const audioResult = await ElevenLabsService.generateSpeech(storyText);
-          console.log('✅ Story audio generated successfully');
+          audioLogger.complete('story', { storyLength: storyText.length });
           return audioResult;
         } catch (error) {
           const appError = ErrorHandler.fromUnknown(

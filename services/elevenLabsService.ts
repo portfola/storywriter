@@ -12,6 +12,7 @@ import {
   ConversationCallbacks,
   ConversationSession
 } from '../types/elevenlabs';
+import { serviceLogger } from '@/src/utils/logger';
 
 const ELEVENLABS_API_KEY = Constants.expoConfig?.extra?.ELEVENLABS_API_KEY;
 
@@ -211,7 +212,7 @@ export class ElevenLabsService {
         await this.endConversationAgent();
       }
 
-      console.log('🤖 Starting conversation with StoryWriter Agent:', this.agentId);
+      serviceLogger.elevenlabs.call('Starting conversation with StoryWriter Agent', { agentId: this.agentId });
 
       const conversation = await Conversation.startSession({
         agentId: this.agentId,
@@ -271,9 +272,9 @@ export class ElevenLabsService {
       try {
         // Properly dispose of the conversation session
         await this.currentConversation.endSession();
-        console.log('✅ Conversation ended successfully');
+        serviceLogger.elevenlabs.call('Conversation ended successfully');
       } catch (error) {
-        console.error('❌ Error ending conversation:', error);
+        serviceLogger.elevenlabs.error(error, { action: 'end_conversation' });
         // Continue with cleanup even if endSession fails
       } finally {
         // Ensure cleanup happens regardless of success/failure
@@ -287,15 +288,15 @@ export class ElevenLabsService {
    */
   forceCleanup(): void {
     if (this.currentConversation) {
-      console.log('🧹 Force cleaning up conversation resources');
+      serviceLogger.elevenlabs.call('Force cleaning up conversation resources');
       
       try {
         // Attempt graceful shutdown first
         this.currentConversation.endSession().catch((error) => {
-          console.warn('⚠️ Error during force cleanup:', error);
+          serviceLogger.elevenlabs.error(error, { action: 'force_cleanup' });
         });
       } catch (error) {
-        console.warn('⚠️ Error during force cleanup attempt:', error);
+        serviceLogger.elevenlabs.error(error, { action: 'force_cleanup_attempt' });
       } finally {
         this.currentConversation = null;
       }
@@ -329,7 +330,7 @@ export class ElevenLabsService {
    * Comprehensive error handling for ElevenLabs API errors
    */
   private handleError(error: any, context: string): ElevenLabsError {
-    console.error(`${context}:`, error);
+    serviceLogger.elevenlabs.error(error, { context });
 
     const elevenlabsError: ElevenLabsError = new Error(
       `${context}: ${error.message || 'Unknown error occurred'}`

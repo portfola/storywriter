@@ -3,6 +3,7 @@
  * 
  * Provides consistent error handling patterns across the application
  */
+import { logger, LogCategory } from './logger';
 
 export enum ErrorType {
   NETWORK = 'network',
@@ -55,20 +56,55 @@ export class ErrorHandler {
   }
 
   /**
-   * Logs error with consistent formatting
+   * Logs error with consistent formatting using logger utility
    */
   static logError(error: AppError): void {
-    const logPrefix = `[${error.type.toUpperCase()}:${error.severity.toUpperCase()}]`;
-    const timestamp = new Date(error.timestamp).toISOString();
-    
-    console.error(`${logPrefix} ${timestamp} - ${error.message}`);
-    
-    if (error.originalError) {
-      console.error('Original error:', error.originalError);
+    const category = this.mapErrorTypeToLogCategory(error.type);
+    const context = {
+      ...error.context,
+      errorType: error.type,
+      severity: error.severity,
+      originalError: error.originalError instanceof Error ? {
+        name: error.originalError.name,
+        message: error.originalError.message,
+        stack: process.env.NODE_ENV === 'development' ? error.originalError.stack : undefined
+      } : error.originalError
+    };
+
+    switch (error.severity) {
+      case ErrorSeverity.CRITICAL:
+        logger.critical(category, error.message, context);
+        break;
+      case ErrorSeverity.HIGH:
+        logger.error(category, error.message, context);
+        break;
+      case ErrorSeverity.MEDIUM:
+      case ErrorSeverity.LOW:
+        logger.warn(category, error.message, context);
+        break;
     }
-    
-    if (error.context) {
-      console.error('Context:', error.context);
+  }
+
+  /**
+   * Maps ErrorType to LogCategory
+   */
+  private static mapErrorTypeToLogCategory(errorType: ErrorType): LogCategory {
+    switch (errorType) {
+      case ErrorType.CONVERSATION:
+        return LogCategory.CONVERSATION;
+      case ErrorType.STORY_GENERATION:
+        return LogCategory.STORY_GENERATION;
+      case ErrorType.AUDIO:
+        return LogCategory.AUDIO;
+      case ErrorType.STORAGE:
+        return LogCategory.STORAGE;
+      case ErrorType.NETWORK:
+        return LogCategory.SYSTEM;
+      case ErrorType.VALIDATION:
+        return LogCategory.SYSTEM;
+      case ErrorType.SYSTEM:
+      default:
+        return LogCategory.SYSTEM;
     }
   }
 
@@ -78,19 +114,23 @@ export class ErrorHandler {
   static handleError(error: AppError): void {
     this.logError(error);
     
-    // Additional handling based on severity
+    // Additional handling based on severity using logger
     switch (error.severity) {
       case ErrorSeverity.CRITICAL:
-        // Could trigger error boundary or app reset
-        console.error('CRITICAL ERROR - Consider app restart');
+        logger.critical(LogCategory.SYSTEM, 'CRITICAL ERROR - Consider app restart', {
+          errorId: `${error.type}_${error.timestamp}`,
+          ...error.context
+        });
         break;
       case ErrorSeverity.HIGH:
-        // Could show persistent error notification
-        console.warn('HIGH SEVERITY ERROR - User intervention may be needed');
+        logger.error(LogCategory.SYSTEM, 'HIGH SEVERITY ERROR - User intervention may be needed', {
+          errorId: `${error.type}_${error.timestamp}`,
+          ...error.context
+        });
         break;
       case ErrorSeverity.MEDIUM:
       case ErrorSeverity.LOW:
-        // Normal error logging is sufficient
+        // Normal error logging is sufficient (already done in logError)
         break;
     }
   }

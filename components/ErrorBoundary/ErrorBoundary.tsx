@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
+import { logger, LogCategory } from '@/src/utils/logger';
 
 interface Props {
   children: React.ReactNode;
@@ -23,7 +24,16 @@ class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    logger.critical(LogCategory.ERROR_BOUNDARY, 'React error boundary caught an error', {
+      error: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      },
+      errorInfo: {
+        componentStack: errorInfo.componentStack
+      }
+    });
     this.props.onError?.(error, errorInfo);
   }
 
