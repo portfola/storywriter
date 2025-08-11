@@ -172,7 +172,10 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
           setConversationSession(null);
           
           // Auto-end conversation when disconnected (only if currently active)
-          endConversation();
+          // Add small delay to ensure all pending messages are processed
+          setTimeout(() => {
+            endConversation();
+          }, 500);
         },
         
         onMessage: (message: ConversationMessage) => {
@@ -323,20 +326,35 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
   const handleTestMode = () => {
     if (disabled) return;
     
-    const testTranscript = "I want a story about a brave dragon who helps children learn to read";
-    logger.testEvent('Using test mode with transcript', { transcript: testTranscript });
+    // Create a realistic test conversation that mimics an actual child-agent interaction
+    const testDialogue = [
+      { role: 'agent' as const, content: 'Hi there! I\'m here to help you create an amazing story. What kind of story would you like to make today?' },
+      { role: 'user' as const, content: 'I want a story about a dragon!' },
+      { role: 'agent' as const, content: 'A dragon story sounds fantastic! What kind of dragon should it be? A friendly dragon, a magical dragon, or maybe a dragon with a special job?' },
+      { role: 'user' as const, content: 'A friendly dragon who helps people learn to read books' },
+      { role: 'agent' as const, content: 'Oh, I love that idea! A dragon who helps with reading - that\'s so creative! Where should this helpful dragon live? In a library, a magical forest, or somewhere else special?' },
+      { role: 'user' as const, content: 'In a big library with lots and lots of books everywhere' },
+      { role: 'agent' as const, content: 'Perfect! And who should the dragon help? Maybe some children who are learning to read?' },
+      { role: 'user' as const, content: 'Yeah! Kids who are scared to read out loud but the dragon makes them feel brave' },
+      { role: 'agent' as const, content: 'That\'s such a wonderful and heartwarming idea! I think we have everything we need to create your story about a brave, helpful dragon in a magical library. Let me create that story for you now!' }
+    ];
     
-    // Add test dialogue to trigger automatic story generation
-    addDialogueTurn('user', 'I want to create a story');
-    addDialogueTurn('agent', testTranscript);
+    logger.testEvent('Using test mode with realistic conversation', { 
+      dialogueLength: testDialogue.length,
+      previewContent: testDialogue.slice(0, 2).map(d => `${d.role}: ${d.content.substring(0, 30)}...`)
+    });
     
-    // Trigger the automatic flow
+    // Add each dialogue turn to create a realistic conversation flow
+    testDialogue.forEach(turn => {
+      addDialogueTurn(turn.role, turn.content);
+    });
+    
+    // Trigger the automatic story generation flow
     endConversation();
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Choose how to create your story:</Text>
       
       {/* Conversational Agent Button */}
       <TouchableOpacity
@@ -421,10 +439,6 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
         </View>
       )}
 
-      {/* Divider */}
-      <View style={styles.divider}>
-        <Text style={styles.dividerText}>OR</Text>
-      </View>
 
       {/* Test Button */}
       <TouchableOpacity
@@ -437,9 +451,6 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
         </Text>
       </TouchableOpacity>
 
-      <Text style={styles.helpText}>
-        Test mode uses a sample story prompt for quick testing
-      </Text>
     </View>
   );
 };

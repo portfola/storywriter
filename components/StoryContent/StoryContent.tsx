@@ -21,11 +21,15 @@ const StoryContent: React.FC = () => {
       <ActivityIndicator size="large" color="#3498db" />
     ) : (
       <>
-        {sections.length > 0 && sections[0].imageUrl ? (
-          <>
-            <Image source={{ uri: sections[0].imageUrl }} style={s.storyImage} resizeMode="cover" />
-            <Text style={s.storyText}>{sections[0].text}</Text>
-          </>
+        {sections.length > 0 ? (
+          sections.map((section, index) => (
+            <React.Fragment key={index}>
+              {section.imageUrl && (
+                <Image source={{ uri: section.imageUrl }} style={s.storyImage} resizeMode="cover" />
+              )}
+              <Text style={s.storyText}>{section.text}</Text>
+            </React.Fragment>
+          ))
         ) : (
           <Text style={s.storyText}>Loading story...</Text>
         )}

@@ -333,11 +333,24 @@ const useConversationStore = create<ConversationState>()(
       processTranscript: () => {
         const { dialogue } = get();
         
+        // Debug logging to track transcript processing
+        logger.info(LogCategory.CONVERSATION, 'Processing transcript', { 
+          dialogueLength: dialogue.length,
+          dialoguePreview: dialogue.slice(0, 2).map(d => `${d.role}: ${d.content.substring(0, 50)}...`)
+        }, '📝');
+        
         set({ phase: 'TRANSCRIPT_PROCESSING' });
         
         // Generate normalized transcript using the utility
         const normalizedTranscript = TranscriptNormalizer.extractUserContent(dialogue);
         const fullTranscript = TranscriptNormalizer.generateTranscript(dialogue);
+        
+        // More debug logging
+        logger.info(LogCategory.CONVERSATION, 'Transcript generated', {
+          fullTranscriptLength: fullTranscript.length,
+          normalizedTranscriptLength: normalizedTranscript.length,
+          fullTranscriptPreview: fullTranscript.substring(0, 100)
+        }, '📄');
         
         set({
           transcript: fullTranscript,
@@ -514,16 +527,34 @@ const useConversationStore = create<ConversationState>()(
 
       // New automatic story generation methods
       generateStoryAutomatically: async () => {
-        const { transcript, minDisplayStartTime } = get();
+        const { transcript, dialogue, minDisplayStartTime } = get();
         
-        if (!transcript?.trim()) {
+        // Enhanced validation: check both transcript and dialogue
+        const hasDialogue = dialogue && dialogue.length > 0;
+        const hasTranscript = transcript && transcript.trim().length > 0;
+        
+        logger.info(LogCategory.CONVERSATION, 'Story generation validation', {
+          hasDialogue,
+          dialogueLength: dialogue?.length || 0,
+          hasTranscript,
+          transcriptLength: transcript?.length || 0,
+          dialoguePreview: hasDialogue ? dialogue.slice(0, 2).map(d => `${d.role}: ${d.content.substring(0, 30)}...`) : []
+        }, '🔍');
+        
+        if (!hasTranscript && !hasDialogue) {
           const appError = ErrorHandler.createError(
             ErrorType.VALIDATION,
             ErrorSeverity.MEDIUM,
             'No conversation transcript available for story generation',
             'We need a conversation transcript to create your story. Please try talking with the StoryWriter Agent first.',
             undefined,
-            { action: 'automatic_story_generation' }
+            { 
+              action: 'automatic_story_generation',
+              hasDialogue,
+              dialogueLength: dialogue?.length || 0,
+              hasTranscript,
+              transcriptLength: transcript?.length || 0
+            }
           );
           get().addError('story_generation', appError);
           set({
@@ -532,6 +563,16 @@ const useConversationStore = create<ConversationState>()(
             minDisplayStartTime: null
           });
           return;
+        }
+        
+        // If we have dialogue but no transcript, regenerate transcript
+        if (hasDialogue && !hasTranscript) {
+          logger.info(LogCategory.CONVERSATION, 'Regenerating transcript from dialogue', {
+            dialogueLength: dialogue.length
+          }, '🔄');
+          
+          const regeneratedTranscript = TranscriptNormalizer.generateTranscript(dialogue);
+          set({ transcript: regeneratedTranscript });
         }
 
         set({
@@ -543,13 +584,29 @@ const useConversationStore = create<ConversationState>()(
         get().removeError('story_generation');
 
         try {
+          // Get the current transcript (might have been regenerated above)
+          const currentTranscript = get().transcript;
+          
+          logger.info(LogCategory.CONVERSATION, 'Starting story generation with transcript', {
+            transcriptLength: currentTranscript.length,
+            transcriptPreview: currentTranscript.substring(0, 200)
+          }, '🚀');
+          
           const result = await StoryGenerationService.generateStoryAutomatically(
-            transcript,
+            currentTranscript,
             { maxRetries: 3, temperature: 0.7 },
             (progress) => {
+              logger.info(LogCategory.CONVERSATION, 'Story generation progress', { progress }, '📈');
               set({ storyGenerationProgress: progress });
             }
           );
+          
+          logger.info(LogCategory.CONVERSATION, 'Story generation completed', {
+            success: result.success,
+            hasStory: !!result.story,
+            pagesCount: result.story?.pages?.length || 0,
+            error: result.error
+          }, result.success ? '✅' : '❌');
 
           if (result.success && result.story) {
             // Validate the story content
@@ -592,8 +649,20 @@ const useConversationStore = create<ConversationState>()(
             const minDisplayTime = 3000; // 3 seconds
             const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
 
+            logger.info(LogCategory.CONVERSATION, 'Story completion timing', {
+              elapsedTime,
+              minDisplayTime,
+              remainingTime,
+              willDelay: remainingTime > 0
+            }, '⏰');
+
             // Handle phase transition with proper timing
             const completeStoryGeneration = () => {
+              logger.info(LogCategory.CONVERSATION, 'Transitioning to STORY_COMPLETE phase', {
+                pagesCount: result.story.pages.length,
+                storyContentLength: storyContent.length
+              }, '🎯');
+              
               set({
                 story: {
                   content: result.story.pages.map(p => p.content).join('\n\n'),
@@ -611,9 +680,11 @@ const useConversationStore = create<ConversationState>()(
 
             if (remainingTime > 0) {
               // Wait for minimum display time
+              logger.info(LogCategory.CONVERSATION, `Waiting ${remainingTime}ms before showing story`, { remainingTime }, '⏳');
               setTimeout(completeStoryGeneration, remainingTime);
             } else {
               // Minimum time already elapsed, complete immediately
+              logger.info(LogCategory.CONVERSATION, 'Completing story immediately', {}, '⚡');
               completeStoryGeneration();
             }
           } else {

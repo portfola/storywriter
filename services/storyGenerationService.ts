@@ -99,8 +99,18 @@ class StoryGenerationService {
     const { maxRetries = 3, temperature = 0.7, maxTokens = 1000 } = options;
     let lastError: Error | null = null;
 
+    storyLogger.generating({ 
+      promptLength: prompt.length,
+      maxRetries,
+      temperature,
+      maxTokens,
+      model: "openai/gpt-oss-20b"
+    });
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        storyLogger.retry(attempt, { maxRetries });
+        
         const response = await this.client.chat.completions.create({
           model: "openai/gpt-oss-20b",
           messages: [
@@ -111,6 +121,13 @@ class StoryGenerationService {
           ],
           max_tokens: maxTokens,
           temperature,
+        });
+
+        storyLogger.complete({ 
+          attempt,
+          hasChoices: !!response.choices,
+          choicesLength: response.choices?.length || 0,
+          hasContent: !!response.choices?.[0]?.message?.content
         });
 
         const generatedText = response.choices[0]?.message?.content;
