@@ -320,7 +320,10 @@ const styles = {
     paddingVertical: 15,
     borderRadius: 25,
     elevation: 3,
-    boxShadow: '0px 2px 3px rgba(0, 0, 0, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   retryButtonText: {
     color: 'white',
