@@ -7,104 +7,16 @@ import { useErrorHandler } from '@/src/hooks/useErrorHandler';
 import { ErrorType, ErrorSeverity } from '@/src/utils/errorHandler';
 import { conversationLogger, logger, LogCategory } from '@/src/utils/logger';
 
-// Fallback function to detect when the agent is signaling conversation end via text patterns
-// Primary method should be the agent calling an end_call tool via client_tool_call message
+// Conversation ending is handled by the agent calling the end_call or end_conversation tool
 // 
 // TO CONFIGURE: In your ElevenLabs agent, add a client tool called "end_call" or "end_conversation"
 // with the following configuration:
 // - Tool Name: "end_call" or "end_conversation" 
 // - Description: "Call this tool when you want to end the conversation and proceed to story generation"
 // - Parameters: {} (no parameters needed)
-const detectConversationEnd = (agentText: string): boolean => {
-  const lowercaseText = agentText.toLowerCase();
-  
-  // Story processing/creation keywords (broader matching)
-  const storyKeywords = [
-    'story', 'stories', 'tale', 'narrative', 'book'
-  ];
-  
-  // Action verbs that indicate story creation/processing
-  const creationVerbs = [
-    'create', 'creating', 'generate', 'generating', 'write', 'writing',
-    'craft', 'crafting', 'make', 'making', 'build', 'building',
-    'work on', 'working on', 'process', 'processing', 'develop', 'developing'
-  ];
-  
-  // Processing/system references (like "story machine")
-  const systemReferences = [
-    'machine', 'system', 'generator', 'creator', 'engine',
-    'processor', 'builder', 'maker', 'program'
-  ];
-  
-  // Transition phrases that indicate moving to next step
-  const transitionPhrases = [
-    'i\'m going to', 'i\'ll go ahead and', 'let me', 'i\'ll', 'time to',
-    'ready to', 'going to', 'about to', 'now i\'ll', 'i\'m going to go ahead',
-    'enter this into', 'put this into', 'send this to', 'input this'
-  ];
-  
-  // Farewell patterns (polite endings)
-  const farewellPatterns = [
-    'have fun', 'have a great', 'have a wonderful', 'have a nice',
-    'enjoy', 'thanks for', 'thank you for', 'goodbye', 'bye',
-    'talk to you later', 'see you later', 'until next time', 'take care',
-    'chat soon', 'speak soon'
-  ];
-  
-  // High-confidence patterns (exact phrases we've seen)
-  const exactPatterns = [
-    'create that story now',
-    'story machine',
-    'story generator',
-    'story creation',
-    'story generation',
-    'enter this into the story',
-    'put this into the story',
-    'going to create your story',
-    'time to create',
-    'ready to create'
-  ];
-  
-  // Check for exact patterns first
-  if (exactPatterns.some(pattern => lowercaseText.includes(pattern))) {
-    conversationLogger.endDetected('exact pattern match', { agentText: agentText.substring(0, 100) });
-    return true;
-  }
-  
-  // Check for combinations that indicate story processing
-  const hasStoryKeyword = storyKeywords.some(keyword => lowercaseText.includes(keyword));
-  const hasCreationVerb = creationVerbs.some(verb => lowercaseText.includes(verb));
-  const hasSystemRef = systemReferences.some(ref => lowercaseText.includes(ref));
-  const hasTransition = transitionPhrases.some(phrase => lowercaseText.includes(phrase));
-  const hasFarewell = farewellPatterns.some(pattern => lowercaseText.includes(pattern));
-  
-  // Advanced pattern matching
-  // Pattern 1: Transition + Story + (Creation OR System)
-  if (hasTransition && hasStoryKeyword && (hasCreationVerb || hasSystemRef)) {
-    conversationLogger.endDetected('transition + story pattern', { agentText: agentText.substring(0, 100) });
-    return true;
-  }
-  
-  // Pattern 2: "enter/put this into" + story-related
-  if ((lowercaseText.includes('enter this') || lowercaseText.includes('put this')) && hasStoryKeyword) {
-    conversationLogger.endDetected('input + story pattern', { agentText: agentText.substring(0, 100) });
-    return true;
-  }
-  
-  // Pattern 3: Farewell + story context (like "have fun" with story mention)
-  if (hasFarewell && hasStoryKeyword) {
-    conversationLogger.endDetected('farewell + story pattern', { agentText: agentText.substring(0, 100) });
-    return true;
-  }
-  
-  // Pattern 4: System reference + story processing
-  if (hasSystemRef && hasStoryKeyword && (hasCreationVerb || hasTransition)) {
-    conversationLogger.endDetected('system + story pattern', { agentText: agentText.substring(0, 100) });
-    return true;
-  }
-  
-  return false;
-};
+//
+// The agent should call this tool when the conversation is complete, rather than relying on
+// pattern matching of natural language which is unreliable.
 
 interface Props {
   disabled?: boolean;
@@ -171,15 +83,68 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
           conversationLogger.disconnected();
           setConversationSession(null);
           
-          // Auto-end conversation when disconnected (only if currently active)
-          // Add small delay to ensure all pending messages are processed
-          setTimeout(() => {
-            endConversation();
-          }, 500);
+          // Only auto-end conversation if we have meaningful dialogue
+          // Don't end on immediate disconnects (connection failures)
+          const currentDialogue = dialogue;
+          const hasRealConversation = currentDialogue.length >= 2 && 
+                                    currentDialogue.some(turn => turn.role === 'user');
+          
+          if (hasRealConversation) {
+            logger.info(LogCategory.CONVERSATION, 'Auto-ending conversation after disconnect with meaningful dialogue', {
+              dialogueLength: currentDialogue.length,
+              userTurns: currentDialogue.filter(t => t.role === 'user').length
+            });
+            // Add small delay to ensure all pending messages are processed
+            setTimeout(() => {
+              endConversation();
+            }, 500);
+          } else {
+            logger.info(LogCategory.CONVERSATION, 'Connection lost without meaningful conversation - not ending', {
+              dialogueLength: currentDialogue.length,
+              userTurns: currentDialogue.filter(t => t.role === 'user').length
+            });
+            // Just reset to initial state instead of trying to process empty conversation
+            resetConversation();
+          }
         },
         
         onMessage: (message: ConversationMessage) => {
-          // Handle different message types
+          // PRIMARY HANDLING: Check for actual source/message format first
+          if (message.source && message.message) {
+            // Map source to role
+            const role = message.source === 'user' ? 'user' : 'agent';
+            const content = message.message;
+            
+            if (content.trim()) {
+              if (role === 'user') {
+                conversationLogger.userMessage(content);
+              } else {
+                conversationLogger.agentMessage(content);
+                setLastAgentMessage(Date.now());
+                
+                // Clear any existing inactivity timeout
+                if (inactivityTimeout) {
+                  clearTimeout(inactivityTimeout);
+                  setInactivityTimeout(null);
+                }
+                
+                // Set inactivity timeout as backup (30 seconds after last agent message)
+                // Agent should call end_call tool when conversation is complete
+                const timeout = setTimeout(() => {
+                  conversationLogger.timeout();
+                  handleEndConversation();
+                }, 30000);
+                setInactivityTimeout(timeout);
+              }
+              
+              // Add to dialogue immediately
+              addDialogueTurn(role, content);
+            }
+            return; // Exit early after handling primary format
+          }
+          
+          // SECONDARY HANDLING: Fallback to legacy type-based parsing for edge cases only
+          
           switch (message.type) {
             case 'user_transcript':
             case 'user_message':
@@ -206,23 +171,13 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
                   setInactivityTimeout(null);
                 }
                 
-                // Fallback: Intelligent conversation end detection based on agent closing statements
-                if (detectConversationEnd(agentText)) {
-                  logger.info(LogCategory.CONVERSATION, 'Auto-ending conversation in 2 seconds', { 
-                    trigger: 'agent_closing_statement',
-                    agentText: agentText.substring(0, 100) 
-                  }, '⏰');
-                  setTimeout(() => {
-                    handleEndConversation();
-                  }, 2000); // Give 2 seconds for the agent to finish speaking
-                } else {
-                  // Set inactivity timeout as backup (30 seconds after last agent message)
-                  const timeout = setTimeout(() => {
-                    conversationLogger.timeout();
-                    handleEndConversation();
-                  }, 30000);
-                  setInactivityTimeout(timeout);
-                }
+                // Set inactivity timeout as backup (30 seconds after last agent message)
+                // Agent should call end_call tool when conversation is complete
+                const timeout = setTimeout(() => {
+                  conversationLogger.timeout();
+                  handleEndConversation();
+                }, 30000);
+                setInactivityTimeout(timeout);
               }
               break;
               
@@ -252,7 +207,6 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
                   toolName: toolCall.tool_name,
                   parameters: toolCall.parameters
                 }, '🔧');
-                // You can extend this to handle other tools your agent might call
               }
               break;
               
@@ -267,11 +221,18 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
               break;
               
             default:
-              // Capture any other message types for comprehensive logging
-              logger.debug(LogCategory.CONVERSATION, 'Other message type received', { 
-                messageType: message.type,
-                messageContent: JSON.stringify(message).substring(0, 200)
-              }, '📋');
+              // ERROR HANDLING: If neither format matches, log full message structure for debugging
+              if (!message.source && !message.message && !message.type) {
+                logger.error(LogCategory.CONVERSATION, 'Unknown message format - full structure logged for debugging', {
+                  fullMessage: JSON.stringify(message, null, 2)
+                }, '❌');
+              } else {
+                // Capture any other message types for comprehensive logging
+                logger.debug(LogCategory.CONVERSATION, 'Other message type received', { 
+                  messageType: message.type,
+                  messageContent: JSON.stringify(message).substring(0, 200)
+                }, '📋');
+              }
           }
         },
         

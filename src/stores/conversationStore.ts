@@ -104,7 +104,7 @@ export interface ConversationState extends SpeechState, StoryState {
   startConversation: () => void;
   addUserResponse: (response: string) => void;
   addAgentResponse: (response: string) => void; // New method for agent responses
-  addDialogueTurn: (role: 'user' | 'agent', content: string) => void; // New structured dialogue method
+  addDialogueTurn: (role: 'user' | 'agent', content: string) => void; // New structured dialogue method with validation
   setPhase: (phase: ConversationPhase) => void;
   setSpeechState: (speechState: Partial<SpeechState>) => void;
   resetConversation: () => void;
@@ -115,6 +115,20 @@ export interface ConversationState extends SpeechState, StoryState {
   getError: (key: string) => AppError | undefined;
   endConversation: () => void;
   processTranscript: () => void; // New method to normalize transcript
+  
+  // New dialogue validation and debug methods
+  validateDialogueState: () => { isValid: boolean; issues: string[] };
+  getDialogueDebugInfo: () => {
+    totalTurns: number;
+    userTurns: number;
+    agentTurns: number;
+    duplicates: number;
+    emptyTurns: number;
+    averageContentLength: number;
+    recentTurns: DialogueTurn[];
+    dialogueIntegrity: boolean;
+    lastUpdate: number;
+  };
   
   // Story generation actions
   generateStoryPromptAudio: (prompt: string) => Promise<AudioGenerationResult | null>;
@@ -304,15 +318,62 @@ const useConversationStore = create<ConversationState>()(
       },
 
       addDialogueTurn: (role: 'user' | 'agent', content: string) => {
+        // VALIDATION: Ensure content is non-empty and properly formatted
+        if (!content || typeof content !== 'string') {
+          logger.warn(LogCategory.CONVERSATION, 'Attempted to add dialogue turn with invalid content', { 
+            role, 
+            content: typeof content, 
+            contentLength: content?.length || 0 
+          });
+          return;
+        }
+        
+        const trimmedContent = content.trim();
+        if (trimmedContent.length === 0) {
+          logger.warn(LogCategory.CONVERSATION, 'Attempted to add dialogue turn with empty content', { role });
+          return;
+        }
+        
+        // Validate role
+        if (role !== 'user' && role !== 'agent') {
+          logger.warn(LogCategory.CONVERSATION, 'Attempted to add dialogue turn with invalid role', { role, content: trimmedContent.substring(0, 50) });
+          return;
+        }
+        
         const { dialogue } = get();
         const timestamp = Date.now();
+        
+        // DEDUPLICATION: Prevent duplicate messages (same role + content + close timestamps)
+        const DUPLICATE_THRESHOLD = 2000; // 2 seconds
+        const isDuplicate = dialogue.some(existingTurn => 
+          existingTurn.role === role &&
+          existingTurn.content === trimmedContent &&
+          Math.abs(existingTurn.timestamp - timestamp) < DUPLICATE_THRESHOLD
+        );
+        
+        if (isDuplicate) {
+          logger.info(LogCategory.CONVERSATION, 'Prevented duplicate dialogue turn', {
+            role,
+            contentPreview: trimmedContent.substring(0, 50),
+            timestamp,
+            thresholdMs: DUPLICATE_THRESHOLD
+          });
+          return;
+        }
+        
+        logger.debug(LogCategory.CONVERSATION, 'Adding dialogue turn', {
+          role,
+          contentLength: trimmedContent.length,
+          contentPreview: trimmedContent.substring(0, 50),
+          totalTurns: dialogue.length + 1
+        });
         
         set({
           dialogue: [
             ...dialogue,
             {
               role,
-              content,
+              content: trimmedContent,
               timestamp
             }
           ]
@@ -333,9 +394,45 @@ const useConversationStore = create<ConversationState>()(
       processTranscript: () => {
         const { dialogue } = get();
         
+        // EARLY EXIT: Don't process if there's no meaningful conversation
+        const userTurns = dialogue.filter(t => t.role === 'user').length;
+        if (userTurns === 0) {
+          logger.warn(LogCategory.CONVERSATION, 'Attempted to process transcript with no user turns - resetting conversation', {
+            dialogueLength: dialogue.length,
+            userTurns
+          });
+          get().resetConversation();
+          return;
+        }
+        
+        // STATE INTEGRITY: Validate dialogue state before processing
+        const validation = get().validateDialogueState();
+        if (!validation.isValid) {
+          logger.error(LogCategory.CONVERSATION, 'Dialogue state validation failed before transcript processing', {
+            issues: validation.issues,
+            dialogueLength: dialogue.length
+          });
+          
+          const validationError = ErrorHandler.createError(
+            ErrorType.VALIDATION,
+            ErrorSeverity.MEDIUM,
+            'Invalid dialogue state detected',
+            'There was an issue with the conversation data. Please try again.',
+            undefined,
+            { validationIssues: validation.issues }
+          );
+          get().addError('dialogue_validation', validationError);
+          return;
+        }
+        
         // Debug logging to track transcript processing
+        const debugInfo = get().getDialogueDebugInfo();
         logger.info(LogCategory.CONVERSATION, 'Processing transcript', { 
           dialogueLength: dialogue.length,
+          userTurns: debugInfo.userTurns,
+          agentTurns: debugInfo.agentTurns,
+          duplicates: debugInfo.duplicates,
+          emptyTurns: debugInfo.emptyTurns,
           dialoguePreview: dialogue.slice(0, 2).map(d => `${d.role}: ${d.content.substring(0, 50)}...`)
         }, '📝');
         
@@ -349,7 +446,8 @@ const useConversationStore = create<ConversationState>()(
         logger.info(LogCategory.CONVERSATION, 'Transcript generated', {
           fullTranscriptLength: fullTranscript.length,
           normalizedTranscriptLength: normalizedTranscript.length,
-          fullTranscriptPreview: fullTranscript.substring(0, 100)
+          fullTranscriptPreview: fullTranscript.substring(0, 100),
+          debugInfo
         }, '📄');
         
         set({
@@ -724,6 +822,130 @@ const useConversationStore = create<ConversationState>()(
       retryStoryGeneration: async () => {
         get().removeError('story_generation');
         await get().generateStoryAutomatically();
+      },
+      
+      // STATE INTEGRITY: Validate dialogue state
+      validateDialogueState: () => {
+        const { dialogue } = get();
+        const issues: string[] = [];
+        
+        // Check for empty dialogue
+        if (!dialogue || dialogue.length === 0) {
+          issues.push('Dialogue array is empty or undefined');
+          return { isValid: false, issues };
+        }
+        
+        // Check each dialogue turn
+        dialogue.forEach((turn, index) => {
+          if (!turn.role || (turn.role !== 'user' && turn.role !== 'agent')) {
+            issues.push(`Turn ${index}: Invalid or missing role`);
+          }
+          
+          if (!turn.content || typeof turn.content !== 'string' || turn.content.trim().length === 0) {
+            issues.push(`Turn ${index}: Invalid or empty content`);
+          }
+          
+          if (!turn.timestamp || typeof turn.timestamp !== 'number' || turn.timestamp <= 0) {
+            issues.push(`Turn ${index}: Invalid timestamp`);
+          }
+        });
+        
+        // Check for reasonable conversation flow
+        const userTurns = dialogue.filter(t => t.role === 'user').length;
+        const agentTurns = dialogue.filter(t => t.role === 'agent').length;
+        
+        if (userTurns === 0) {
+          issues.push('No user turns found in dialogue');
+        }
+        
+        if (agentTurns === 0) {
+          issues.push('No agent turns found in dialogue');
+        }
+        
+        // Check for excessive duplicates (more than 20% of dialogue)
+        const duplicateThreshold = Math.max(1, Math.floor(dialogue.length * 0.2));
+        let duplicateCount = 0;
+        
+        for (let i = 1; i < dialogue.length; i++) {
+          const current = dialogue[i];
+          const previous = dialogue[i - 1];
+          
+          if (current.role === previous.role && 
+              current.content === previous.content &&
+              Math.abs(current.timestamp - previous.timestamp) < 5000) {
+            duplicateCount++;
+          }
+        }
+        
+        if (duplicateCount > duplicateThreshold) {
+          issues.push(`Excessive duplicates detected: ${duplicateCount} (threshold: ${duplicateThreshold})`);
+        }
+        
+        return { isValid: issues.length === 0, issues };
+      },
+      
+      // DEBUG TOOLS: Get detailed dialogue state information
+      getDialogueDebugInfo: () => {
+        const { dialogue } = get();
+        
+        if (!dialogue || dialogue.length === 0) {
+          return {
+            totalTurns: 0,
+            userTurns: 0,
+            agentTurns: 0,
+            duplicates: 0,
+            emptyTurns: 0,
+            averageContentLength: 0,
+            recentTurns: [],
+            dialogueIntegrity: false,
+            lastUpdate: 0
+          };
+        }
+        
+        const userTurns = dialogue.filter(t => t.role === 'user').length;
+        const agentTurns = dialogue.filter(t => t.role === 'agent').length;
+        const emptyTurns = dialogue.filter(t => !t.content || t.content.trim().length === 0).length;
+        
+        // Calculate duplicates
+        let duplicates = 0;
+        for (let i = 1; i < dialogue.length; i++) {
+          const current = dialogue[i];
+          const previous = dialogue[i - 1];
+          
+          if (current.role === previous.role && 
+              current.content === previous.content &&
+              Math.abs(current.timestamp - previous.timestamp) < 5000) {
+            duplicates++;
+          }
+        }
+        
+        // Calculate average content length
+        const validTurns = dialogue.filter(t => t.content && t.content.trim().length > 0);
+        const averageContentLength = validTurns.length > 0 
+          ? Math.round(validTurns.reduce((sum, t) => sum + t.content.length, 0) / validTurns.length)
+          : 0;
+        
+        // Get recent turns (last 5)
+        const recentTurns = dialogue.slice(-5);
+        
+        // Check dialogue integrity
+        const validation = get().validateDialogueState();
+        const dialogueIntegrity = validation.isValid;
+        
+        // Get last update timestamp
+        const lastUpdate = dialogue.length > 0 ? Math.max(...dialogue.map(t => t.timestamp)) : 0;
+        
+        return {
+          totalTurns: dialogue.length,
+          userTurns,
+          agentTurns,
+          duplicates,
+          emptyTurns,
+          averageContentLength,
+          recentTurns,
+          dialogueIntegrity,
+          lastUpdate
+        };
       }
     })
   )

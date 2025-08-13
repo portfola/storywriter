@@ -115,9 +115,20 @@ export interface ModelListResponse {
   models: ElevenLabsModel[];
 }
 
+// Actual message format received from ElevenLabs
+export interface ElevenLabsActualMessage {
+  source: 'user' | 'ai';
+  message: string;
+}
+
 // Message types for ElevenLabs conversation agents
 export interface ConversationMessage {
-  type: 'user_transcript' | 'user_message' | 'agent_response' | 'agent_message' | 
+  // Primary format (actual format received)
+  source?: 'user' | 'ai';
+  message?: string;
+  
+  // Legacy/documented formats (kept for backwards compatibility)
+  type?: 'user_transcript' | 'user_message' | 'agent_response' | 'agent_message' | 
         'client_tool_call' | 'client_tool_result' | 'audio' | 'ping' | 
         'conversation_initiation_metadata' | 'internal_tentative_agent_response' |
         'vad_score' | 'interruption' | 'contextual_update';
@@ -150,7 +161,7 @@ export interface ConversationMessage {
 export interface ConversationCallbacks {
   onConnect?: () => void;
   onDisconnect?: () => void;
-  onMessage?: (message: any) => void; // Keep flexible for now since ElevenLabs SDK may send various formats
+  onMessage?: (message: ConversationMessage) => void;
   onError?: (error: any) => void;
   onStatusChange?: (status: string) => void;
   onModeChange?: (mode: string) => void;
