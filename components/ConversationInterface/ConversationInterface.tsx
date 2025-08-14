@@ -33,18 +33,17 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
   
   const isConversationActive = phase === 'ACTIVE';
 
-  // Debounced flush mechanism
-  const scheduleFlush = useCallback(() => {
+  // Message capture debounce (for logging/validation only - does NOT end conversation)
+  const scheduleMessageProcessing = useCallback(() => {
     if (flushTimeoutRef.current) {
       clearTimeout(flushTimeoutRef.current);
     }
     
+    // This timeout is only for clearing the pending flag, NOT for ending conversations
     flushTimeoutRef.current = setTimeout(() => {
-      if (pendingFlushRef.current && rawMessages.current.length > 0) {
-        logger.info(LogCategory.CONVERSATION, 'Debounced flush triggered - processing transcript', {
-          messageCount: rawMessages.current.length
-        });
-        processTranscriptAndEnd();
+      if (pendingFlushRef.current) {
+        // Simply clear the pending flag - no logging needed
+        pendingFlushRef.current = false;
       }
     }, 2000);
   }, []);
@@ -120,7 +119,34 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
         onDisconnect: () => {
           conversationLogger.disconnected();
           setConversationSession(null);
-          // Let ElevenLabs handle the conversation flow - no premature ending
+          
+          // If we have messages but the agent didn't explicitly call end_conversation,
+          // process the transcript as a fallback
+          if (rawMessages.current.length > 0) {
+            const userMessages = rawMessages.current.filter(msg => msg.role === 'user');
+            
+            logger.info(LogCategory.CONVERSATION, 'Disconnect with messages - processing transcript as fallback', {
+              totalMessages: rawMessages.current.length,
+              userMessages: userMessages.length
+            });
+            
+            if (userMessages.length >= 2) {
+              // Cancel any pending timeouts
+              if (flushTimeoutRef.current) {
+                clearTimeout(flushTimeoutRef.current);
+                flushTimeoutRef.current = null;
+              }
+              pendingFlushRef.current = false;
+              
+              // Process the transcript
+              processTranscriptAndEnd();
+            } else {
+              logger.warn(LogCategory.CONVERSATION, 'Disconnect with insufficient user messages - no story generation', {
+                userMessages: userMessages.length,
+                minRequired: 2
+              });
+            }
+          }
         },
         
         onMessage: (message: ConversationMessage) => {
@@ -141,22 +167,28 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
               messageCount: rawMessages.current.length
             });
             
-            // Schedule debounced flush
+            // Schedule message processing check (does not end conversation)
             pendingFlushRef.current = true;
-            scheduleFlush();
+            scheduleMessageProcessing();
           }
           
           // Handle end_conversation tool calls
           if (message.type === 'client_tool_call') {
             const toolCall = message.client_tool_call;
             
+            logger.debug(LogCategory.CONVERSATION, 'Received client tool call', {
+              toolName: toolCall?.tool_name,
+              messageType: message.type,
+              fullMessage: message
+            });
+            
             if (toolCall && (toolCall.tool_name === 'end_conversation' || toolCall.tool_name === 'end_call')) {
-              logger.info(LogCategory.CONVERSATION, 'Agent called end tool - cancelling debounce and processing immediately', {
+              logger.info(LogCategory.CONVERSATION, 'Agent called end tool - processing transcript and ending conversation', {
                 toolName: toolCall.tool_name,
                 messageCount: rawMessages.current.length
               });
               
-              // Cancel any pending flush and process immediately
+              // Cancel any pending message processing and end conversation immediately
               if (flushTimeoutRef.current) {
                 clearTimeout(flushTimeoutRef.current);
                 flushTimeoutRef.current = null;
@@ -165,6 +197,13 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
               pendingFlushRef.current = false;
               processTranscriptAndEnd();
             }
+          } else {
+            // Log all message types to understand what we're receiving
+            logger.debug(LogCategory.CONVERSATION, 'Received message', {
+              messageType: message.type,
+              source: message.source,
+              hasContent: !!message.message
+            });
           }
         },
         

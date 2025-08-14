@@ -306,7 +306,11 @@ export class ElevenLabsService {
    * Graceful shutdown with timeout
    */
   private async gracefulShutdown(conversation: any): Promise<void> {
-    if (this.connectionState === ConnectionState.DISCONNECTED) {
+    if (this.connectionState === ConnectionState.DISCONNECTED || 
+        this.connectionState === ConnectionState.DISCONNECTING) {
+      serviceLogger.elevenlabs.call('Graceful shutdown skipped - already disconnected/disconnecting', {
+        currentState: this.connectionState
+      });
       return;
     }
 
@@ -327,34 +331,61 @@ export class ElevenLabsService {
         }
       }, this.GRACEFUL_SHUTDOWN_TIMEOUT);
 
-      // Attempt graceful close
-      conversation.endSession()
-        .then(() => {
-          if (!resolved) {
-            resolved = true;
-            serviceLogger.elevenlabs.call('Graceful shutdown completed successfully');
-            this.connectionState = ConnectionState.DISCONNECTED;
-            this.currentConversation = null;
-            if (this.shutdownTimeout) {
-              clearTimeout(this.shutdownTimeout);
-              this.shutdownTimeout = null;
+      // Attempt graceful close with additional error handling
+      try {
+        conversation.endSession()
+          .then(() => {
+            if (!resolved) {
+              resolved = true;
+              serviceLogger.elevenlabs.call('Graceful shutdown completed successfully');
+              this.connectionState = ConnectionState.DISCONNECTED;
+              this.currentConversation = null;
+              if (this.shutdownTimeout) {
+                clearTimeout(this.shutdownTimeout);
+                this.shutdownTimeout = null;
+              }
+              resolve();
             }
-            resolve();
-          }
-        })
-        .catch((error: any) => {
-          if (!resolved) {
-            resolved = true;
-            serviceLogger.elevenlabs.error(error, { action: 'graceful_shutdown_error' });
-            this.connectionState = ConnectionState.DISCONNECTED;
-            this.currentConversation = null;
-            if (this.shutdownTimeout) {
-              clearTimeout(this.shutdownTimeout);
-              this.shutdownTimeout = null;
+          })
+          .catch((error: any) => {
+            if (!resolved) {
+              resolved = true;
+              // Check if it's a WebSocket state error (common and expected)
+              const isWebSocketStateError = error?.message?.includes('CLOSING') || 
+                                          error?.message?.includes('CLOSED');
+              
+              if (isWebSocketStateError) {
+                serviceLogger.elevenlabs.call('WebSocket already closing/closed - shutdown complete', {
+                  error: error.message
+                });
+              } else {
+                serviceLogger.elevenlabs.error(error, { action: 'graceful_shutdown_error' });
+              }
+              
+              this.connectionState = ConnectionState.DISCONNECTED;
+              this.currentConversation = null;
+              if (this.shutdownTimeout) {
+                clearTimeout(this.shutdownTimeout);
+                this.shutdownTimeout = null;
+              }
+              resolve();
             }
-            resolve();
+          });
+      } catch (syncError: any) {
+        if (!resolved) {
+          resolved = true;
+          serviceLogger.elevenlabs.call('Synchronous error during shutdown - likely already closed', {
+            error: syncError?.message
+          });
+          this.connectionState = ConnectionState.DISCONNECTED;
+          this.currentConversation = null;
+          if (this.shutdownTimeout) {
+            clearTimeout(this.shutdownTimeout);
+            this.shutdownTimeout = null;
           }
-        });
+          resolve();
+        }
+      }
     });
   }
 
