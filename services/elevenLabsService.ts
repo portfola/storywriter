@@ -16,12 +16,23 @@ import { serviceLogger } from '@/src/utils/logger';
 
 const ELEVENLABS_API_KEY = Constants.expoConfig?.extra?.ELEVENLABS_API_KEY;
 
+enum ConnectionState {
+  DISCONNECTED = 'disconnected',
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  DISCONNECTING = 'disconnecting',
+  ERROR = 'error'
+}
+
 export class ElevenLabsService {
   private client: ElevenLabsClient;
   private defaultVoiceId: string;
   private defaultModelId: string;
   private agentId: string;
   private currentConversation: ConversationSession | null;
+  private connectionState: ConnectionState;
+  private shutdownTimeout: NodeJS.Timeout | null;
+  private readonly GRACEFUL_SHUTDOWN_TIMEOUT = 5000; // 5 seconds
 
   constructor() {
     if (!ELEVENLABS_API_KEY) {
@@ -37,6 +48,8 @@ export class ElevenLabsService {
     this.defaultModelId = "eleven_multilingual_v2"; // Recommended model
     this.agentId = "agent_01jxvakybhfmnr3yqvwxwye3sj"; // Your StoryWriter Agent
     this.currentConversation = null;
+    this.connectionState = ConnectionState.DISCONNECTED;
+    this.shutdownTimeout = null;
   }
 
   /**
@@ -212,26 +225,42 @@ export class ElevenLabsService {
         await this.endConversationAgent();
       }
 
+      this.connectionState = ConnectionState.CONNECTING;
       serviceLogger.elevenlabs.call('Starting conversation with StoryWriter Agent', { agentId: this.agentId });
 
       const conversation = await Conversation.startSession({
         agentId: this.agentId,
         
         onConnect: () => {
+          this.connectionState = ConnectionState.CONNECTED;
+          serviceLogger.elevenlabs.call('WebSocket connected');
           callbacks.onConnect?.();
         },
         
         onDisconnect: () => {
+          this.connectionState = ConnectionState.DISCONNECTED;
           this.currentConversation = null;
+          serviceLogger.elevenlabs.call('WebSocket disconnected');
           callbacks.onDisconnect?.();
         },
         
         onMessage: (message) => {
-          callbacks.onMessage?.(message);
+          // Only process messages if we're connected or connecting
+          if (this.connectionState === ConnectionState.CONNECTED || 
+              this.connectionState === ConnectionState.CONNECTING) {
+            callbacks.onMessage?.(message);
+          } else {
+            serviceLogger.elevenlabs.call('Discarding message - connection not ready', {
+              state: this.connectionState,
+              messageSource: message.source || 'unknown'
+            });
+          }
         },
         
-        onError: (error) => {
+        onError: (error: any) => {
+          this.connectionState = ConnectionState.ERROR;
           this.currentConversation = null;
+          serviceLogger.elevenlabs.error(error, { action: 'websocket_error' });
           callbacks.onError?.(error);
         },
         
@@ -247,12 +276,20 @@ export class ElevenLabsService {
       const session: ConversationSession = {
         conversation,
         endSession: async () => {
-          await conversation.endSession();
-          this.currentConversation = null;
+          await this.gracefulShutdown(conversation);
         },
         getId: () => conversation.getId(),
         setVolume: async (options) => {
-          await conversation.setVolume(options);
+          if (this.connectionState === ConnectionState.CONNECTED) {
+            try {
+              await conversation.setVolume(options);
+            } catch (error) {
+              serviceLogger.elevenlabs.error(error, { action: 'set_volume' });
+              throw new Error('Failed to set volume - connection may be closed');
+            }
+          } else {
+            throw new Error('Cannot set volume - WebSocket not connected');
+          }
         }
       };
 
@@ -260,8 +297,65 @@ export class ElevenLabsService {
       return session;
 
     } catch (error) {
+      this.connectionState = ConnectionState.ERROR;
       throw this.handleError(error, 'Failed to start conversation with StoryWriter Agent');
     }
+  }
+
+  /**
+   * Graceful shutdown with timeout
+   */
+  private async gracefulShutdown(conversation: any): Promise<void> {
+    if (this.connectionState === ConnectionState.DISCONNECTED) {
+      return;
+    }
+
+    this.connectionState = ConnectionState.DISCONNECTING;
+    serviceLogger.elevenlabs.call('Starting graceful shutdown');
+
+    return new Promise<void>((resolve) => {
+      let resolved = false;
+
+      // Set timeout for graceful shutdown
+      this.shutdownTimeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          serviceLogger.elevenlabs.call('Graceful shutdown timeout - forcing cleanup');
+          this.connectionState = ConnectionState.DISCONNECTED;
+          this.currentConversation = null;
+          resolve();
+        }
+      }, this.GRACEFUL_SHUTDOWN_TIMEOUT);
+
+      // Attempt graceful close
+      conversation.endSession()
+        .then(() => {
+          if (!resolved) {
+            resolved = true;
+            serviceLogger.elevenlabs.call('Graceful shutdown completed successfully');
+            this.connectionState = ConnectionState.DISCONNECTED;
+            this.currentConversation = null;
+            if (this.shutdownTimeout) {
+              clearTimeout(this.shutdownTimeout);
+              this.shutdownTimeout = null;
+            }
+            resolve();
+          }
+        })
+        .catch((error: any) => {
+          if (!resolved) {
+            resolved = true;
+            serviceLogger.elevenlabs.error(error, { action: 'graceful_shutdown_error' });
+            this.connectionState = ConnectionState.DISCONNECTED;
+            this.currentConversation = null;
+            if (this.shutdownTimeout) {
+              clearTimeout(this.shutdownTimeout);
+              this.shutdownTimeout = null;
+            }
+            resolve();
+          }
+        });
+    });
   }
 
   /**
@@ -270,15 +364,17 @@ export class ElevenLabsService {
   async endConversationAgent(): Promise<void> {
     if (this.currentConversation) {
       try {
-        // Properly dispose of the conversation session
-        await this.currentConversation.endSession();
+        await this.gracefulShutdown(this.currentConversation.conversation);
         serviceLogger.elevenlabs.call('Conversation ended successfully');
       } catch (error) {
         serviceLogger.elevenlabs.error(error, { action: 'end_conversation' });
-        // Continue with cleanup even if endSession fails
-      } finally {
-        // Ensure cleanup happens regardless of success/failure
+        // Force cleanup even if graceful shutdown fails
+        this.connectionState = ConnectionState.DISCONNECTED;
         this.currentConversation = null;
+        if (this.shutdownTimeout) {
+          clearTimeout(this.shutdownTimeout);
+          this.shutdownTimeout = null;
+        }
       }
     }
   }
@@ -287,19 +383,51 @@ export class ElevenLabsService {
    * Force cleanup of any active conversation resources
    */
   forceCleanup(): void {
-    if (this.currentConversation) {
-      serviceLogger.elevenlabs.call('Force cleaning up conversation resources');
-      
-      try {
-        // Attempt graceful shutdown first
-        this.currentConversation.endSession().catch((error) => {
-          serviceLogger.elevenlabs.error(error, { action: 'force_cleanup' });
+    try {
+      if (this.currentConversation) {
+        serviceLogger.elevenlabs.call('Force cleaning up conversation resources', {
+          currentState: this.connectionState
         });
-      } catch (error) {
-        serviceLogger.elevenlabs.error(error, { action: 'force_cleanup_attempt' });
-      } finally {
-        this.currentConversation = null;
+        
+        // Clear any pending shutdown timeout
+        if (this.shutdownTimeout) {
+          clearTimeout(this.shutdownTimeout);
+          this.shutdownTimeout = null;
+        }
+
+        // Attempt cleanup but don't wait or throw
+        try {
+          // Fire and forget - don't await or throw
+          this.currentConversation.endSession().catch((error) => {
+            // Silently log error but don't propagate
+            serviceLogger.elevenlabs.error(error, { 
+              action: 'force_cleanup_async',
+              note: 'Error ignored during force cleanup'
+            });
+          });
+        } catch (syncError) {
+          // Log synchronous errors but don't throw
+          serviceLogger.elevenlabs.error(syncError, { 
+            action: 'force_cleanup_sync',
+            note: 'Synchronous error ignored during force cleanup'
+          });
+        }
       }
+    } catch (outerError) {
+      // Catch any unexpected errors and log them
+      serviceLogger.elevenlabs.error(outerError, { 
+        action: 'force_cleanup_outer',
+        note: 'Outer error caught and ignored during force cleanup'
+      });
+    } finally {
+      // Always reset state regardless of any errors
+      this.connectionState = ConnectionState.DISCONNECTED;
+      this.currentConversation = null;
+      if (this.shutdownTimeout) {
+        clearTimeout(this.shutdownTimeout);
+        this.shutdownTimeout = null;
+      }
+      serviceLogger.elevenlabs.call('Force cleanup completed - state reset');
     }
   }
 
@@ -307,7 +435,22 @@ export class ElevenLabsService {
    * Check if there's an active conversation
    */
   isConversationActive(): boolean {
-    return this.currentConversation !== null;
+    return this.currentConversation !== null && 
+           this.connectionState === ConnectionState.CONNECTED;
+  }
+
+  /**
+   * Get current connection state
+   */
+  getConnectionState(): string {
+    return this.connectionState;
+  }
+
+  /**
+   * Check if WebSocket is in a state that can send messages
+   */
+  canSendMessages(): boolean {
+    return this.connectionState === ConnectionState.CONNECTED;
   }
 
   /**
@@ -329,22 +472,25 @@ export class ElevenLabsService {
   /**
    * Comprehensive error handling for ElevenLabs API errors
    */
-  private handleError(error: any, context: string): ElevenLabsError {
+  private handleError(error: unknown, context: string): ElevenLabsError {
     serviceLogger.elevenlabs.error(error, { context });
 
+    const errorObj = error as any;
+    const errorMessage = errorObj?.message || 'Unknown error occurred';
+    
     const elevenlabsError: ElevenLabsError = new Error(
-      `${context}: ${error.message || 'Unknown error occurred'}`
+      `${context}: ${errorMessage}`
     );
 
-    if (error.status) {
-      elevenlabsError.status = error.status;
+    if (errorObj?.status) {
+      elevenlabsError.status = errorObj.status;
       
-      switch (error.status) {
+      switch (errorObj.status) {
         case 401:
           elevenlabsError.message = `${context}: Invalid API key or unauthorized access`;
           break;
         case 400:
-          elevenlabsError.message = `${context}: Invalid request parameters - ${error.message}`;
+          elevenlabsError.message = `${context}: Invalid request parameters - ${errorMessage}`;
           break;
         case 429:
           elevenlabsError.message = `${context}: Rate limit exceeded. Please try again later.`;
@@ -355,12 +501,12 @@ export class ElevenLabsService {
       }
     }
 
-    if (error.code) {
-      elevenlabsError.code = error.code;
+    if (errorObj?.code) {
+      elevenlabsError.code = errorObj.code;
     }
 
-    if (error.details) {
-      elevenlabsError.details = error.details;
+    if (errorObj?.details) {
+      elevenlabsError.details = errorObj.details;
     }
 
     return elevenlabsError;

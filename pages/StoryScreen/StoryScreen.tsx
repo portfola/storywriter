@@ -10,7 +10,6 @@ import { s } from './StoryScreen.style';
 
 const StoryScreen = () => {
   const {
-    conversationComplete,
     story,
     phase,
     isGenerating
@@ -19,7 +18,7 @@ const StoryScreen = () => {
   const currentPhase: ConversationPhase = phase;
 
   // Show splash screen during story generation
-  if (currentPhase === 'STORY_GENERATING' || currentPhase === 'TRANSCRIPT_PROCESSING') {
+  if (currentPhase === 'GENERATING') {
     return (
       <Layout>
         <ErrorBoundary>
@@ -37,25 +36,14 @@ const StoryScreen = () => {
         {!story.content ? (
           <>
 
-            {!conversationComplete && (
+            {(currentPhase === 'IDLE' || currentPhase === 'ACTIVE') && (
               <ConversationInterface 
                 disabled={isGenerating}
               />
             )}
 
 
-            {/* Removed manual GenerateButton - story generation is now automatic */}
-            {currentPhase === 'CONVERSATION_ENDED' && (
-              <Text style={s.processingText}>
-                📝 Processing your conversation...
-              </Text>
-            )}
-
-            {(currentPhase as ConversationPhase) === 'TRANSCRIPT_PROCESSING' && (
-              <Text style={s.processingText}>
-                🔄 Preparing your story...
-              </Text>
-            )}
+            {/* Story generation is now automatic when conversation ends */}
           </>
         ) : (
           <StoryContent />

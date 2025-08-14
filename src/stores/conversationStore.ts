@@ -4,54 +4,44 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StoryPage } from '@/types/story';
 import ElevenLabsService from '@/services/elevenLabsService';
 import StoryGenerationService from '@/services/storyGenerationService';
-import { AudioGenerationResult, ElevenLabsError } from '@/types/elevenlabs';
-import { TranscriptNormalizer, DialogueTurn } from '@/src/utils/transcriptNormalizer';
+import { AudioGenerationResult } from '@/types/elevenlabs';
 import { ErrorHandler, ErrorType, ErrorSeverity, AppError } from '@/src/utils/errorHandler';
 import { logger, audioLogger, LogCategory } from '@/src/utils/logger';
 
-// Define all possible states of our conversation - enhanced for better conversation management
+// Simplified conversation phases - let ElevenLabs handle the complexity
 export type ConversationPhase = 
-  | 'INITIAL'                // Just started, no interaction yet
-  | 'CONVERSATION_ACTIVE'    // Actively talking with the agent
-  | 'CONVERSATION_ENDED'     // Conversation ended, transcript captured
-  | 'TRANSCRIPT_PROCESSING'  // Processing and normalizing transcript
-  | 'STORY_GENERATING'       // Creating the story
-  | 'STORY_COMPLETE';        // Story has been generated and is ready
+  | 'IDLE'              // No active conversation
+  | 'ACTIVE'            // ElevenLabs conversation in progress
+  | 'GENERATING'        // Generating story from final transcript
+  | 'COMPLETE';         // Story ready
 
-// Define the structure of our conversation turns - enhanced for dialogue management
-export interface ConversationTurn {
-  role: 'system' | 'user' | 'assistant' | 'agent';
-  content: string;
-  timestamp: number;
-}
-
-// Define what a saved story looks like
-export interface SavedStory {
-  id: string;           // Unique identifier for the story
-  title: string;        // Display title
-  content: StoryPage[]; // The actual story pages
-  elements: StoryElements; // The gathered story elements
-  createdAt: number;    // Timestamp for sorting
-}
-
-// Define story elements structure
+// Simplified story elements structure
 export interface StoryElements {
   [key: string]: string;
 }
 
-// Define story section structure
+// Story section structure
 export interface StorySection {
   text: string;
   imageUrl: string | null;
 }
 
-// Define story content structure
+// Story content structure
 export interface StoryContent {
   content: string | null;
   sections: StorySection[];
 }
 
-// Define what information we need to track about speech
+// Saved story structure
+export interface SavedStory {
+  id: string;
+  title: string;
+  content: StoryPage[];
+  elements: StoryElements;
+  createdAt: number;
+}
+
+// Speech state for UI feedback
 export interface SpeechState {
   isListening: boolean;
   isSpeaking: boolean;
@@ -59,7 +49,7 @@ export interface SpeechState {
   speechVolume: number;
 }
 
-// Define our story state
+// Story state
 export interface StoryState {
   currentPageIndex: number;
   storyPages: StoryPage[];
@@ -67,25 +57,23 @@ export interface StoryState {
   savedStories: SavedStory[];
 }
 
-// Define our complete store state shape - enhanced with structured dialogue
+// Simplified conversation state - trust ElevenLabs to handle conversation flow
 export interface ConversationState extends SpeechState, StoryState {
   phase: ConversationPhase;
-  conversationHistory: ConversationTurn[];
-  dialogue: DialogueTurn[]; // Structured dialogue for better conversation tracking
-  transcript: string;
-  normalizedTranscript: string; // Cleaned up transcript
+  
+  // Simple transcript capture when conversation ends
+  finalTranscript: string;
+  
   // Unified error handling
   errors: Record<string, AppError>;
   
-  // Unified story state
-  conversationComplete: boolean;
+  // Story generation state
   isGenerating: boolean;
   storyContent: StorySection[];
   generatedStory: string | null;
   isGeneratingAudio: boolean;
   story: StoryContent;
   storyGenerationProgress: string | null;
-  automaticGenerationActive: boolean;
   
   // Timing state for minimum display time
   minDisplayStartTime: number | null;
@@ -100,41 +88,25 @@ export interface ConversationState extends SpeechState, StoryState {
   loadStory: (id: string) => Promise<void>;
   loadSavedStories: () => Promise<void>;
   
-  // Enhanced conversation actions
+  // Simplified conversation actions
   startConversation: () => void;
-  addUserResponse: (response: string) => void;
-  addAgentResponse: (response: string) => void; // New method for agent responses
-  addDialogueTurn: (role: 'user' | 'agent', content: string) => void; // New structured dialogue method with validation
+  endConversation: (transcript: string) => void; // Accept final transcript from ElevenLabs
   setPhase: (phase: ConversationPhase) => void;
   setSpeechState: (speechState: Partial<SpeechState>) => void;
   resetConversation: () => void;
+  
+  // Error handling
   addError: (key: string, error: AppError) => void;
   removeError: (key: string) => void;
   clearErrors: () => void;
   hasError: (key?: string) => boolean;
   getError: (key: string) => AppError | undefined;
-  endConversation: () => void;
-  processTranscript: () => void; // New method to normalize transcript
   
-  // New dialogue validation and debug methods
-  validateDialogueState: () => { isValid: boolean; issues: string[] };
-  getDialogueDebugInfo: () => {
-    totalTurns: number;
-    userTurns: number;
-    agentTurns: number;
-    duplicates: number;
-    emptyTurns: number;
-    averageContentLength: number;
-    recentTurns: DialogueTurn[];
-    dialogueIntegrity: boolean;
-    lastUpdate: number;
-  };
-  
-  // Story generation actions
+  // Audio generation
   generateStoryPromptAudio: (prompt: string) => Promise<AudioGenerationResult | null>;
   generateStoryAudio: (storyText: string) => Promise<AudioGenerationResult | null>;
   
-  // Automatic story generation actions
+  // Story generation
   generateStoryAutomatically: () => Promise<void>;
   retryStoryGeneration: () => Promise<void>;
 }
@@ -142,11 +114,8 @@ export interface ConversationState extends SpeechState, StoryState {
 const useConversationStore = create<ConversationState>()(
   devtools(
     (set, get) => ({
-      phase: 'INITIAL',
-      conversationHistory: [],
-      dialogue: [], // Initialize structured dialogue array
-      transcript: '',
-      normalizedTranscript: '', // Initialize normalized transcript
+      phase: 'IDLE',
+      finalTranscript: '',
       errors: {},
       isListening: false,
       isSpeaking: false,
@@ -157,8 +126,7 @@ const useConversationStore = create<ConversationState>()(
       storyElements: {},
       savedStories: [],
       
-      // Unified story state
-      conversationComplete: false,
+      // Story state
       isGenerating: false,
       storyContent: [],
       generatedStory: null,
@@ -167,63 +135,43 @@ const useConversationStore = create<ConversationState>()(
         content: null,
         sections: [],
       },
-      
-      // Initialize automatic generation state
       storyGenerationProgress: null,
-      automaticGenerationActive: false,
-      
-      // Initialize timing state
       minDisplayStartTime: null,
       
-      // Actions are simplified to avoid nested updates
+      // Simplified conversation actions
       startConversation: () => {
+        logger.info(LogCategory.CONVERSATION, 'Starting conversation - trusting ElevenLabs to handle dialogue', {});
         set({
-          phase: 'CONVERSATION_ACTIVE',
-          conversationHistory: [{
-            role: 'system',
-            content: 'You are a friendly children\'s story creator assistant.',
-            timestamp: Date.now()
-          }],
-          dialogue: [], // Reset structured dialogue
+          phase: 'ACTIVE',
+          finalTranscript: '',
           errors: {},
           isListening: false,
-          isSpeaking: false,
-          conversationComplete: false,
-          transcript: '',
-          normalizedTranscript: ''
+          isSpeaking: false
         });
       },
 
-      addUserResponse: (response: string) => {
-        const { conversationHistory, dialogue, phase } = get();
-        const timestamp = Date.now();
+      endConversation: (transcript: string) => {
+        logger.info(LogCategory.CONVERSATION, 'Conversation ended with transcript from ElevenLabs', {
+          transcriptLength: transcript.length,
+          transcriptPreview: transcript.substring(0, 100)
+        });
         
-        // Only add response if we're in the right phase
-        if (phase !== 'CONVERSATION_ACTIVE') {
-          logger.warn(LogCategory.CONVERSATION, 'Attempted to add user response in invalid phase', { phase, response });
-          return;
-        }
-
         set({
-          conversationHistory: [
-            ...conversationHistory,
-            {
-              role: 'user',
-              content: response,
-              timestamp
-            }
-          ],
-          dialogue: [
-            ...dialogue,
-            {
-              role: 'user',
-              content: response,
-              timestamp
-            }
-          ]
+          phase: 'GENERATING',
+          finalTranscript: transcript,
+          isListening: false,
+          isSpeaking: false,
+          minDisplayStartTime: Date.now()
         });
+        
+        // Clear any existing story generation errors
+        get().removeError('story_generation');
+        
+        // Auto-trigger story generation
+        setTimeout(() => {
+          get().generateStoryAutomatically();
+        }, 500);
       },
-
 
       setPhase: (phase: ConversationPhase) => {
         set({ phase });
@@ -238,15 +186,11 @@ const useConversationStore = create<ConversationState>()(
 
       resetConversation: () => {
         set({
-          phase: 'INITIAL',
-          conversationHistory: [],
-          dialogue: [], // Reset dialogue
-          transcript: '',
-          normalizedTranscript: '', // Reset normalized transcript
+          phase: 'IDLE',
+          finalTranscript: '',
           errors: {},
           isListening: false,
           isSpeaking: false,
-          conversationComplete: false,
           isGenerating: false,
           storyContent: [],
           generatedStory: null,
@@ -255,14 +199,12 @@ const useConversationStore = create<ConversationState>()(
             content: null,
             sections: [],
           },
-          // Reset automatic generation state
           storyGenerationProgress: null,
-          automaticGenerationActive: false,
           minDisplayStartTime: null,
         });
       },
 
-      // New standardized error handling methods
+      // Error handling methods
       addError: (key: string, error: AppError) => {
         set((state) => ({
           errors: { ...state.errors, [key]: error }
@@ -292,187 +234,12 @@ const useConversationStore = create<ConversationState>()(
         return errors[key];
       },
 
-      // New enhanced conversation methods
-      addAgentResponse: (response: string) => {
-        const { conversationHistory, dialogue } = get();
-        const timestamp = Date.now();
-        
-        set({
-          conversationHistory: [
-            ...conversationHistory,
-            {
-              role: 'agent',
-              content: response,
-              timestamp
-            }
-          ],
-          dialogue: [
-            ...dialogue,
-            {
-              role: 'agent',
-              content: response,
-              timestamp
-            }
-          ]
-        });
-      },
-
-      addDialogueTurn: (role: 'user' | 'agent', content: string) => {
-        // VALIDATION: Ensure content is non-empty and properly formatted
-        if (!content || typeof content !== 'string') {
-          logger.warn(LogCategory.CONVERSATION, 'Attempted to add dialogue turn with invalid content', { 
-            role, 
-            content: typeof content, 
-            contentLength: content?.length || 0 
-          });
-          return;
-        }
-        
-        const trimmedContent = content.trim();
-        if (trimmedContent.length === 0) {
-          logger.warn(LogCategory.CONVERSATION, 'Attempted to add dialogue turn with empty content', { role });
-          return;
-        }
-        
-        // Validate role
-        if (role !== 'user' && role !== 'agent') {
-          logger.warn(LogCategory.CONVERSATION, 'Attempted to add dialogue turn with invalid role', { role, content: trimmedContent.substring(0, 50) });
-          return;
-        }
-        
-        const { dialogue } = get();
-        const timestamp = Date.now();
-        
-        // DEDUPLICATION: Prevent duplicate messages (same role + content + close timestamps)
-        const DUPLICATE_THRESHOLD = 2000; // 2 seconds
-        const isDuplicate = dialogue.some(existingTurn => 
-          existingTurn.role === role &&
-          existingTurn.content === trimmedContent &&
-          Math.abs(existingTurn.timestamp - timestamp) < DUPLICATE_THRESHOLD
-        );
-        
-        if (isDuplicate) {
-          logger.info(LogCategory.CONVERSATION, 'Prevented duplicate dialogue turn', {
-            role,
-            contentPreview: trimmedContent.substring(0, 50),
-            timestamp,
-            thresholdMs: DUPLICATE_THRESHOLD
-          });
-          return;
-        }
-        
-        logger.debug(LogCategory.CONVERSATION, 'Adding dialogue turn', {
-          role,
-          contentLength: trimmedContent.length,
-          contentPreview: trimmedContent.substring(0, 50),
-          totalTurns: dialogue.length + 1
-        });
-        
-        set({
-          dialogue: [
-            ...dialogue,
-            {
-              role,
-              content: trimmedContent,
-              timestamp
-            }
-          ]
-        });
-      },
-
-      endConversation: () => {
-        set({
-          phase: 'CONVERSATION_ENDED',
-          isListening: false,
-          isSpeaking: false
-        });
-        
-        // Process the transcript after ending
-        get().processTranscript();
-      },
-
-      processTranscript: () => {
-        const { dialogue } = get();
-        
-        // EARLY EXIT: Don't process if there's no meaningful conversation
-        const userTurns = dialogue.filter(t => t.role === 'user').length;
-        if (userTurns === 0) {
-          logger.warn(LogCategory.CONVERSATION, 'Attempted to process transcript with no user turns - resetting conversation', {
-            dialogueLength: dialogue.length,
-            userTurns
-          });
-          get().resetConversation();
-          return;
-        }
-        
-        // STATE INTEGRITY: Validate dialogue state before processing
-        const validation = get().validateDialogueState();
-        if (!validation.isValid) {
-          logger.error(LogCategory.CONVERSATION, 'Dialogue state validation failed before transcript processing', {
-            issues: validation.issues,
-            dialogueLength: dialogue.length
-          });
-          
-          const validationError = ErrorHandler.createError(
-            ErrorType.VALIDATION,
-            ErrorSeverity.MEDIUM,
-            'Invalid dialogue state detected',
-            'There was an issue with the conversation data. Please try again.',
-            undefined,
-            { validationIssues: validation.issues }
-          );
-          get().addError('dialogue_validation', validationError);
-          return;
-        }
-        
-        // Debug logging to track transcript processing
-        const debugInfo = get().getDialogueDebugInfo();
-        logger.info(LogCategory.CONVERSATION, 'Processing transcript', { 
-          dialogueLength: dialogue.length,
-          userTurns: debugInfo.userTurns,
-          agentTurns: debugInfo.agentTurns,
-          duplicates: debugInfo.duplicates,
-          emptyTurns: debugInfo.emptyTurns,
-          dialoguePreview: dialogue.slice(0, 2).map(d => `${d.role}: ${d.content.substring(0, 50)}...`)
-        }, '📝');
-        
-        set({ phase: 'TRANSCRIPT_PROCESSING' });
-        
-        // Generate normalized transcript using the utility
-        const normalizedTranscript = TranscriptNormalizer.extractUserContent(dialogue);
-        const fullTranscript = TranscriptNormalizer.generateTranscript(dialogue);
-        
-        // More debug logging
-        logger.info(LogCategory.CONVERSATION, 'Transcript generated', {
-          fullTranscriptLength: fullTranscript.length,
-          normalizedTranscriptLength: normalizedTranscript.length,
-          fullTranscriptPreview: fullTranscript.substring(0, 100),
-          debugInfo
-        }, '📄');
-        
-        set({
-          transcript: fullTranscript,
-          normalizedTranscript,
-          conversationComplete: true,
-          phase: 'STORY_GENERATING',
-          automaticGenerationActive: true,
-          minDisplayStartTime: Date.now() // Track when story generation begins
-        });
-        
-        // Clear any existing story generation errors
-        get().removeError('story_generation');
-        
-        // Auto-trigger the new automatic story generation
-        setTimeout(() => {
-          get().generateStoryAutomatically();
-        }, 500);
-      },
-      // Story management actions
+      // Story management actions (unchanged)
       setStoryPages: (pages: StoryPage[]) => {
         set({
           storyPages: pages,
-          currentPageIndex: 0,  // Reset to first page when setting new pages
-          phase: 'STORY_COMPLETE'
+          currentPageIndex: 0,
+          phase: 'COMPLETE'
         });
       },
 
@@ -554,7 +321,7 @@ const useConversationStore = create<ConversationState>()(
           storyPages: story.content,
           storyElements: story.elements,
           currentPageIndex: 0,
-          phase: 'STORY_COMPLETE'
+          phase: 'COMPLETE'
         });
       },
 
@@ -578,7 +345,6 @@ const useConversationStore = create<ConversationState>()(
       },
       
       // Audio generation actions
-
       generateStoryPromptAudio: async (prompt: string): Promise<AudioGenerationResult | null> => {
         set({ isGeneratingAudio: true });
         get().removeError('audio_generation');
@@ -623,54 +389,25 @@ const useConversationStore = create<ConversationState>()(
         }
       },
 
-      // New automatic story generation methods
+      // Simplified story generation - use final transcript from ElevenLabs
       generateStoryAutomatically: async () => {
-        const { transcript, dialogue, minDisplayStartTime } = get();
+        const { finalTranscript, minDisplayStartTime } = get();
         
-        // Enhanced validation: check both transcript and dialogue
-        const hasDialogue = dialogue && dialogue.length > 0;
-        const hasTranscript = transcript && transcript.trim().length > 0;
-        
-        logger.info(LogCategory.CONVERSATION, 'Story generation validation', {
-          hasDialogue,
-          dialogueLength: dialogue?.length || 0,
-          hasTranscript,
-          transcriptLength: transcript?.length || 0,
-          dialoguePreview: hasDialogue ? dialogue.slice(0, 2).map(d => `${d.role}: ${d.content.substring(0, 30)}...`) : []
-        }, '🔍');
-        
-        if (!hasTranscript && !hasDialogue) {
+        if (!finalTranscript || finalTranscript.trim().length === 0) {
           const appError = ErrorHandler.createError(
             ErrorType.VALIDATION,
             ErrorSeverity.MEDIUM,
             'No conversation transcript available for story generation',
             'We need a conversation transcript to create your story. Please try talking with the StoryWriter Agent first.',
             undefined,
-            { 
-              action: 'automatic_story_generation',
-              hasDialogue,
-              dialogueLength: dialogue?.length || 0,
-              hasTranscript,
-              transcriptLength: transcript?.length || 0
-            }
+            { action: 'automatic_story_generation', transcriptLength: 0 }
           );
           get().addError('story_generation', appError);
           set({
-            automaticGenerationActive: false,
-            phase: 'INITIAL',
+            phase: 'IDLE',
             minDisplayStartTime: null
           });
           return;
-        }
-        
-        // If we have dialogue but no transcript, regenerate transcript
-        if (hasDialogue && !hasTranscript) {
-          logger.info(LogCategory.CONVERSATION, 'Regenerating transcript from dialogue', {
-            dialogueLength: dialogue.length
-          }, '🔄');
-          
-          const regeneratedTranscript = TranscriptNormalizer.generateTranscript(dialogue);
-          set({ transcript: regeneratedTranscript });
         }
 
         set({
@@ -678,46 +415,30 @@ const useConversationStore = create<ConversationState>()(
           storyGenerationProgress: 'Creating your story...'
         });
         
-        // Clear any existing story generation errors
         get().removeError('story_generation');
 
         try {
-          // Get the current transcript (might have been regenerated above)
-          const currentTranscript = get().transcript;
-          
-          logger.info(LogCategory.CONVERSATION, 'Starting story generation with transcript', {
-            transcriptLength: currentTranscript.length,
-            transcriptPreview: currentTranscript.substring(0, 200)
-          }, '🚀');
+          logger.info(LogCategory.CONVERSATION, 'Starting story generation with ElevenLabs transcript', {
+            transcriptLength: finalTranscript.length,
+            transcriptPreview: finalTranscript.substring(0, 200)
+          });
           
           const result = await StoryGenerationService.generateStoryAutomatically(
-            currentTranscript,
+            finalTranscript,
             { maxRetries: 3, temperature: 0.7 },
             (progress) => {
-              logger.info(LogCategory.CONVERSATION, 'Story generation progress', { progress }, '📈');
               set({ storyGenerationProgress: progress });
             }
           );
           
-          logger.info(LogCategory.CONVERSATION, 'Story generation completed', {
-            success: result.success,
-            hasStory: !!result.story,
-            pagesCount: result.story?.pages?.length || 0,
-            error: result.error
-          }, result.success ? '✅' : '❌');
-
           if (result.success && result.story) {
-            // Validate the story content
             if (!result.story.pages || result.story.pages.length === 0) {
-              const validationError = ErrorHandler.createError(
+              throw ErrorHandler.createError(
                 ErrorType.STORY_GENERATION,
                 ErrorSeverity.MEDIUM,
                 'Generated story has no pages',
-                'The story generator didn\'t create any content. Let\'s try again!',
-                undefined,
-                { pagesCount: 0 }
+                'The story generator didn\'t create any content. Let\'s try again!'
               );
-              throw validationError;
             }
             
             const hasValidContent = result.story.pages.some(page => 
@@ -725,42 +446,25 @@ const useConversationStore = create<ConversationState>()(
             );
             
             if (!hasValidContent) {
-              const validationError = ErrorHandler.createError(
+              throw ErrorHandler.createError(
                 ErrorType.STORY_GENERATION,
                 ErrorSeverity.MEDIUM,
                 'Generated story pages contain no valid content',
-                'The story pages seem to be empty. Let\'s try generating again!',
-                undefined,
-                { pagesCount: result.story.pages.length }
+                'The story pages seem to be empty. Let\'s try generating again!'
               );
-              throw validationError;
             }
 
-            // Convert to the format expected by the UI
             const storyContent = result.story.pages.map(page => ({
               text: page.content,
-              imageUrl: null // We'll need to integrate image generation later
+              imageUrl: null
             }));
 
-            // Check minimum display time requirement (3 seconds minimum)
+            // Handle minimum display time
             const elapsedTime = minDisplayStartTime ? Date.now() - minDisplayStartTime : 0;
-            const minDisplayTime = 3000; // 3 seconds
+            const minDisplayTime = 3000;
             const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
 
-            logger.info(LogCategory.CONVERSATION, 'Story completion timing', {
-              elapsedTime,
-              minDisplayTime,
-              remainingTime,
-              willDelay: remainingTime > 0
-            }, '⏰');
-
-            // Handle phase transition with proper timing
             const completeStoryGeneration = () => {
-              logger.info(LogCategory.CONVERSATION, 'Transitioning to STORY_COMPLETE phase', {
-                pagesCount: result.story.pages.length,
-                storyContentLength: storyContent.length
-              }, '🎯');
-              
               set({
                 story: {
                   content: result.story.pages.map(p => p.content).join('\n\n'),
@@ -768,8 +472,7 @@ const useConversationStore = create<ConversationState>()(
                 },
                 storyContent,
                 generatedStory: result.story.pages.map(p => p.content).join('\n\n'),
-                phase: 'STORY_COMPLETE',
-                automaticGenerationActive: false,
+                phase: 'COMPLETE',
                 storyGenerationProgress: null,
                 isGenerating: false,
                 minDisplayStartTime: null
@@ -777,41 +480,23 @@ const useConversationStore = create<ConversationState>()(
             };
 
             if (remainingTime > 0) {
-              // Wait for minimum display time
-              logger.info(LogCategory.CONVERSATION, `Waiting ${remainingTime}ms before showing story`, { remainingTime }, '⏳');
               setTimeout(completeStoryGeneration, remainingTime);
             } else {
-              // Minimum time already elapsed, complete immediately
-              logger.info(LogCategory.CONVERSATION, 'Completing story immediately', {}, '⚡');
               completeStoryGeneration();
             }
           } else {
-            const serviceError = ErrorHandler.createError(
+            throw ErrorHandler.createError(
               ErrorType.STORY_GENERATION,
               ErrorSeverity.MEDIUM,
               result.error || 'Story generation service failed',
-              'Something went wrong with story generation. Let\'s try again! ✨',
-              undefined,
-              { serviceResult: result }
+              'Something went wrong with story generation. Let\'s try again! ✨'
             );
-            throw serviceError;
           }
         } catch (error) {
-          let appError: AppError;
-          if (error && typeof error === 'object' && 'type' in error && 'severity' in error) {
-            appError = error as AppError;
-          } else {
-            appError = ErrorHandler.fromUnknown(
-              error,
-              ErrorType.STORY_GENERATION,
-              ErrorSeverity.MEDIUM,
-              { action: 'automatic_story_generation', transcript: transcript.substring(0, 100) }
-            );
-          }
+          const appError = ErrorHandler.fromUnknown(error, ErrorType.STORY_GENERATION, ErrorSeverity.MEDIUM);
           
           get().addError('story_generation', appError);
           set({
-            automaticGenerationActive: false,
             storyGenerationProgress: null,
             isGenerating: false,
             minDisplayStartTime: null
@@ -822,130 +507,6 @@ const useConversationStore = create<ConversationState>()(
       retryStoryGeneration: async () => {
         get().removeError('story_generation');
         await get().generateStoryAutomatically();
-      },
-      
-      // STATE INTEGRITY: Validate dialogue state
-      validateDialogueState: () => {
-        const { dialogue } = get();
-        const issues: string[] = [];
-        
-        // Check for empty dialogue
-        if (!dialogue || dialogue.length === 0) {
-          issues.push('Dialogue array is empty or undefined');
-          return { isValid: false, issues };
-        }
-        
-        // Check each dialogue turn
-        dialogue.forEach((turn, index) => {
-          if (!turn.role || (turn.role !== 'user' && turn.role !== 'agent')) {
-            issues.push(`Turn ${index}: Invalid or missing role`);
-          }
-          
-          if (!turn.content || typeof turn.content !== 'string' || turn.content.trim().length === 0) {
-            issues.push(`Turn ${index}: Invalid or empty content`);
-          }
-          
-          if (!turn.timestamp || typeof turn.timestamp !== 'number' || turn.timestamp <= 0) {
-            issues.push(`Turn ${index}: Invalid timestamp`);
-          }
-        });
-        
-        // Check for reasonable conversation flow
-        const userTurns = dialogue.filter(t => t.role === 'user').length;
-        const agentTurns = dialogue.filter(t => t.role === 'agent').length;
-        
-        if (userTurns === 0) {
-          issues.push('No user turns found in dialogue');
-        }
-        
-        if (agentTurns === 0) {
-          issues.push('No agent turns found in dialogue');
-        }
-        
-        // Check for excessive duplicates (more than 20% of dialogue)
-        const duplicateThreshold = Math.max(1, Math.floor(dialogue.length * 0.2));
-        let duplicateCount = 0;
-        
-        for (let i = 1; i < dialogue.length; i++) {
-          const current = dialogue[i];
-          const previous = dialogue[i - 1];
-          
-          if (current.role === previous.role && 
-              current.content === previous.content &&
-              Math.abs(current.timestamp - previous.timestamp) < 5000) {
-            duplicateCount++;
-          }
-        }
-        
-        if (duplicateCount > duplicateThreshold) {
-          issues.push(`Excessive duplicates detected: ${duplicateCount} (threshold: ${duplicateThreshold})`);
-        }
-        
-        return { isValid: issues.length === 0, issues };
-      },
-      
-      // DEBUG TOOLS: Get detailed dialogue state information
-      getDialogueDebugInfo: () => {
-        const { dialogue } = get();
-        
-        if (!dialogue || dialogue.length === 0) {
-          return {
-            totalTurns: 0,
-            userTurns: 0,
-            agentTurns: 0,
-            duplicates: 0,
-            emptyTurns: 0,
-            averageContentLength: 0,
-            recentTurns: [],
-            dialogueIntegrity: false,
-            lastUpdate: 0
-          };
-        }
-        
-        const userTurns = dialogue.filter(t => t.role === 'user').length;
-        const agentTurns = dialogue.filter(t => t.role === 'agent').length;
-        const emptyTurns = dialogue.filter(t => !t.content || t.content.trim().length === 0).length;
-        
-        // Calculate duplicates
-        let duplicates = 0;
-        for (let i = 1; i < dialogue.length; i++) {
-          const current = dialogue[i];
-          const previous = dialogue[i - 1];
-          
-          if (current.role === previous.role && 
-              current.content === previous.content &&
-              Math.abs(current.timestamp - previous.timestamp) < 5000) {
-            duplicates++;
-          }
-        }
-        
-        // Calculate average content length
-        const validTurns = dialogue.filter(t => t.content && t.content.trim().length > 0);
-        const averageContentLength = validTurns.length > 0 
-          ? Math.round(validTurns.reduce((sum, t) => sum + t.content.length, 0) / validTurns.length)
-          : 0;
-        
-        // Get recent turns (last 5)
-        const recentTurns = dialogue.slice(-5);
-        
-        // Check dialogue integrity
-        const validation = get().validateDialogueState();
-        const dialogueIntegrity = validation.isValid;
-        
-        // Get last update timestamp
-        const lastUpdate = dialogue.length > 0 ? Math.max(...dialogue.map(t => t.timestamp)) : 0;
-        
-        return {
-          totalTurns: dialogue.length,
-          userTurns,
-          agentTurns,
-          duplicates,
-          emptyTurns,
-          averageContentLength,
-          recentTurns,
-          dialogueIntegrity,
-          lastUpdate
-        };
       }
     })
   )

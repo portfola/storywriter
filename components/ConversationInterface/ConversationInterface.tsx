@@ -1,22 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, TouchableOpacity } from 'react-native';
 import ElevenLabsService from '@/services/elevenLabsService';
 import { ConversationSession, ConversationMessage } from '@/types/elevenlabs';
 import { useConversationStore } from '@/src/stores/conversationStore';
 import { useErrorHandler } from '@/src/hooks/useErrorHandler';
 import { ErrorType, ErrorSeverity } from '@/src/utils/errorHandler';
 import { conversationLogger, logger, LogCategory } from '@/src/utils/logger';
-
-// Conversation ending is handled by the agent calling the end_call or end_conversation tool
-// 
-// TO CONFIGURE: In your ElevenLabs agent, add a client tool called "end_call" or "end_conversation"
-// with the following configuration:
-// - Tool Name: "end_call" or "end_conversation" 
-// - Description: "Call this tool when you want to end the conversation and proceed to story generation"
-// - Parameters: {} (no parameters needed)
-//
-// The agent should call this tool when the conversation is complete, rather than relying on
-// pattern matching of natural language which is unreliable.
+import { TranscriptNormalizer, DialogueTurn } from '@/src/utils/transcriptNormalizer';
 
 interface Props {
   disabled?: boolean;
@@ -25,46 +15,94 @@ interface Props {
 const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [conversationSession, setConversationSession] = useState<ConversationSession | null>(null);
-  const [lastAgentMessage, setLastAgentMessage] = useState<number>(0);
-  const [inactivityTimeout, setInactivityTimeout] = useState<NodeJS.Timeout | null>(null);
+  const rawMessages = useRef<{role: 'user'|'agent', content: string, timestamp: number}[]>([]);
+  const flushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingFlushRef = useRef<boolean>(false);
   
-  // Use the enhanced conversation store
+  // Simplified store usage - trust ElevenLabs for conversation management
   const {
     phase,
-    dialogue,
-    addDialogueTurn,
-    endConversation,
-    normalizedTranscript,
     startConversation: storeStartConversation,
-    addError
+    endConversation: storeEndConversation
   } = useConversationStore();
   
-  // Use standardized error handling
   const { handleError } = useErrorHandler({
     showAlert: true,
     useChildFriendlyMessages: true
   });
   
-  const isConversationActive = phase === 'CONVERSATION_ACTIVE';
+  const isConversationActive = phase === 'ACTIVE';
 
-  // Story generation is now fully automatic via processTranscript()
-  // No manual triggering needed
+  // Debounced flush mechanism
+  const scheduleFlush = useCallback(() => {
+    if (flushTimeoutRef.current) {
+      clearTimeout(flushTimeoutRef.current);
+    }
+    
+    flushTimeoutRef.current = setTimeout(() => {
+      if (pendingFlushRef.current && rawMessages.current.length > 0) {
+        logger.info(LogCategory.CONVERSATION, 'Debounced flush triggered - processing transcript', {
+          messageCount: rawMessages.current.length
+        });
+        processTranscriptAndEnd();
+      }
+    }, 2000);
+  }, []);
 
-  // Cleanup on component unmount
+  // Validate and process transcript
+  const processTranscriptAndEnd = useCallback(() => {
+    const messages = rawMessages.current;
+    const userMessages = messages.filter(msg => msg.role === 'user');
+    
+    if (userMessages.length < 2) {
+      logger.warn(LogCategory.CONVERSATION, 'Insufficient user messages for story generation', {
+        totalMessages: messages.length,
+        userMessages: userMessages.length,
+        minRequired: 2
+      });
+      return;
+    }
+
+    const dialogueTurns: DialogueTurn[] = messages.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+      timestamp: msg.timestamp
+    }));
+    
+    const finalTranscript = TranscriptNormalizer.generateTranscript(dialogueTurns);
+    
+    logger.info(LogCategory.CONVERSATION, 'Generated final transcript with validation passed', {
+      originalMessages: messages.length,
+      userMessages: userMessages.length,
+      processedLength: finalTranscript.length,
+      fullTranscript: finalTranscript
+    });
+    
+    pendingFlushRef.current = false;
+    handleEndConversation(finalTranscript);
+  }, []);
+
+  // Cleanup on unmount and reset messages when starting new conversation
   useEffect(() => {
     return () => {
-      // Clean up timeout
-      if (inactivityTimeout) {
-        clearTimeout(inactivityTimeout);
-      }
-      
-      // Clean up conversation
       if (conversationSession) {
         conversationLogger.cleanup({ sessionId: conversationSession.conversation?.conversationId });
         ElevenLabsService.forceCleanup();
       }
     };
-  }, [conversationSession, inactivityTimeout]);
+  }, [conversationSession]);
+  
+  // Reset messages when starting new conversation
+  useEffect(() => {
+    if (isConnecting) {
+      rawMessages.current = [];
+      if (flushTimeoutRef.current) {
+        clearTimeout(flushTimeoutRef.current);
+        flushTimeoutRef.current = null;
+      }
+      pendingFlushRef.current = false;
+    }
+  }, [isConnecting]);
 
   const startConversation = async () => {
     if (disabled || isConnecting || isConversationActive) return;
@@ -82,157 +120,51 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
         onDisconnect: () => {
           conversationLogger.disconnected();
           setConversationSession(null);
-          
-          // Only auto-end conversation if we have meaningful dialogue
-          // Don't end on immediate disconnects (connection failures)
-          const currentDialogue = dialogue;
-          const hasRealConversation = currentDialogue.length >= 2 && 
-                                    currentDialogue.some(turn => turn.role === 'user');
-          
-          if (hasRealConversation) {
-            logger.info(LogCategory.CONVERSATION, 'Auto-ending conversation after disconnect with meaningful dialogue', {
-              dialogueLength: currentDialogue.length,
-              userTurns: currentDialogue.filter(t => t.role === 'user').length
-            });
-            // Add small delay to ensure all pending messages are processed
-            setTimeout(() => {
-              endConversation();
-            }, 500);
-          } else {
-            logger.info(LogCategory.CONVERSATION, 'Connection lost without meaningful conversation - not ending', {
-              dialogueLength: currentDialogue.length,
-              userTurns: currentDialogue.filter(t => t.role === 'user').length
-            });
-            // Just reset to initial state instead of trying to process empty conversation
-            resetConversation();
-          }
+          // Let ElevenLabs handle the conversation flow - no premature ending
         },
         
         onMessage: (message: ConversationMessage) => {
-          // PRIMARY HANDLING: Check for actual source/message format first
-          if (message.source && message.message) {
-            // Map source to role
+          // Capture messages for real transcript generation
+          if (message.source && message.message && message.message.trim()) {
             const role = message.source === 'user' ? 'user' : 'agent';
-            const content = message.message;
+            const timestamp = Date.now();
+            const content = message.message!.trim();
             
-            if (content.trim()) {
-              if (role === 'user') {
-                conversationLogger.userMessage(content);
-              } else {
-                conversationLogger.agentMessage(content);
-                setLastAgentMessage(Date.now());
-                
-                // Clear any existing inactivity timeout
-                if (inactivityTimeout) {
-                  clearTimeout(inactivityTimeout);
-                  setInactivityTimeout(null);
-                }
-                
-                // Set inactivity timeout as backup (30 seconds after last agent message)
-                // Agent should call end_call tool when conversation is complete
-                const timeout = setTimeout(() => {
-                  conversationLogger.timeout();
-                  handleEndConversation();
-                }, 30000);
-                setInactivityTimeout(timeout);
-              }
-              
-              // Add to dialogue immediately
-              addDialogueTurn(role, content);
-            }
-            return; // Exit early after handling primary format
+            rawMessages.current = [...rawMessages.current, { 
+              role, 
+              content, 
+              timestamp 
+            }];
+            
+            logger.debug(LogCategory.CONVERSATION, `${role} message captured`, { 
+              fullContent: content,
+              messageCount: rawMessages.current.length
+            });
+            
+            // Schedule debounced flush
+            pendingFlushRef.current = true;
+            scheduleFlush();
           }
           
-          // SECONDARY HANDLING: Fallback to legacy type-based parsing for edge cases only
-          
-          switch (message.type) {
-            case 'user_transcript':
-            case 'user_message':
-              const userText = message.user_transcription_event?.user_transcript || 
-                              message.text || message.content || '';
-              if (userText.trim()) {
-                conversationLogger.userMessage(userText);
-                addDialogueTurn('user', userText);
-              }
-              break;
+          // Handle end_conversation tool calls
+          if (message.type === 'client_tool_call') {
+            const toolCall = message.client_tool_call;
+            
+            if (toolCall && (toolCall.tool_name === 'end_conversation' || toolCall.tool_name === 'end_call')) {
+              logger.info(LogCategory.CONVERSATION, 'Agent called end tool - cancelling debounce and processing immediately', {
+                toolName: toolCall.tool_name,
+                messageCount: rawMessages.current.length
+              });
               
-            case 'agent_response':
-            case 'agent_message':
-              const agentText = message.agent_response_event?.agent_response ||
-                              message.text || message.content || '';
-              if (agentText.trim()) {
-                conversationLogger.agentMessage(agentText);
-                addDialogueTurn('agent', agentText);
-                setLastAgentMessage(Date.now());
-                
-                // Clear any existing inactivity timeout
-                if (inactivityTimeout) {
-                  clearTimeout(inactivityTimeout);
-                  setInactivityTimeout(null);
-                }
-                
-                // Set inactivity timeout as backup (30 seconds after last agent message)
-                // Agent should call end_call tool when conversation is complete
-                const timeout = setTimeout(() => {
-                  conversationLogger.timeout();
-                  handleEndConversation();
-                }, 30000);
-                setInactivityTimeout(timeout);
-              }
-              break;
-              
-            case 'client_tool_call':
-              const toolCall = message.client_tool_call;
-              if (toolCall) {
-                conversationLogger.toolCall(toolCall.tool_name, { parameters: toolCall.parameters });
+              // Cancel any pending flush and process immediately
+              if (flushTimeoutRef.current) {
+                clearTimeout(flushTimeoutRef.current);
+                flushTimeoutRef.current = null;
               }
               
-              // Handle end conversation tool call
-              if (toolCall && (toolCall.tool_name === 'end_conversation' || toolCall.tool_name === 'end_call')) {
-                logger.info(LogCategory.CONVERSATION, 'Agent called end tool - ending conversation immediately', {
-                  toolName: toolCall.tool_name
-                }, '🔚');
-                
-                // Clear any existing timeout
-                if (inactivityTimeout) {
-                  clearTimeout(inactivityTimeout);
-                  setInactivityTimeout(null);
-                }
-                
-                // End conversation immediately when agent calls the end tool
-                handleEndConversation();
-              } else if (toolCall) {
-                // Handle other potential tool calls
-                logger.debug(LogCategory.CONVERSATION, 'Other tool call received', {
-                  toolName: toolCall.tool_name,
-                  parameters: toolCall.parameters
-                }, '🔧');
-              }
-              break;
-              
-            case 'audio':
-              // Handle audio messages if needed
-              logger.debug(LogCategory.CONVERSATION, 'Audio message received', { messageType: message.type }, '🔊');
-              break;
-              
-            case 'ping':
-              // Handle ping messages if needed
-              logger.debug(LogCategory.CONVERSATION, 'Ping message received', { messageType: message.type }, '🏓');
-              break;
-              
-            default:
-              // ERROR HANDLING: If neither format matches, log full message structure for debugging
-              if (!message.source && !message.message && !message.type) {
-                logger.error(LogCategory.CONVERSATION, 'Unknown message format - full structure logged for debugging', {
-                  fullMessage: JSON.stringify(message, null, 2)
-                }, '❌');
-              } else {
-                // Capture any other message types for comprehensive logging
-                logger.debug(LogCategory.CONVERSATION, 'Other message type received', { 
-                  messageType: message.type,
-                  messageContent: JSON.stringify(message).substring(0, 200)
-                }, '📋');
-              }
+              pendingFlushRef.current = false;
+              processTranscriptAndEnd();
+            }
           }
         },
         
@@ -244,13 +176,7 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
           });
         },
         
-        onStatusChange: (status) => {
-          logger.debug(LogCategory.CONVERSATION, 'Status change', { status }, '📊');
-        },
-        
-        onModeChange: (mode) => {
-          logger.debug(LogCategory.CONVERSATION, 'Mode change', { mode }, '🔄');
-        }
+        // Removed status/mode logging as they provide no value
       });
 
       setConversationSession(session);
@@ -263,13 +189,7 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
     }
   };
 
-  const handleEndConversation = async () => {
-    // Clean up inactivity timeout
-    if (inactivityTimeout) {
-      clearTimeout(inactivityTimeout);
-      setInactivityTimeout(null);
-    }
-    
+  const handleEndConversation = async (finalTranscript: string) => {
     if (conversationSession) {
       try {
         await conversationSession.endSession();
@@ -281,43 +201,88 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
     }
     
     setConversationSession(null);
-    endConversation(); // Use store's endConversation method
+    // Pass the final transcript to the store for story generation
+    storeEndConversation(finalTranscript);
+  };
+
+  const handleManualEnd = async () => {
+    // Cancel any pending debounced flush
+    if (flushTimeoutRef.current) {
+      clearTimeout(flushTimeoutRef.current);
+      flushTimeoutRef.current = null;
+    }
+    pendingFlushRef.current = false;
+    
+    // For manual ending, process the captured messages
+    if (rawMessages.current.length > 0) {
+      const messages = rawMessages.current;
+      const userMessages = messages.filter(msg => msg.role === 'user');
+      
+      if (userMessages.length < 2) {
+        logger.warn(LogCategory.CONVERSATION, 'Manual end attempted with insufficient user messages', {
+          totalMessages: messages.length,
+          userMessages: userMessages.length,
+          minRequired: 2
+        });
+        // Still allow manual end but with warning
+      }
+      
+      const dialogueTurns: DialogueTurn[] = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp
+      }));
+      
+      const finalTranscript = TranscriptNormalizer.generateTranscript(dialogueTurns);
+      
+      logger.info(LogCategory.CONVERSATION, 'Manual end with real transcript', {
+        messageCount: messages.length,
+        userMessages: userMessages.length,
+        transcriptLength: finalTranscript.length,
+        fullTranscript: finalTranscript
+      });
+      
+      await handleEndConversation(finalTranscript);
+    } else {
+      // Fallback to test transcript if no messages captured
+      const finalTranscript = generateTestTranscript();
+      await handleEndConversation(finalTranscript);
+    }
   };
 
   const handleTestMode = () => {
     if (disabled) return;
     
-    // Create a realistic test conversation that mimics an actual child-agent interaction
-    const testDialogue = [
-      { role: 'agent' as const, content: 'Hi there! I\'m here to help you create an amazing story. What kind of story would you like to make today?' },
-      { role: 'user' as const, content: 'I want a story about a dragon!' },
-      { role: 'agent' as const, content: 'A dragon story sounds fantastic! What kind of dragon should it be? A friendly dragon, a magical dragon, or maybe a dragon with a special job?' },
-      { role: 'user' as const, content: 'A friendly dragon who helps people learn to read books' },
-      { role: 'agent' as const, content: 'Oh, I love that idea! A dragon who helps with reading - that\'s so creative! Where should this helpful dragon live? In a library, a magical forest, or somewhere else special?' },
-      { role: 'user' as const, content: 'In a big library with lots and lots of books everywhere' },
-      { role: 'agent' as const, content: 'Perfect! And who should the dragon help? Maybe some children who are learning to read?' },
-      { role: 'user' as const, content: 'Yeah! Kids who are scared to read out loud but the dragon makes them feel brave' },
-      { role: 'agent' as const, content: 'That\'s such a wonderful and heartwarming idea! I think we have everything we need to create your story about a brave, helpful dragon in a magical library. Let me create that story for you now!' }
-    ];
+    logger.testEvent('Using test mode - simulating conversation completion');
     
-    logger.testEvent('Using test mode with realistic conversation', { 
-      dialogueLength: testDialogue.length,
-      previewContent: testDialogue.slice(0, 2).map(d => `${d.role}: ${d.content.substring(0, 30)}...`)
-    });
-    
-    // Add each dialogue turn to create a realistic conversation flow
-    testDialogue.forEach(turn => {
-      addDialogueTurn(turn.role, turn.content);
-    });
-    
-    // Trigger the automatic story generation flow
-    endConversation();
+    // Generate a realistic test transcript and trigger story generation
+    const testTranscript = generateTestTranscript();
+    storeEndConversation(testTranscript);
+  };
+
+  // Generate a realistic test transcript for development/testing
+  const generateTestTranscript = (): string => {
+    return `User: I want a story about a dragon!
+
+Agent: A dragon story sounds fantastic! What kind of dragon should it be? A friendly dragon, a magical dragon, or maybe a dragon with a special job?
+
+User: A friendly dragon who helps people learn to read books
+
+Agent: Oh, I love that idea! A dragon who helps with reading - that's so creative! Where should this helpful dragon live? In a library, a magical forest, or somewhere else special?
+
+User: In a big library with lots and lots of books everywhere
+
+Agent: Perfect! And who should the dragon help? Maybe some children who are learning to read?
+
+User: Yeah! Kids who are scared to read out loud but the dragon makes them feel brave
+
+Agent: That's such a wonderful and heartwarming idea! I think we have everything we need to create your story about a brave, helpful dragon in a magical library. Let me create that story for you now!`;
   };
 
   return (
     <View style={styles.container}>
       
-      {/* Conversational Agent Button */}
+      {/* Main Conversation Button */}
       <TouchableOpacity
         style={[
           styles.primaryButton,
@@ -336,70 +301,32 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
         </Text>
       </TouchableOpacity>
 
-      {/* Enhanced Conversation Status */}
+      {/* Active Conversation Controls */}
       {isConversationActive && (
         <View style={styles.statusContainer}>
           <Text style={styles.statusText}>
-            🎙️ Conversation Active - Speak naturally with the StoryWriter Agent!
+            🎙️ Having a conversation with the StoryWriter Agent!
+          </Text>
+          <Text style={styles.helpText}>
+            The agent will automatically end the conversation when ready to create your story.
           </Text>
           <TouchableOpacity
             style={styles.endButton}
-            onPress={handleEndConversation}
+            onPress={handleManualEnd}
           >
             <Text style={styles.endButtonText}>End Conversation</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Enhanced Status Display */}
-      {phase === 'CONVERSATION_ENDED' && (
+      {/* Status Display */}
+      {phase === 'GENERATING' && (
         <View style={styles.processingContainer}>
           <Text style={styles.processingText}>
-            📝 Conversation ended - processing transcript...
+            ✨ Creating your story from the conversation...
           </Text>
         </View>
       )}
-
-      {phase === 'TRANSCRIPT_PROCESSING' && (
-        <View style={styles.processingContainer}>
-          <Text style={styles.processingText}>
-            🔄 Normalizing transcript and preparing story generation...
-          </Text>
-        </View>
-      )}
-
-      {/* Enhanced Live Conversation Display */}
-      {dialogue.length > 0 && isConversationActive && (
-        <View style={styles.messagesContainer}>
-          <Text style={styles.messagesTitle}>
-            Complete Conversation Transcript ({dialogue.length} messages):
-          </Text>
-          {dialogue.slice(-5).map((turn, index) => (
-            <Text key={index} style={styles.messageText}>
-              {turn.role === 'user' ? '👤 You' : '🤖 Agent'}: {turn.content}
-            </Text>
-          ))}
-          {dialogue.length > 5 && (
-            <Text style={styles.moreMessagesText}>
-              ... and {dialogue.length - 5} more exchanges (complete transcript will be saved)
-            </Text>
-          )}
-        </View>
-      )}
-
-      {/* Complete Transcript Summary */}
-      {dialogue.length > 0 && !isConversationActive && phase !== 'INITIAL' && (
-        <View style={styles.transcriptSummary}>
-          <Text style={styles.transcriptTitle}>
-            📝 Captured Transcript: {dialogue.length} total messages
-          </Text>
-          <Text style={styles.transcriptStats}>
-            User messages: {dialogue.filter(turn => turn.role === 'user').length} | 
-            Agent responses: {dialogue.filter(turn => turn.role === 'agent').length}
-          </Text>
-        </View>
-      )}
-
 
       {/* Test Button */}
       <TouchableOpacity
@@ -422,13 +349,6 @@ const styles = {
     padding: 20,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold' as const,
-    marginBottom: 20,
-    textAlign: 'center' as const,
-    color: '#333',
   },
   primaryButton: {
     backgroundColor: '#007AFF',
@@ -463,6 +383,13 @@ const styles = {
     marginBottom: 10,
     textAlign: 'center' as const,
   },
+  helpText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center' as const,
+    fontStyle: 'italic' as const,
+    marginBottom: 10,
+  },
   endButton: {
     backgroundColor: '#FF3B30',
     paddingHorizontal: 20,
@@ -473,53 +400,6 @@ const styles = {
     color: 'white',
     fontSize: 14,
     fontWeight: 'bold' as const,
-  },
-  messagesContainer: {
-    backgroundColor: '#f8f8f8',
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 15,
-  },
-  messagesTitle: {
-    fontSize: 14,
-    fontWeight: 'bold' as const,
-    marginBottom: 5,
-    color: '#333',
-  },
-  messageText: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 2,
-  },
-  divider: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    marginVertical: 20,
-  },
-  dividerText: {
-    marginHorizontal: 10,
-    color: '#666',
-    fontSize: 14,
-  },
-  testButton: {
-    backgroundColor: '#34C759',
-    paddingHorizontal: 30,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginBottom: 10,
-    minWidth: 250,
-  },
-  testButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: 'bold' as const,
-    textAlign: 'center' as const,
-  },
-  helpText: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center' as const,
-    fontStyle: 'italic' as const,
   },
   processingContainer: {
     backgroundColor: '#fff3cd',
@@ -536,32 +416,18 @@ const styles = {
     textAlign: 'center' as const,
     fontWeight: '500' as const,
   },
-  moreMessagesText: {
-    fontSize: 11,
-    color: '#999',
-    fontStyle: 'italic' as const,
-    textAlign: 'center' as const,
-    marginTop: 5,
+  testButton: {
+    backgroundColor: '#34C759',
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 10,
+    minWidth: 250,
   },
-  transcriptSummary: {
-    backgroundColor: '#e8f5e8',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    alignItems: 'center' as const,
-    borderWidth: 1,
-    borderColor: '#c3e6c3',
-  },
-  transcriptTitle: {
+  testButtonText: {
+    color: 'white',
     fontSize: 14,
-    color: '#2d5a2d',
     fontWeight: 'bold' as const,
-    textAlign: 'center' as const,
-    marginBottom: 5,
-  },
-  transcriptStats: {
-    fontSize: 12,
-    color: '#4a7a4a',
     textAlign: 'center' as const,
   },
 };
