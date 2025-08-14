@@ -14,7 +14,7 @@ interface NavButtonProps {
  * - Uses router.push on native for gesture compatibility.
  */
 export const NavButton = ({ href, label }: NavButtonProps) => {
-    console.log(Platform.OS);
+    // Platform detection for conditional rendering
   if (Platform.OS === 'web') {
     return (
       <Link href={href} asChild>

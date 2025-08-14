@@ -12,7 +12,7 @@ const HomeScreen = () => {
         <Text style={s.subtitle}>Create amazing stories with your voice!</Text>
         
         <View style={s.buttonContainer}></View>
-        <Link href="/storyscreen" asChild>
+        <Link href="/" asChild>
           <TouchableOpacity style={s.button}>
             <Text style={s.buttonText}>Start Writing</Text>
           </TouchableOpacity>

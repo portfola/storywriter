@@ -1,130 +1,327 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, TouchableOpacity } from 'react-native';
 import ElevenLabsService from '@/services/elevenLabsService';
-import { ConversationSession } from '@/types/elevenlabs';
+import { ConversationSession, ConversationMessage } from '@/types/elevenlabs';
+import { useConversationStore } from '@/src/stores/conversationStore';
+import { useErrorHandler } from '@/src/hooks/useErrorHandler';
+import { ErrorType, ErrorSeverity } from '@/src/utils/errorHandler';
+import { conversationLogger, logger, LogCategory } from '@/src/utils/logger';
+import { TranscriptNormalizer, DialogueTurn } from '@/src/utils/transcriptNormalizer';
 
 interface Props {
-  onConversationComplete: (transcript: string) => void;
   disabled?: boolean;
 }
 
-const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabled = false }) => {
+const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isConversationActive, setIsConversationActive] = useState(false);
   const [conversationSession, setConversationSession] = useState<ConversationSession | null>(null);
-  const [messages, setMessages] = useState<string[]>([]);
+  const rawMessages = useRef<{role: 'user'|'agent', content: string, timestamp: number}[]>([]);
+  const flushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingFlushRef = useRef<boolean>(false);
+  
+  // Simplified store usage - trust ElevenLabs for conversation management
+  const {
+    phase,
+    startConversation: storeStartConversation,
+    endConversation: storeEndConversation
+  } = useConversationStore();
+  
+  const { handleError } = useErrorHandler({
+    showAlert: true,
+    useChildFriendlyMessages: true
+  });
+  
+  const isConversationActive = phase === 'ACTIVE';
+
+  // Message capture debounce (for logging/validation only - does NOT end conversation)
+  const scheduleMessageProcessing = useCallback(() => {
+    if (flushTimeoutRef.current) {
+      clearTimeout(flushTimeoutRef.current);
+    }
+    
+    // This timeout is only for clearing the pending flag, NOT for ending conversations
+    flushTimeoutRef.current = setTimeout(() => {
+      if (pendingFlushRef.current) {
+        // Simply clear the pending flag - no logging needed
+        pendingFlushRef.current = false;
+      }
+    }, 2000);
+  }, []);
+
+  // Validate and process transcript
+  const processTranscriptAndEnd = useCallback(() => {
+    const messages = rawMessages.current;
+    const userMessages = messages.filter(msg => msg.role === 'user');
+    
+    if (userMessages.length < 2) {
+      logger.warn(LogCategory.CONVERSATION, 'Insufficient user messages for story generation', {
+        totalMessages: messages.length,
+        userMessages: userMessages.length,
+        minRequired: 2
+      });
+      return;
+    }
+
+    const dialogueTurns: DialogueTurn[] = messages.map(msg => ({
+      role: msg.role,
+      content: msg.content,
+      timestamp: msg.timestamp
+    }));
+    
+    const finalTranscript = TranscriptNormalizer.generateTranscript(dialogueTurns);
+    
+    logger.info(LogCategory.CONVERSATION, 'Generated final transcript with validation passed', {
+      originalMessages: messages.length,
+      userMessages: userMessages.length,
+      processedLength: finalTranscript.length,
+      fullTranscript: finalTranscript
+    });
+    
+    pendingFlushRef.current = false;
+    handleEndConversation(finalTranscript);
+  }, []);
+
+  // Cleanup on unmount and reset messages when starting new conversation
+  useEffect(() => {
+    return () => {
+      if (conversationSession) {
+        conversationLogger.cleanup({ sessionId: conversationSession.conversation?.conversationId });
+        ElevenLabsService.forceCleanup();
+      }
+    };
+  }, [conversationSession]);
+  
+  // Reset messages when starting new conversation
+  useEffect(() => {
+    if (isConnecting) {
+      rawMessages.current = [];
+      if (flushTimeoutRef.current) {
+        clearTimeout(flushTimeoutRef.current);
+        flushTimeoutRef.current = null;
+      }
+      pendingFlushRef.current = false;
+    }
+  }, [isConnecting]);
 
   const startConversation = async () => {
     if (disabled || isConnecting || isConversationActive) return;
 
     setIsConnecting(true);
-    setMessages([]);
+    storeStartConversation();
 
     try {
       const session = await ElevenLabsService.startConversationAgent({
         onConnect: () => {
-          console.log('✅ Connected to StoryWriter Agent');
+          conversationLogger.connected();
           setIsConnecting(false);
-          setIsConversationActive(true);
         },
         
         onDisconnect: () => {
-          console.log('❌ Disconnected from StoryWriter Agent');
-          setIsConversationActive(false);
+          conversationLogger.disconnected();
           setConversationSession(null);
-        },
-        
-        onMessage: (message) => {
-          console.log('💬 Message received:', message);
           
-          // Handle different message types
-          if (message.type === 'conversation_ended' || message.type === 'agent_response_end') {
-            // Extract user responses from the conversation
-            const userMessages = messages.filter(msg => !msg.startsWith('[Agent]'));
-            const transcript = userMessages.join(' ').trim();
+          // If we have messages but the agent didn't explicitly call end_conversation,
+          // process the transcript as a fallback
+          if (rawMessages.current.length > 0) {
+            const userMessages = rawMessages.current.filter(msg => msg.role === 'user');
             
-            if (transcript) {
-              console.log('📝 Conversation transcript:', transcript);
-              onConversationComplete(transcript);
-              endConversation();
-            }
-          } else if (message.type === 'user_transcript' || message.type === 'user_message') {
-            // Add user message to transcript
-            const userText = message.text || message.content || '';
-            if (userText.trim()) {
-              setMessages(prev => [...prev, userText]);
-            }
-          } else if (message.type === 'agent_response' || message.type === 'agent_message') {
-            // Log agent responses but don't include in final transcript
-            const agentText = message.text || message.content || '';
-            if (agentText.trim()) {
-              setMessages(prev => [...prev, `[Agent]: ${agentText}`]);
+            logger.info(LogCategory.CONVERSATION, 'Disconnect with messages - processing transcript as fallback', {
+              totalMessages: rawMessages.current.length,
+              userMessages: userMessages.length
+            });
+            
+            if (userMessages.length >= 2) {
+              // Cancel any pending timeouts
+              if (flushTimeoutRef.current) {
+                clearTimeout(flushTimeoutRef.current);
+                flushTimeoutRef.current = null;
+              }
+              pendingFlushRef.current = false;
+              
+              // Process the transcript
+              processTranscriptAndEnd();
+            } else {
+              logger.warn(LogCategory.CONVERSATION, 'Disconnect with insufficient user messages - no story generation', {
+                userMessages: userMessages.length,
+                minRequired: 2
+              });
             }
           }
         },
         
-        onError: (error) => {
-          console.error('❌ Conversation error:', error);
-          setIsConnecting(false);
-          setIsConversationActive(false);
-          setConversationSession(null);
+        onMessage: (message: ConversationMessage) => {
+          // Capture messages for real transcript generation
+          if (message.source && message.message && message.message.trim()) {
+            const role = message.source === 'user' ? 'user' : 'agent';
+            const timestamp = Date.now();
+            const content = message.message!.trim();
+            
+            rawMessages.current = [...rawMessages.current, { 
+              role, 
+              content, 
+              timestamp 
+            }];
+            
+            logger.debug(LogCategory.CONVERSATION, `${role} message captured`, { 
+              fullContent: content,
+              messageCount: rawMessages.current.length
+            });
+            
+            // Schedule message processing check (does not end conversation)
+            pendingFlushRef.current = true;
+            scheduleMessageProcessing();
+          }
           
-          Alert.alert(
-            'Conversation Error',
-            'Failed to connect to the StoryWriter Agent. Please try again or use the test button.',
-            [{ text: 'OK' }]
-          );
+          // Handle end_conversation tool calls
+          if (message.type === 'client_tool_call') {
+            const toolCall = message.client_tool_call;
+            
+            logger.debug(LogCategory.CONVERSATION, 'Received client tool call', {
+              toolName: toolCall?.tool_name,
+              messageType: message.type,
+              fullMessage: message
+            });
+            
+            if (toolCall && (toolCall.tool_name === 'end_conversation' || toolCall.tool_name === 'end_call')) {
+              logger.info(LogCategory.CONVERSATION, 'Agent called end tool - processing transcript and ending conversation', {
+                toolName: toolCall.tool_name,
+                messageCount: rawMessages.current.length
+              });
+              
+              // Cancel any pending message processing and end conversation immediately
+              if (flushTimeoutRef.current) {
+                clearTimeout(flushTimeoutRef.current);
+                flushTimeoutRef.current = null;
+              }
+              
+              pendingFlushRef.current = false;
+              processTranscriptAndEnd();
+            }
+          } else {
+            // Log all message types to understand what we're receiving
+            logger.debug(LogCategory.CONVERSATION, 'Received message', {
+              messageType: message.type,
+              source: message.source,
+              hasContent: !!message.message
+            });
+          }
         },
         
-        onStatusChange: (status) => {
-          console.log('📊 Status:', status);
+        onError: (error) => {
+          setIsConnecting(false);
+          setConversationSession(null);
+          handleError(error, ErrorType.CONVERSATION, ErrorSeverity.MEDIUM, {
+            action: 'conversation_connection'
+          });
         },
         
-        onModeChange: (mode) => {
-          console.log('🔄 Mode:', mode);
-        }
+        // Removed status/mode logging as they provide no value
       });
 
       setConversationSession(session);
       
     } catch (error) {
-      console.error('❌ Failed to start conversation:', error);
       setIsConnecting(false);
-      
-      Alert.alert(
-        'Connection Error',
-        'Could not start conversation with StoryWriter Agent. Please check your internet connection and try again.',
-        [{ text: 'OK' }]
-      );
+      handleError(error, ErrorType.CONVERSATION, ErrorSeverity.MEDIUM, {
+        action: 'start_conversation'
+      });
     }
   };
 
-  const endConversation = async () => {
+  const handleEndConversation = async (finalTranscript: string) => {
     if (conversationSession) {
       try {
         await conversationSession.endSession();
       } catch (error) {
-        console.error('❌ Error ending conversation:', error);
+        handleError(error, ErrorType.CONVERSATION, ErrorSeverity.LOW, {
+          action: 'end_conversation'
+        });
       }
     }
     
-    setIsConversationActive(false);
     setConversationSession(null);
+    // Pass the final transcript to the store for story generation
+    storeEndConversation(finalTranscript);
+  };
+
+  const handleManualEnd = async () => {
+    // Cancel any pending debounced flush
+    if (flushTimeoutRef.current) {
+      clearTimeout(flushTimeoutRef.current);
+      flushTimeoutRef.current = null;
+    }
+    pendingFlushRef.current = false;
+    
+    // For manual ending, process the captured messages
+    if (rawMessages.current.length > 0) {
+      const messages = rawMessages.current;
+      const userMessages = messages.filter(msg => msg.role === 'user');
+      
+      if (userMessages.length < 2) {
+        logger.warn(LogCategory.CONVERSATION, 'Manual end attempted with insufficient user messages', {
+          totalMessages: messages.length,
+          userMessages: userMessages.length,
+          minRequired: 2
+        });
+        // Still allow manual end but with warning
+      }
+      
+      const dialogueTurns: DialogueTurn[] = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp
+      }));
+      
+      const finalTranscript = TranscriptNormalizer.generateTranscript(dialogueTurns);
+      
+      logger.info(LogCategory.CONVERSATION, 'Manual end with real transcript', {
+        messageCount: messages.length,
+        userMessages: userMessages.length,
+        transcriptLength: finalTranscript.length,
+        fullTranscript: finalTranscript
+      });
+      
+      await handleEndConversation(finalTranscript);
+    } else {
+      // Fallback to test transcript if no messages captured
+      const finalTranscript = generateTestTranscript();
+      await handleEndConversation(finalTranscript);
+    }
   };
 
   const handleTestMode = () => {
     if (disabled) return;
     
-    const testTranscript = "I want a story about a brave dragon who helps children learn to read";
-    console.log('🧪 Using test mode with transcript:', testTranscript);
-    onConversationComplete(testTranscript);
+    logger.testEvent('Using test mode - simulating conversation completion');
+    
+    // Generate a realistic test transcript and trigger story generation
+    const testTranscript = generateTestTranscript();
+    storeEndConversation(testTranscript);
+  };
+
+  // Generate a realistic test transcript for development/testing
+  const generateTestTranscript = (): string => {
+    return `User: I want a story about a dragon!
+
+Agent: A dragon story sounds fantastic! What kind of dragon should it be? A friendly dragon, a magical dragon, or maybe a dragon with a special job?
+
+User: A friendly dragon who helps people learn to read books
+
+Agent: Oh, I love that idea! A dragon who helps with reading - that's so creative! Where should this helpful dragon live? In a library, a magical forest, or somewhere else special?
+
+User: In a big library with lots and lots of books everywhere
+
+Agent: Perfect! And who should the dragon help? Maybe some children who are learning to read?
+
+User: Yeah! Kids who are scared to read out loud but the dragon makes them feel brave
+
+Agent: That's such a wonderful and heartwarming idea! I think we have everything we need to create your story about a brave, helpful dragon in a magical library. Let me create that story for you now!`;
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Choose how to create your story:</Text>
       
-      {/* Conversational Agent Button */}
+      {/* Main Conversation Button */}
       <TouchableOpacity
         style={[
           styles.primaryButton,
@@ -143,37 +340,32 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
         </Text>
       </TouchableOpacity>
 
-      {/* Active Conversation Status */}
+      {/* Active Conversation Controls */}
       {isConversationActive && (
         <View style={styles.statusContainer}>
           <Text style={styles.statusText}>
-            🎙️ Listening... Speak your story ideas!
+            🎙️ Having a conversation with the StoryWriter Agent!
+          </Text>
+          <Text style={styles.helpText}>
+            The agent will automatically end the conversation when ready to create your story.
           </Text>
           <TouchableOpacity
             style={styles.endButton}
-            onPress={endConversation}
+            onPress={handleManualEnd}
           >
             <Text style={styles.endButtonText}>End Conversation</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Messages Display */}
-      {messages.length > 0 && (
-        <View style={styles.messagesContainer}>
-          <Text style={styles.messagesTitle}>Conversation:</Text>
-          {messages.slice(-3).map((message, index) => (
-            <Text key={index} style={styles.messageText}>
-              {message}
-            </Text>
-          ))}
+      {/* Status Display */}
+      {phase === 'GENERATING' && (
+        <View style={styles.processingContainer}>
+          <Text style={styles.processingText}>
+            ✨ Creating your story from the conversation...
+          </Text>
         </View>
       )}
-
-      {/* Divider */}
-      <View style={styles.divider}>
-        <Text style={styles.dividerText}>OR</Text>
-      </View>
 
       {/* Test Button */}
       <TouchableOpacity
@@ -186,9 +378,6 @@ const ConversationInterface: React.FC<Props> = ({ onConversationComplete, disabl
         </Text>
       </TouchableOpacity>
 
-      <Text style={styles.helpText}>
-        Test mode uses a sample story prompt for quick testing
-      </Text>
     </View>
   );
 };
@@ -199,13 +388,6 @@ const styles = {
     padding: 20,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold' as const,
-    marginBottom: 20,
-    textAlign: 'center' as const,
-    color: '#333',
   },
   primaryButton: {
     backgroundColor: '#007AFF',
@@ -240,6 +422,13 @@ const styles = {
     marginBottom: 10,
     textAlign: 'center' as const,
   },
+  helpText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center' as const,
+    fontStyle: 'italic' as const,
+    marginBottom: 10,
+  },
   endButton: {
     backgroundColor: '#FF3B30',
     paddingHorizontal: 20,
@@ -251,32 +440,20 @@ const styles = {
     fontSize: 14,
     fontWeight: 'bold' as const,
   },
-  messagesContainer: {
-    backgroundColor: '#f8f8f8',
-    padding: 10,
-    borderRadius: 8,
+  processingContainer: {
+    backgroundColor: '#fff3cd',
+    padding: 15,
+    borderRadius: 10,
     marginBottom: 15,
-  },
-  messagesTitle: {
-    fontSize: 14,
-    fontWeight: 'bold' as const,
-    marginBottom: 5,
-    color: '#333',
-  },
-  messageText: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 2,
-  },
-  divider: {
-    flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    marginVertical: 20,
+    borderWidth: 1,
+    borderColor: '#ffeaa7',
   },
-  dividerText: {
-    marginHorizontal: 10,
-    color: '#666',
+  processingText: {
     fontSize: 14,
+    color: '#856404',
+    textAlign: 'center' as const,
+    fontWeight: '500' as const,
   },
   testButton: {
     backgroundColor: '#34C759',
@@ -291,12 +468,6 @@ const styles = {
     fontSize: 14,
     fontWeight: 'bold' as const,
     textAlign: 'center' as const,
-  },
-  helpText: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center' as const,
-    fontStyle: 'italic' as const,
   },
 };
 

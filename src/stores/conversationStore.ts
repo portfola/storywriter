@@ -1,38 +1,47 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StoryPage } from '@/src/utils/storyGenerator';
+import { StoryPage } from '@/types/story';
+import ElevenLabsService from '@/services/elevenLabsService';
+import StoryGenerationService from '@/services/storyGenerationService';
+import { AudioGenerationResult } from '@/types/elevenlabs';
+import { ErrorHandler, ErrorType, ErrorSeverity, AppError } from '@/src/utils/errorHandler';
+import { logger, audioLogger, LogCategory } from '@/src/utils/logger';
 
-// Define all possible states of our conversation
+// Simplified conversation phases - let ElevenLabs handle the complexity
 export type ConversationPhase = 
-  | 'INITIAL'           // Just started, no interaction yet
-  | 'INTERVIEWING'      // Actively asking questions
-  | 'PROCESSING'        // Processing user's response
-  | 'GENERATING_STORY'  // Creating the story
-  | 'DISPLAYING_STORY'; // Showing the generated story
+  | 'IDLE'              // No active conversation
+  | 'ACTIVE'            // ElevenLabs conversation in progress
+  | 'GENERATING'        // Generating story from final transcript
+  | 'COMPLETE';         // Story ready
 
-// Define the structure of our conversation turns
-export interface ConversationTurn {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-}
-
-// Define what a saved story looks like
-export interface SavedStory {
-  id: string;           // Unique identifier for the story
-  title: string;        // Display title
-  content: StoryPage[]; // The actual story pages
-  elements: StoryElements; // The gathered story elements
-  createdAt: number;    // Timestamp for sorting
-}
-
-// Define story elements structure
+// Simplified story elements structure
 export interface StoryElements {
   [key: string]: string;
 }
 
-// Define what information we need to track about speech
+// Story section structure
+export interface StorySection {
+  text: string;
+  imageUrl: string | null;
+}
+
+// Story content structure
+export interface StoryContent {
+  content: string | null;
+  sections: StorySection[];
+}
+
+// Saved story structure
+export interface SavedStory {
+  id: string;
+  title: string;
+  content: StoryPage[];
+  elements: StoryElements;
+  createdAt: number;
+}
+
+// Speech state for UI feedback
 export interface SpeechState {
   isListening: boolean;
   isSpeaking: boolean;
@@ -40,7 +49,7 @@ export interface SpeechState {
   speechVolume: number;
 }
 
-// Define our story state
+// Story state
 export interface StoryState {
   currentPageIndex: number;
   storyPages: StoryPage[];
@@ -48,12 +57,26 @@ export interface StoryState {
   savedStories: SavedStory[];
 }
 
-// Define our complete store state shape
+// Simplified conversation state - trust ElevenLabs to handle conversation flow
 export interface ConversationState extends SpeechState, StoryState {
   phase: ConversationPhase;
-  conversationHistory: ConversationTurn[];
-  currentQuestion: string;
-  error: string | null;
+  
+  // Simple transcript capture when conversation ends
+  finalTranscript: string;
+  
+  // Unified error handling
+  errors: Record<string, AppError>;
+  
+  // Story generation state
+  isGenerating: boolean;
+  storyContent: StorySection[];
+  generatedStory: string | null;
+  isGeneratingAudio: boolean;
+  story: StoryContent;
+  storyGenerationProgress: string | null;
+  
+  // Timing state for minimum display time
+  minDisplayStartTime: number | null;
   
   // Story management actions
   setStoryPages: (pages: StoryPage[]) => void;
@@ -65,23 +88,35 @@ export interface ConversationState extends SpeechState, StoryState {
   loadStory: (id: string) => Promise<void>;
   loadSavedStories: () => Promise<void>;
   
-  // Existing conversation actions
+  // Simplified conversation actions
   startConversation: () => void;
-  addUserResponse: (response: string) => void;
-  setQuestion: (question: string) => void;
+  endConversation: (transcript: string) => void; // Accept final transcript from ElevenLabs
   setPhase: (phase: ConversationPhase) => void;
   setSpeechState: (speechState: Partial<SpeechState>) => void;
   resetConversation: () => void;
-  setError: (error: string | null) => void;
+  
+  // Error handling
+  addError: (key: string, error: AppError) => void;
+  removeError: (key: string) => void;
+  clearErrors: () => void;
+  hasError: (key?: string) => boolean;
+  getError: (key: string) => AppError | undefined;
+  
+  // Audio generation
+  generateStoryPromptAudio: (prompt: string) => Promise<AudioGenerationResult | null>;
+  generateStoryAudio: (storyText: string) => Promise<AudioGenerationResult | null>;
+  
+  // Story generation
+  generateStoryAutomatically: () => Promise<void>;
+  retryStoryGeneration: () => Promise<void>;
 }
 
 const useConversationStore = create<ConversationState>()(
   devtools(
     (set, get) => ({
-      phase: 'INITIAL',
-      conversationHistory: [],
-      currentQuestion: '',
-      error: null,
+      phase: 'IDLE',
+      finalTranscript: '',
+      errors: {},
       isListening: false,
       isSpeaking: false,
       speechRate: 1.0,
@@ -91,59 +126,51 @@ const useConversationStore = create<ConversationState>()(
       storyElements: {},
       savedStories: [],
       
-      // Actions are simplified to avoid nested updates
+      // Story state
+      isGenerating: false,
+      storyContent: [],
+      generatedStory: null,
+      isGeneratingAudio: false,
+      story: {
+        content: null,
+        sections: [],
+      },
+      storyGenerationProgress: null,
+      minDisplayStartTime: null,
+      
+      // Simplified conversation actions
       startConversation: () => {
+        logger.info(LogCategory.CONVERSATION, 'Starting conversation - trusting ElevenLabs to handle dialogue', {});
         set({
-          phase: 'INTERVIEWING',
-          conversationHistory: [{
-            role: 'system',
-            content: 'You are a friendly children\'s story creator assistant.',
-            timestamp: Date.now()
-          }],
-          currentQuestion: 'What kind of story would you like to create today?',
-          error: null,
+          phase: 'ACTIVE',
+          finalTranscript: '',
+          errors: {},
           isListening: false,
           isSpeaking: false
         });
       },
 
-      addUserResponse: (response: string) => {
-        const { conversationHistory, phase } = get();
-        
-        // Only add response if we're in the right phase
-        if (phase !== 'INTERVIEWING' && phase !== 'PROCESSING') {
-          console.warn('Attempted to add user response in invalid phase:', phase);
-          return;
-        }
-
-        set({
-          conversationHistory: [
-            ...conversationHistory,
-            {
-              role: 'user',
-              content: response,
-              timestamp: Date.now()
-            }
-          ],
-          phase: 'PROCESSING'
+      endConversation: (transcript: string) => {
+        logger.info(LogCategory.CONVERSATION, 'Conversation ended with transcript from ElevenLabs', {
+          transcriptLength: transcript.length,
+          transcriptPreview: transcript.substring(0, 100)
         });
-      },
-
-      setQuestion: (question: string) => {
-        const { conversationHistory } = get();
         
         set({
-          currentQuestion: question,
-          conversationHistory: [
-            ...conversationHistory,
-            {
-              role: 'assistant',
-              content: question,
-              timestamp: Date.now()
-            }
-          ],
-          phase: 'INTERVIEWING'
+          phase: 'GENERATING',
+          finalTranscript: transcript,
+          isListening: false,
+          isSpeaking: false,
+          minDisplayStartTime: Date.now()
         });
+        
+        // Clear any existing story generation errors
+        get().removeError('story_generation');
+        
+        // Auto-trigger story generation
+        setTimeout(() => {
+          get().generateStoryAutomatically();
+        }, 500);
       },
 
       setPhase: (phase: ConversationPhase) => {
@@ -159,24 +186,60 @@ const useConversationStore = create<ConversationState>()(
 
       resetConversation: () => {
         set({
-          phase: 'INITIAL',
-          conversationHistory: [],
-          currentQuestion: '',
-          error: null,
+          phase: 'IDLE',
+          finalTranscript: '',
+          errors: {},
           isListening: false,
-          isSpeaking: false
+          isSpeaking: false,
+          isGenerating: false,
+          storyContent: [],
+          generatedStory: null,
+          isGeneratingAudio: false,
+          story: {
+            content: null,
+            sections: [],
+          },
+          storyGenerationProgress: null,
+          minDisplayStartTime: null,
         });
       },
 
-      setError: (error: string | null) => {
-        set({ error });
+      // Error handling methods
+      addError: (key: string, error: AppError) => {
+        set((state) => ({
+          errors: { ...state.errors, [key]: error }
+        }));
+        ErrorHandler.handleError(error);
       },
-      // Story management actions
+
+      removeError: (key: string) => {
+        set((state) => {
+          const newErrors = { ...state.errors };
+          delete newErrors[key];
+          return { errors: newErrors };
+        });
+      },
+
+      clearErrors: () => {
+        set({ errors: {} });
+      },
+
+      hasError: (key?: string) => {
+        const { errors } = get();
+        return key ? key in errors : Object.keys(errors).length > 0;
+      },
+
+      getError: (key: string) => {
+        const { errors } = get();
+        return errors[key];
+      },
+
+      // Story management actions (unchanged)
       setStoryPages: (pages: StoryPage[]) => {
         set({
           storyPages: pages,
-          currentPageIndex: 0,  // Reset to first page when setting new pages
-          phase: 'DISPLAYING_STORY'
+          currentPageIndex: 0,
+          phase: 'COMPLETE'
         });
       },
 
@@ -226,8 +289,14 @@ const useConversationStore = create<ConversationState>()(
           await AsyncStorage.setItem('savedStories', JSON.stringify(updatedStories));
           set({ savedStories: updatedStories });
         } catch (error) {
-          console.error('Failed to save story:', error);
-          throw new Error('Failed to save story');
+          const appError = ErrorHandler.fromUnknown(
+            error, 
+            ErrorType.STORAGE, 
+            ErrorSeverity.MEDIUM,
+            { action: 'save_story', storyId: newStory.id }
+          );
+          get().addError('storage_save', appError);
+          throw appError;
         }
       },
 
@@ -236,14 +305,23 @@ const useConversationStore = create<ConversationState>()(
         const story = savedStories.find(s => s.id === id);
         
         if (!story) {
-          throw new Error('Story not found');
+          const appError = ErrorHandler.createError(
+            ErrorType.VALIDATION,
+            ErrorSeverity.LOW,
+            `Story with id ${id} not found`,
+            'The requested story could not be found.',
+            undefined,
+            { storyId: id }
+          );
+          get().addError('story_load', appError);
+          throw appError;
         }
 
         set({
           storyPages: story.content,
           storyElements: story.elements,
           currentPageIndex: 0,
-          phase: 'DISPLAYING_STORY'
+          phase: 'COMPLETE'
         });
       },
 
@@ -255,9 +333,180 @@ const useConversationStore = create<ConversationState>()(
             set({ savedStories: stories });
           }
         } catch (error) {
-          console.error('Failed to load saved stories:', error);
-          throw new Error('Failed to load saved stories');
+          const appError = ErrorHandler.fromUnknown(
+            error,
+            ErrorType.STORAGE,
+            ErrorSeverity.LOW,
+            { action: 'load_saved_stories' }
+          );
+          get().addError('storage_load', appError);
+          throw appError;
         }
+      },
+      
+      // Audio generation actions
+      generateStoryPromptAudio: async (prompt: string): Promise<AudioGenerationResult | null> => {
+        set({ isGeneratingAudio: true });
+        get().removeError('audio_generation');
+
+        try {
+          const audioResult = await ElevenLabsService.generateStoryPromptSpeech(prompt);
+          audioLogger.complete('story prompt', { promptLength: prompt.length });
+          return audioResult;
+        } catch (error) {
+          const appError = ErrorHandler.fromUnknown(
+            error,
+            ErrorType.AUDIO,
+            ErrorSeverity.LOW,
+            { action: 'generate_story_prompt_audio', prompt: prompt.substring(0, 50) }
+          );
+          get().addError('audio_generation', appError);
+          return null;
+        } finally {
+          set({ isGeneratingAudio: false });
+        }
+      },
+
+      generateStoryAudio: async (storyText: string): Promise<AudioGenerationResult | null> => {
+        set({ isGeneratingAudio: true });
+        get().removeError('audio_generation');
+
+        try {
+          const audioResult = await ElevenLabsService.generateSpeech(storyText);
+          audioLogger.complete('story', { storyLength: storyText.length });
+          return audioResult;
+        } catch (error) {
+          const appError = ErrorHandler.fromUnknown(
+            error,
+            ErrorType.AUDIO,
+            ErrorSeverity.LOW,
+            { action: 'generate_story_audio', storyLength: storyText.length }
+          );
+          get().addError('audio_generation', appError);
+          return null;
+        } finally {
+          set({ isGeneratingAudio: false });
+        }
+      },
+
+      // Simplified story generation - use final transcript from ElevenLabs
+      generateStoryAutomatically: async () => {
+        const { finalTranscript, minDisplayStartTime } = get();
+        
+        if (!finalTranscript || finalTranscript.trim().length === 0) {
+          const appError = ErrorHandler.createError(
+            ErrorType.VALIDATION,
+            ErrorSeverity.MEDIUM,
+            'No conversation transcript available for story generation',
+            'We need a conversation transcript to create your story. Please try talking with the StoryWriter Agent first.',
+            undefined,
+            { action: 'automatic_story_generation', transcriptLength: 0 }
+          );
+          get().addError('story_generation', appError);
+          set({
+            phase: 'IDLE',
+            minDisplayStartTime: null
+          });
+          return;
+        }
+
+        set({
+          isGenerating: true,
+          storyGenerationProgress: 'Creating your story...'
+        });
+        
+        get().removeError('story_generation');
+
+        try {
+          logger.info(LogCategory.CONVERSATION, 'Starting story generation with ElevenLabs transcript', {
+            transcriptLength: finalTranscript.length,
+            transcriptPreview: finalTranscript.substring(0, 200)
+          });
+          
+          const result = await StoryGenerationService.generateStoryAutomatically(
+            finalTranscript,
+            { maxRetries: 3, temperature: 0.7 },
+            (progress) => {
+              set({ storyGenerationProgress: progress });
+            }
+          );
+          
+          if (result.success && result.story) {
+            if (!result.story.pages || result.story.pages.length === 0) {
+              throw ErrorHandler.createError(
+                ErrorType.STORY_GENERATION,
+                ErrorSeverity.MEDIUM,
+                'Generated story has no pages',
+                'The story generator didn\'t create any content. Let\'s try again!'
+              );
+            }
+            
+            const hasValidContent = result.story.pages.some(page => 
+              page.content && page.content.trim().length > 0
+            );
+            
+            if (!hasValidContent) {
+              throw ErrorHandler.createError(
+                ErrorType.STORY_GENERATION,
+                ErrorSeverity.MEDIUM,
+                'Generated story pages contain no valid content',
+                'The story pages seem to be empty. Let\'s try generating again!'
+              );
+            }
+
+            const storyContent = result.story.pages.map(page => ({
+              text: page.content,
+              imageUrl: null
+            }));
+
+            // Handle minimum display time
+            const elapsedTime = minDisplayStartTime ? Date.now() - minDisplayStartTime : 0;
+            const minDisplayTime = 3000;
+            const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
+
+            const completeStoryGeneration = () => {
+              set({
+                story: {
+                  content: result.story.pages.map(p => p.content).join('\n\n'),
+                  sections: storyContent
+                },
+                storyContent,
+                generatedStory: result.story.pages.map(p => p.content).join('\n\n'),
+                phase: 'COMPLETE',
+                storyGenerationProgress: null,
+                isGenerating: false,
+                minDisplayStartTime: null
+              });
+            };
+
+            if (remainingTime > 0) {
+              setTimeout(completeStoryGeneration, remainingTime);
+            } else {
+              completeStoryGeneration();
+            }
+          } else {
+            throw ErrorHandler.createError(
+              ErrorType.STORY_GENERATION,
+              ErrorSeverity.MEDIUM,
+              result.error || 'Story generation service failed',
+              'Something went wrong with story generation. Let\'s try again! ✨'
+            );
+          }
+        } catch (error) {
+          const appError = ErrorHandler.fromUnknown(error, ErrorType.STORY_GENERATION, ErrorSeverity.MEDIUM);
+          
+          get().addError('story_generation', appError);
+          set({
+            storyGenerationProgress: null,
+            isGenerating: false,
+            minDisplayStartTime: null
+          });
+        }
+      },
+
+      retryStoryGeneration: async () => {
+        get().removeError('story_generation');
+        await get().generateStoryAutomatically();
       }
     })
   )

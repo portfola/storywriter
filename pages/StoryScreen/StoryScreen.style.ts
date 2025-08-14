@@ -31,21 +31,6 @@ export const s = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  responseContainer: {
-    marginTop: 20,
-    paddingHorizontal: 20,
-  },
-  responseLabel: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#2c3e50',
-  },
-  responseText: {
-    fontSize: 16,
-    color: '#34495e',
-    marginBottom: 5,
-  },
   storyContainer: {
     flex: 1,
     padding: 20,
@@ -66,5 +51,17 @@ export const s = StyleSheet.create({
   },
   stopButton: {
     marginTop: 20,
+  },
+  processingText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6b46c1',
+    textAlign: 'center',
+    marginVertical: 20,
+    backgroundColor: '#f3f4f6',
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
 });

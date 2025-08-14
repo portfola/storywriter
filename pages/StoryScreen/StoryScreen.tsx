@@ -1,54 +1,52 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import Layout from '../../components/Layout/Layout';
-import { useStory } from '@/hooks/useStory';
-import ResponseList from '@/components/ResponseList/ResponseList';
-import GenerateButton from '@/components/GenerateButton/GenerateButton';
+import { useConversationStore, ConversationPhase } from '@/src/stores/conversationStore';
 import StoryContent from '@/components/StoryContent/StoryContent';
 import ConversationInterface from '@/components/ConversationInterface/ConversationInterface';
+import StoryGenerationSplash from '@/components/StoryGenerationSplash/StoryGenerationSplash';
+import ErrorBoundary from '@/components/ErrorBoundary/ErrorBoundary';
 import { s } from './StoryScreen.style';
 
 const StoryScreen = () => {
   const {
-    storyState,
     story,
-    // startElevenLabsConversation,
-    handleConversationComplete,
-    generateStoryWithImages,
-  } = useStory();
+    phase,
+    isGenerating
+  } = useConversationStore();
+  
+  const currentPhase: ConversationPhase = phase;
 
-  const {
-    question,
-    responses,
-    isGenerating,
-    conversationComplete,
-  } = storyState;
+  // Show splash screen during story generation
+  if (currentPhase === 'GENERATING') {
+    return (
+      <Layout>
+        <ErrorBoundary>
+          <StoryGenerationSplash
+            isVisible={true}
+          />
+        </ErrorBoundary>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
       <View style={s.container}>
         {!story.content ? (
           <>
-            <Text style={s.questionText}>{question}</Text>
 
-            {!conversationComplete && (
+            {(currentPhase === 'IDLE' || currentPhase === 'ACTIVE') && (
               <ConversationInterface 
-                onConversationComplete={handleConversationComplete}
                 disabled={isGenerating}
               />
             )}
 
-            {responses.length > 0 && <ResponseList responses={responses} />}
 
-            {conversationComplete && (
-              <GenerateButton
-                isGenerating={isGenerating}
-                onGenerate={generateStoryWithImages}
-              />
-            )}
+            {/* Story generation is now automatic when conversation ends */}
           </>
         ) : (
-          <StoryContent isGenerating={isGenerating} sections={story.sections} />
+          <StoryContent />
         )}
       </View>
     </Layout>

@@ -7,7 +7,7 @@
 
 // === ACTIVE SERVICES ===
 export { default as ElevenLabsService } from './elevenLabsService';
-export { default as TogetherAIService } from './togetherAiService';
+export { default as StoryGenerationService } from './storyGenerationService';
 
 // === FUTURE/ALTERNATIVE SERVICES ===
 // These are available but not currently used
@@ -20,7 +20,7 @@ export { default as TranscribeService } from './transcribe';
  * 
  * CURRENTLY ACTIVE:
  * - ElevenLabsService: Conversational AI agent + TTS (Primary)
- * - TogetherAIService: Text + Image generation (Primary)
+ * - StoryGenerationService: Conversation-to-story pipeline using Together AI (Primary)
  * 
  * AVAILABLE FOR FUTURE USE:
  * - HuggingFaceService: Alternative text + image generation
@@ -40,53 +40,3 @@ export { default as TranscribeService } from './transcribe';
  * - BACKEND_URL (optional, for Laravel integration)
  */
 
-export interface ServiceStatus {
-  name: string;
-  active: boolean;
-  configured: boolean;
-  description: string;
-}
-
-/**
- * Get status of all available services
- */
-export async function getAllServicesStatus(): Promise<ServiceStatus[]> {
-  const { default: elevenlabs } = await import('./elevenLabsService');
-  const { default: together } = await import('./togetherAiService');
-  const { default: huggingface } = await import('./huggingFaceService');
-  const { default: polly } = await import('./polly');
-  const { default: transcribe } = await import('./transcribe');
-
-  return [
-    {
-      name: 'ElevenLabs',
-      active: true,
-      configured: true, // Always true since it throws on missing key
-      description: 'Conversational AI agent + TTS (Primary)'
-    },
-    {
-      name: 'Together AI',
-      active: true,
-      configured: true, // Always true since it throws on missing key
-      description: 'Text + Image generation (Primary)'
-    },
-    {
-      name: 'HuggingFace',
-      active: false,
-      configured: huggingface.isConfigured(),
-      description: 'Alternative text + image generation'
-    },
-    {
-      name: 'AWS Polly',
-      active: false,
-      configured: polly.isConfigured(),
-      description: 'Alternative TTS service'
-    },
-    {
-      name: 'AWS Transcribe',
-      active: false,
-      configured: transcribe.isConfigured(),
-      description: 'Speech-to-text service'
-    }
-  ];
-}
