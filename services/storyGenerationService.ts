@@ -1,23 +1,52 @@
-import Together from 'together-ai';
 import Constants from 'expo-constants';
 import { Story, StoryPage, StoryGenerationResult, StoryGenerationOptions } from '../types/story';
 import { storyLogger } from '@/src/utils/logger';
 
-const TOGETHER_API_KEY = Constants.expoConfig?.extra?.TOGETHER_API_KEY;
+const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://localhost:8000';
 
 const STORY_PROMPT_TEMPLATE = "You are a professional children's book author. Using the following conversation between a child and a story assistant, write a 5-page children's storybook. The conversation reveals the child's interests and ideas. Create an engaging story that incorporates their input naturally. Guidelines: Each page should be 2-3 sentences. Include vivid descriptions for illustrations. Maintain consistent characters. End positively. Conversation: [FULL_DIALOGUE]";
 
+interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
 class StoryGenerationService {
-  private client: Together;
+  private async makeApiRequest<T>(
+    endpoint: string, 
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
+    try {
+      const url = `${API_BASE_URL}${endpoint}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for story generation
+      
+      const response = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          ...options.headers,
+        },
+        signal: controller.signal,
+        ...options,
+      });
+      
+      clearTimeout(timeoutId);
 
-  constructor() {
-    if (!TOGETHER_API_KEY) {
-      throw new Error('TOGETHER_API_KEY is not configured in environment variables. Please add it to your app.config.js and environment.');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return { success: true, data };
+    } catch (error) {
+      storyLogger.error(error, { endpoint, options });
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Network request failed' 
+      };
     }
-
-    this.client = new Together({
-      apiKey: TOGETHER_API_KEY,
-    });
   }
 
   private generateStoryId(): string {
@@ -97,58 +126,41 @@ class StoryGenerationService {
     options: StoryGenerationOptions = {}
   ): Promise<string> {
     const { maxRetries = 3, temperature = 0.7, maxTokens = 1000 } = options;
-    let lastError: Error | null = null;
 
     storyLogger.generating({ 
       promptLength: prompt.length,
       maxRetries,
       temperature,
       maxTokens,
-      model: "openai/gpt-oss-20b"
+      backend: 'laravel'
     });
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        storyLogger.retry(attempt, { maxRetries });
-        
-        const response = await this.client.chat.completions.create({
-          model: "openai/gpt-oss-20b",
-          messages: [
-            {
-              role: "user",
-              content: prompt
-            }
-          ],
-          max_tokens: maxTokens,
-          temperature,
-        });
+    // Make request to Laravel backend instead of direct Together AI
+    const requestBody = {
+      prompt,
+      max_tokens: maxTokens,
+      temperature,
+      max_retries: maxRetries
+    };
 
-        storyLogger.complete({ 
-          attempt,
-          hasChoices: !!response.choices,
-          choicesLength: response.choices?.length || 0,
-          hasContent: !!response.choices?.[0]?.message?.content
-        });
-
-        const generatedText = response.choices[0]?.message?.content;
-        if (!generatedText) {
-          throw new Error('No content generated from API response');
-        }
-
-        return generatedText;
-      } catch (error) {
-        lastError = error as Error;
-        storyLogger.retry(attempt, { error: error instanceof Error ? error.message : String(error) });
-        
-        if (attempt < maxRetries) {
-          // Exponential backoff: 1s, 2s, 4s
-          const delay = Math.pow(2, attempt - 1) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
+    const response = await this.makeApiRequest<{ story: string }>(
+      '/api/stories/generate',
+      {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
       }
+    );
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Story generation failed');
     }
 
-    throw lastError || new Error('Story generation failed after all retries');
+    storyLogger.complete({ 
+      backend: 'laravel',
+      hasContent: !!response.data.story
+    });
+
+    return response.data.story;
   }
 
   async generateStoryFromTranscript(
@@ -242,6 +254,38 @@ class StoryGenerationService {
         success: false,
         error: 'Story generation failed. Please try again.'
       };
+    }
+  }
+
+  /**
+   * Test connection to Laravel backend
+   */
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await this.makeApiRequest('/api/health');
+      return response.success;
+    } catch (error) {
+      storyLogger.error(error, { action: 'test_connection' });
+      return false;
+    }
+  }
+
+  /**
+   * Get available story generation models from backend
+   */
+  async getAvailableModels(): Promise<string[]> {
+    try {
+      const response = await this.makeApiRequest<{ models: string[] }>('/api/stories/models');
+      
+      if (response.success && response.data) {
+        return response.data.models;
+      }
+      
+      // Fallback models if backend fails
+      return ["openai/gpt-oss-20b"];
+    } catch (error) {
+      storyLogger.error(error, { action: 'get_available_models' });
+      return ["openai/gpt-oss-20b"];
     }
   }
 }

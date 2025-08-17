@@ -47,7 +47,10 @@ export default ({ config }) => ({
       "expo-dev-client"
     ],
     extra: {
-      // Primary AI Services (Currently Active)
+      // Backend Integration
+      API_BASE_URL: process.env.API_BASE_URL || 'http://localhost:8000',
+      
+      // Primary AI Services (Currently Active - deprecated, use backend)
       TOGETHER_API_KEY: process.env.TOGETHER_API_KEY,
       ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY,
       
@@ -57,7 +60,7 @@ export default ({ config }) => ({
       AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
       AWS_REGION: process.env.AWS_REGION,
       
-      // Backend Integration (Optional)
+      // Legacy Backend Integration (Optional)
       BACKEND_URL: process.env.BACKEND_URL,
       
       eas: {
