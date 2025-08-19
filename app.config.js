@@ -1,22 +1,34 @@
 require('dotenv').config();
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-const IS_STAGING = process.env.EXPO_ENV === 'staging';
+const IS_STAGING = process.env.NODE_ENV === 'staging' || process.env.EXPO_ENV === 'staging';
+const IS_DEVELOPMENT = !IS_PRODUCTION && !IS_STAGING;
+
 
 const getApiBaseUrl = () => {
-  if (IS_PRODUCTION) {
-    return 'https://api.storywriter.net';
-  } else if (IS_STAGING) {
-    return 'https://api-staging.storywriter.net';
-  } else {
-    return 'http://localhost:8000'; // Local development
+  // Explicit override from environment variable
+  if (process.env.API_BASE_URL) {
+    return process.env.API_BASE_URL;
+  }
+  
+  // Environment-based defaults
+  const env = process.env.NODE_ENV || process.env.EXPO_ENV || 'development';
+  
+  switch (env) {
+    case 'production':
+      return 'https://api.storywriter.net';
+    case 'staging':
+      return 'https://api-staging.storywriter.net';
+    case 'development':
+    default:
+      return 'http://localhost:8000';
   }
 };
 
 export default ({ config }) => ({
   ...config, 
   expo: {
-    name: IS_PRODUCTION ? 'StoryWriter' : `StoryWriter (${IS_STAGING ? 'Staging' : 'Dev'})`,
+    name: IS_PRODUCTION ? 'StoryWriter' : IS_STAGING ? 'StoryWriter (Staging)' : 'StoryWriter (Dev)',
     slug: "storywriter",
     version: "0.5.0",
     sdkVersion: "52.0.0",
@@ -61,6 +73,7 @@ export default ({ config }) => ({
     ],
     extra: {
       // Backend Integration
+      API_BASE_URL: process.env.API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:8000' : 'https://api.storywriter.net'),
       apiBaseUrl: getApiBaseUrl(),
       environment: IS_PRODUCTION ? 'production' : IS_STAGING ? 'staging' : 'development',
       
