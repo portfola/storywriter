@@ -12,6 +12,7 @@ web-build/
 .env
 repomix*
 CLAUDE.md
+.claude
 
 # macOS
 .DS_Store

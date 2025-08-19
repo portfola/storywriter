@@ -78,7 +78,8 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
     });
     
     pendingFlushRef.current = false;
-    handleEndConversation(finalTranscript);
+    void handleEndConversation(finalTranscript);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Cleanup on unmount and reset messages when starting new conversation

@@ -169,7 +169,7 @@ const useConversationStore = create<ConversationState>()(
         
         // Auto-trigger story generation
         setTimeout(() => {
-          get().generateStoryAutomatically();
+          void get().generateStoryAutomatically();
         }, 500);
       },
 

@@ -29,11 +29,11 @@ export { default as TranscribeService } from './transcribe';
  * 
  * ENVIRONMENT VARIABLES NEEDED:
  * Backend Integration:
- * - API_BASE_URL (default: http://localhost:8000)
+ * - API_BASE_URL (production: https://api.storywriter.net, staging: https://api-staging.storywriter.net, development: http://localhost:8000)
  * 
- * Legacy Direct API Access (deprecated):
- * - ELEVENLABS_API_KEY (deprecated - handled by backend)
- * - TOGETHER_API_KEY (deprecated - handled by backend)
+ * Legacy Direct API Access (deprecated - now handled by backend):
+ * - ELEVENLABS_API_KEY (removed - handled by backend)
+ * - TOGETHER_API_KEY (removed - handled by backend)
  * 
  * Future Services:
  * - HUGGING_FACE_API_KEY (optional)

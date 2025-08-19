@@ -1,9 +1,22 @@
 require('dotenv').config();
 
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const IS_STAGING = process.env.EXPO_ENV === 'staging';
+
+const getApiBaseUrl = () => {
+  if (IS_PRODUCTION) {
+    return 'https://api.storywriter.net';
+  } else if (IS_STAGING) {
+    return 'https://api-staging.storywriter.net';
+  } else {
+    return 'http://localhost:8000'; // Local development
+  }
+};
+
 export default ({ config }) => ({
   ...config, 
   expo: {
-    name: "StoryWriter",
+    name: IS_PRODUCTION ? 'StoryWriter' : `StoryWriter (${IS_STAGING ? 'Staging' : 'Dev'})`,
     slug: "storywriter",
     version: "0.5.0",
     sdkVersion: "52.0.0",
@@ -48,20 +61,14 @@ export default ({ config }) => ({
     ],
     extra: {
       // Backend Integration
-      API_BASE_URL: process.env.API_BASE_URL || 'http://localhost:8000',
-      
-      // Primary AI Services (Currently Active - deprecated, use backend)
-      TOGETHER_API_KEY: process.env.TOGETHER_API_KEY,
-      ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY,
+      apiBaseUrl: getApiBaseUrl(),
+      environment: IS_PRODUCTION ? 'production' : IS_STAGING ? 'staging' : 'development',
       
       // Alternative AI Services (Available for Future Use)
       HUGGING_FACE_API_KEY: process.env.HUGGING_FACE_API_KEY,
       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
       AWS_REGION: process.env.AWS_REGION,
-      
-      // Legacy Backend Integration (Optional)
-      BACKEND_URL: process.env.BACKEND_URL,
       
       eas: {
         projectId: "ddc93476-3b8d-4b46-8ffa-de979a17a116"

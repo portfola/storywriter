@@ -1,6 +1,6 @@
 import React from 'react';
 import { s } from "./Footer.style";
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 
 
 /**

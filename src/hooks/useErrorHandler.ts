@@ -96,7 +96,8 @@ export function useErrorHandler(options: ErrorHandlerOptions = {}) {
         clearError();
       }, resetTimeout);
     }
-  }, [showAlert, alertTitle, useChildFriendlyMessages, onError, autoReset, resetTimeout]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAlert, alertTitle, useChildFriendlyMessages, getChildFriendlyMessage, onError, autoReset, resetTimeout]);
 
   const clearError = useCallback(() => {
     setErrorState({

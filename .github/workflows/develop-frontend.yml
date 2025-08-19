@@ -1,48 +1,284 @@
-name: Deploy Frontend (Dev)
+name: Deploy Frontend
 
 on:
-  workflow_dispatch: # Temporarily pausing this pipeline
-  # push:
-  #   branches: [ develop ]
-  # pull_request:
-  #   branches: [ develop ]
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  NODE_VERSION: '18'
+  AWS_REGION: us-east-1
 
 jobs:
+  # Determine environment based on branch or manual input
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      api_base_url: ${{ steps.set-env.outputs.api_base_url }}
+      s3_bucket: ${{ steps.set-env.outputs.s3_bucket }}
+      cloudfront_id: ${{ steps.set-env.outputs.cloudfront_id }}
+      domain: ${{ steps.set-env.outputs.domain }}
+    steps:
+      - name: Set environment variables
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            ENV="production"
+          else
+            ENV="staging"
+          fi
+          
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          
+          if [ "$ENV" = "production" ]; then
+            echo "api_base_url=https://api.storywriter.net" >> $GITHUB_OUTPUT
+            echo "s3_bucket=storywriter-prod-frontend" >> $GITHUB_OUTPUT
+            echo "cloudfront_id=${{ secrets.PROD_CLOUDFRONT_ID }}" >> $GITHUB_OUTPUT
+            echo "domain=storywriter.net" >> $GITHUB_OUTPUT
+          else
+            echo "api_base_url=https://api-staging.storywriter.net" >> $GITHUB_OUTPUT
+            echo "s3_bucket=storywriter-staging-frontend" >> $GITHUB_OUTPUT
+            echo "cloudfront_id=${{ secrets.STAGING_CLOUDFRONT_ID }}" >> $GITHUB_OUTPUT
+            echo "domain=staging.storywriter.net" >> $GITHUB_OUTPUT
+          fi
+
+  # Test and validation phase
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - name: Install dependencies
-        run: npm ci
-      - name: Run validation
-        run: npm run validate
+      - name: Checkout code
+        uses: actions/checkout@v4
         
-  deploy-frontend:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
       - name: Install dependencies
         run: npm ci
-      - name: Build web app
+        
+      - name: Run TypeScript type checking
+        run: npm run type-check
+        
+      - name: Run linting
+        run: npm run lint
+        
+      - name: Run tests
+        run: npm run test
+        
+      - name: Cache test results
+        uses: actions/cache@v3
+        with:
+          path: |
+            coverage/
+            test-results/
+          key: test-results-${{ github.sha }}
+
+  # Build phase
+  build:
+    needs: [setup, test]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Create environment-specific .env
         run: |
-          npx expo export --platform web
+          echo "API_BASE_URL=${{ needs.setup.outputs.api_base_url }}" > .env
+          echo "HUGGING_FACE_API_KEY=" >> .env
+          echo "AWS_ACCESS_KEY_ID=" >> .env
+          echo "AWS_SECRET_ACCESS_KEY=" >> .env
+          echo "AWS_REGION=" >> .env
+          
+      - name: Build Expo web application
+        run: |
+          npx expo export --platform web --output-dir dist
+          
+      - name: Validate build output
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "❌ Build failed: dist directory not found"
+            exit 1
+          fi
+          
+          if [ ! -f "dist/index.html" ]; then
+            echo "❌ Build failed: index.html not found"
+            exit 1
+          fi
+          
+          echo "✅ Build validation passed"
+          
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-build-${{ needs.setup.outputs.environment }}
+          path: dist/
+          retention-days: 7
+
+  # Backend connectivity test
+  connectivity-test:
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Test backend connectivity
+        run: |
+          echo "Testing connectivity to ${{ needs.setup.outputs.api_base_url }}"
+          
+          # Test health endpoint with timeout
+          if curl -f -m 10 "${{ needs.setup.outputs.api_base_url }}/api/health"; then
+            echo "✅ Backend connectivity test passed"
+          else
+            echo "⚠️ Backend connectivity test failed - continuing with deployment"
+            echo "Backend may not be ready yet, but frontend can still be deployed"
+          fi
+
+  # Deployment phase
+  deploy:
+    needs: [setup, build, connectivity-test]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: frontend-build-${{ needs.setup.outputs.environment }}
+          path: dist/
+          
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - name: Deploy to S3
-        run: aws s3 sync ./dist s3://storywriter-dev-frontend --delete
-      - name: Invalidate CloudFront
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Create deployment backup
         run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.DEV_CLOUDFRONT_ID }} \
-            --paths "/*"
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BACKUP_KEY="backups/${{ needs.setup.outputs.environment }}/${TIMESTAMP}/"
+          
+          echo "Creating backup at s3://${{ needs.setup.outputs.s3_bucket }}/${BACKUP_KEY}"
+          aws s3 sync s3://${{ needs.setup.outputs.s3_bucket }}/ s3://${{ needs.setup.outputs.s3_bucket }}/${BACKUP_KEY} || echo "No existing files to backup"
+          
+          echo "BACKUP_KEY=${BACKUP_KEY}" >> $GITHUB_ENV
+          
+      - name: Deploy to S3
+        run: |
+          echo "Deploying to s3://${{ needs.setup.outputs.s3_bucket }}"
+          aws s3 sync ./dist s3://${{ needs.setup.outputs.s3_bucket }}/ --delete --cache-control "public, max-age=31536000" --exclude "*.html"
+          aws s3 sync ./dist s3://${{ needs.setup.outputs.s3_bucket }}/ --cache-control "public, max-age=0, must-revalidate" --include "*.html"
+          
+      - name: Invalidate CloudFront distribution
+        run: |
+          echo "Invalidating CloudFront distribution: ${{ needs.setup.outputs.cloudfront_id }}"
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id ${{ needs.setup.outputs.cloudfront_id }} \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+          
+          echo "INVALIDATION_ID=${INVALIDATION_ID}" >> $GITHUB_ENV
+          echo "Invalidation created with ID: ${INVALIDATION_ID}"
+          
+      - name: Wait for CloudFront invalidation
+        run: |
+          echo "Waiting for CloudFront invalidation to complete..."
+          aws cloudfront wait invalidation-completed \
+            --distribution-id ${{ needs.setup.outputs.cloudfront_id }} \
+            --id ${{ env.INVALIDATION_ID }}
+          echo "✅ CloudFront invalidation completed"
+
+  # Post-deployment verification
+  verify-deployment:
+    needs: [setup, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment at https://${{ needs.setup.outputs.domain }}"
+          
+          # Wait a moment for DNS propagation
+          sleep 30
+          
+          # Test if the site is accessible
+          if curl -f -m 10 "https://${{ needs.setup.outputs.domain }}"; then
+            echo "✅ Deployment verification passed"
+          else
+            echo "❌ Deployment verification failed"
+            exit 1
+          fi
+          
+      - name: Test backend connectivity from deployed frontend
+        run: |
+          echo "Testing API connectivity from deployed frontend"
+          # This would typically involve running browser tests
+          # For now, we'll just test the API endpoint directly
+          if curl -f -m 10 "${{ needs.setup.outputs.api_base_url }}/api/health"; then
+            echo "✅ Backend API is accessible from deployment environment"
+          else
+            echo "⚠️ Backend API test failed - may need manual verification"
+          fi
+
+  # Rollback capability (manual trigger only)
+  rollback:
+    if: failure() && github.event_name == 'workflow_dispatch'
+    needs: [setup, deploy]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: List available backups
+        run: |
+          echo "Available backups:"
+          aws s3 ls s3://${{ needs.setup.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/ || echo "No backups found"
+          
+      - name: Rollback deployment
+        run: |
+          # Get the most recent backup
+          LATEST_BACKUP=$(aws s3 ls s3://${{ needs.setup.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/ | sort | tail -n 1 | awk '{print $2}')
+          
+          if [ -n "$LATEST_BACKUP" ]; then
+            echo "Rolling back to backup: $LATEST_BACKUP"
+            aws s3 sync s3://${{ needs.setup.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/${LATEST_BACKUP} s3://${{ needs.setup.outputs.s3_bucket }}/ --delete
+            
+            # Invalidate CloudFront
+            aws cloudfront create-invalidation \
+              --distribution-id ${{ needs.setup.outputs.cloudfront_id }} \
+              --paths "/*"
+              
+            echo "✅ Rollback completed"
+          else
+            echo "❌ No backup found for rollback"
+            exit 1
+          fi

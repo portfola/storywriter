@@ -164,7 +164,7 @@ export class ErrorHandler {
   /**
    * Generates user-friendly error messages
    */
-  private static generateUserMessage(type: ErrorType, message: string): string {
+  private static generateUserMessage(type: ErrorType, _message: string): string {
     switch (type) {
       case ErrorType.NETWORK:
         return 'Network connection issue. Please check your internet and try again.';
