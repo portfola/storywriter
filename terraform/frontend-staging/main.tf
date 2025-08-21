@@ -20,6 +20,12 @@ provider "aws" {
   }
 }
 
+# Data source for existing hosted zone
+data "aws_route53_zone" "main" {
+  name         = "storywriter.net"
+  private_zone = false
+}
+
 # S3 Bucket for static website hosting
 resource "aws_s3_bucket" "frontend" {
   bucket = var.s3_bucket_name
@@ -125,7 +131,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = data.aws_acm_certificate.frontend.arn
+    acm_certificate_arn      = aws_acm_certificate_validation.frontend.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
@@ -135,10 +141,47 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 }
 
-# Data source for existing ACM certificate
-data "aws_acm_certificate" "frontend" {
-  domain   = "*.storywriter.net"
-  statuses = ["ISSUED"]
+# ACM Certificate for CloudFront (must be in us-east-1)
+resource "aws_acm_certificate" "frontend" {
+  domain_name               = "*.storywriter.net"
+  subject_alternative_names = ["storywriter.net"]
+  validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name = "storywriter-wildcard-cert"
+  }
+}
+
+# Route53 records for certificate validation
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.frontend.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.main.zone_id
+}
+
+# Certificate validation
+resource "aws_acm_certificate_validation" "frontend" {
+  certificate_arn         = aws_acm_certificate.frontend.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+
+  timeouts {
+    create = "5m"
+  }
 }
 
 # S3 Bucket Policy for CloudFront access

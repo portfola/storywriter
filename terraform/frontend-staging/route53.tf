@@ -1,10 +1,4 @@
-# Data source for existing hosted zone
-data "aws_route53_zone" "main" {
-  name         = "storywriter.net"
-  private_zone = false
-}
-
-# CNAME record pointing to CloudFront distribution
+# A record pointing to CloudFront distribution
 resource "aws_route53_record" "frontend" {
   zone_id = data.aws_route53_zone.main.zone_id
   name    = var.domain_name
