@@ -56,6 +56,58 @@ jobs:
             echo "domain=staging.storywriter.net" >> $GITHUB_OUTPUT
           fi
 
+  # Infrastructure deployment phase
+  infrastructure:
+    needs: [setup]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    outputs:
+      s3_bucket: ${{ steps.terraform.outputs.s3_bucket_name }}
+      cloudfront_id: ${{ steps.terraform.outputs.cloudfront_distribution_id }}
+      domain: ${{ steps.terraform.outputs.domain_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.0"
+          terraform_wrapper: false
+          
+      - name: Terraform Init
+        working-directory: terraform/frontend-staging
+        run: terraform init
+        
+      - name: Terraform Plan
+        working-directory: terraform/frontend-staging
+        run: |
+          terraform plan \
+            -var="environment=${{ needs.setup.outputs.environment }}" \
+            -var="domain_name=${{ needs.setup.outputs.domain }}" \
+            -var="s3_bucket_name=${{ needs.setup.outputs.s3_bucket }}"
+            
+      - name: Terraform Apply
+        id: terraform
+        working-directory: terraform/frontend-staging
+        run: |
+          terraform apply -auto-approve \
+            -var="environment=${{ needs.setup.outputs.environment }}" \
+            -var="domain_name=${{ needs.setup.outputs.domain }}" \
+            -var="s3_bucket_name=${{ needs.setup.outputs.s3_bucket }}"
+          
+          # Export outputs for use in later jobs
+          echo "s3_bucket_name=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
+          echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
+          echo "domain_name=$(terraform output -raw domain_name)" >> $GITHUB_OUTPUT
+
   # Test and validation phase
   test:
     runs-on: ubuntu-latest
@@ -91,7 +143,7 @@ jobs:
 
   # Build phase
   build:
-    needs: [setup, test]
+    needs: [setup, infrastructure, test]
     runs-on: ubuntu-latest
     environment: ${{ needs.setup.outputs.environment }}
     steps:
@@ -142,7 +194,7 @@ jobs:
 
   # Backend connectivity test
   connectivity-test:
-    needs: [setup, build]
+    needs: [setup, infrastructure, build]
     runs-on: ubuntu-latest
     environment: ${{ needs.setup.outputs.environment }}
     steps:
@@ -160,7 +212,7 @@ jobs:
 
   # Deployment phase
   deploy:
-    needs: [setup, build, connectivity-test]
+    needs: [setup, infrastructure, build, connectivity-test]
     runs-on: ubuntu-latest
     environment: ${{ needs.setup.outputs.environment }}
     steps:
@@ -182,22 +234,22 @@ jobs:
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           BACKUP_KEY="backups/${{ needs.setup.outputs.environment }}/${TIMESTAMP}/"
           
-          echo "Creating backup at s3://${{ needs.setup.outputs.s3_bucket }}/${BACKUP_KEY}"
-          aws s3 sync s3://${{ needs.setup.outputs.s3_bucket }}/ s3://${{ needs.setup.outputs.s3_bucket }}/${BACKUP_KEY} || echo "No existing files to backup"
+          echo "Creating backup at s3://${{ needs.infrastructure.outputs.s3_bucket }}/${BACKUP_KEY}"
+          aws s3 sync s3://${{ needs.infrastructure.outputs.s3_bucket }}/ s3://${{ needs.infrastructure.outputs.s3_bucket }}/${BACKUP_KEY} || echo "No existing files to backup"
           
           echo "BACKUP_KEY=${BACKUP_KEY}" >> $GITHUB_ENV
           
       - name: Deploy to S3
         run: |
-          echo "Deploying to s3://${{ needs.setup.outputs.s3_bucket }}"
-          aws s3 sync ./dist s3://${{ needs.setup.outputs.s3_bucket }}/ --delete --cache-control "public, max-age=31536000" --exclude "*.html"
-          aws s3 sync ./dist s3://${{ needs.setup.outputs.s3_bucket }}/ --cache-control "public, max-age=0, must-revalidate" --include "*.html"
+          echo "Deploying to s3://${{ needs.infrastructure.outputs.s3_bucket }}"
+          aws s3 sync ./dist s3://${{ needs.infrastructure.outputs.s3_bucket }}/ --delete --cache-control "public, max-age=31536000" --exclude "*.html"
+          aws s3 sync ./dist s3://${{ needs.infrastructure.outputs.s3_bucket }}/ --cache-control "public, max-age=0, must-revalidate" --include "*.html"
           
       - name: Invalidate CloudFront distribution
         run: |
-          echo "Invalidating CloudFront distribution: ${{ needs.setup.outputs.cloudfront_id }}"
+          echo "Invalidating CloudFront distribution: ${{ needs.infrastructure.outputs.cloudfront_id }}"
           INVALIDATION_ID=$(aws cloudfront create-invalidation \
-            --distribution-id ${{ needs.setup.outputs.cloudfront_id }} \
+            --distribution-id ${{ needs.infrastructure.outputs.cloudfront_id }} \
             --paths "/*" \
             --query 'Invalidation.Id' \
             --output text)
@@ -209,24 +261,24 @@ jobs:
         run: |
           echo "Waiting for CloudFront invalidation to complete..."
           aws cloudfront wait invalidation-completed \
-            --distribution-id ${{ needs.setup.outputs.cloudfront_id }} \
+            --distribution-id ${{ needs.infrastructure.outputs.cloudfront_id }} \
             --id ${{ env.INVALIDATION_ID }}
           echo "✅ CloudFront invalidation completed"
 
   # Post-deployment verification
   verify-deployment:
-    needs: [setup, deploy]
+    needs: [setup, infrastructure, deploy]
     runs-on: ubuntu-latest
     steps:
       - name: Verify deployment
         run: |
-          echo "Verifying deployment at https://${{ needs.setup.outputs.domain }}"
+          echo "Verifying deployment at https://${{ needs.infrastructure.outputs.domain }}"
           
           # Wait a moment for DNS propagation
           sleep 30
           
           # Test if the site is accessible
-          if curl -f -m 10 "https://${{ needs.setup.outputs.domain }}"; then
+          if curl -f -m 10 "https://${{ needs.infrastructure.outputs.domain }}"; then
             echo "✅ Deployment verification passed"
           else
             echo "❌ Deployment verification failed"
@@ -247,7 +299,7 @@ jobs:
   # Rollback capability (manual trigger only)
   rollback:
     if: failure() && github.event_name == 'workflow_dispatch'
-    needs: [setup, deploy]
+    needs: [setup, infrastructure, deploy]
     runs-on: ubuntu-latest
     environment: ${{ needs.setup.outputs.environment }}
     steps:
@@ -261,20 +313,20 @@ jobs:
       - name: List available backups
         run: |
           echo "Available backups:"
-          aws s3 ls s3://${{ needs.setup.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/ || echo "No backups found"
+          aws s3 ls s3://${{ needs.infrastructure.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/ || echo "No backups found"
           
       - name: Rollback deployment
         run: |
           # Get the most recent backup
-          LATEST_BACKUP=$(aws s3 ls s3://${{ needs.setup.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/ | sort | tail -n 1 | awk '{print $2}')
+          LATEST_BACKUP=$(aws s3 ls s3://${{ needs.infrastructure.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/ | sort | tail -n 1 | awk '{print $2}')
           
           if [ -n "$LATEST_BACKUP" ]; then
             echo "Rolling back to backup: $LATEST_BACKUP"
-            aws s3 sync s3://${{ needs.setup.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/${LATEST_BACKUP} s3://${{ needs.setup.outputs.s3_bucket }}/ --delete
+            aws s3 sync s3://${{ needs.infrastructure.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/${LATEST_BACKUP} s3://${{ needs.infrastructure.outputs.s3_bucket }}/ --delete
             
             # Invalidate CloudFront
             aws cloudfront create-invalidation \
-              --distribution-id ${{ needs.setup.outputs.cloudfront_id }} \
+              --distribution-id ${{ needs.infrastructure.outputs.cloudfront_id }} \
               --paths "/*"
               
             echo "✅ Rollback completed"
