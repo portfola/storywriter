@@ -14,5 +14,10 @@ repomix*
 CLAUDE.md
 .claude
 
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
 # macOS
 .DS_Store
