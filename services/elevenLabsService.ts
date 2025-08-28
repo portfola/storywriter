@@ -287,7 +287,7 @@ export class ElevenLabsService {
         '/api/conversation/start',
         {
           method: 'POST',
-          body: JSON.stringify({ agent_id: this.agentId }),
+          body: JSON.stringify({ agentId: this.agentId }),
         }
       );
 
