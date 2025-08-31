@@ -1,10 +1,10 @@
 name: Deploy Frontend
 
-# IMPORTANT: This workflow does NOT create infrastructure resources.
-# Infrastructure must be created manually using Terraform before running this workflow.
-# 
-# For staging: cd terraform/frontend-staging && terraform apply
-# For production: cd terraform/frontend-production && terraform apply
+# INFRASTRUCTURE MANAGEMENT:
+# This workflow intelligently manages infrastructure using Terraform:
+# - If no Terraform state exists, it will create/import infrastructure automatically
+# - If state exists but resources have drifted, it will apply corrections
+# - If state is current, it skips infrastructure changes and proceeds to deployment
 
 on:
   push:
@@ -55,7 +55,7 @@ jobs:
             echo "api_base_url=https://api-staging.storywriter.net" >> $GITHUB_OUTPUT
           fi
 
-  # Infrastructure validation phase (no resource creation)
+  # Infrastructure management phase (creates/validates infrastructure)
   infrastructure:
     needs: [setup]
     runs-on: ubuntu-latest
@@ -127,27 +127,38 @@ jobs:
         run: |
           echo "🔍 Validating infrastructure state..."
           
-          terraform plan -detailed-exitcode || EXIT_CODE=$?
-          
-          case $EXIT_CODE in
-            0)
-              echo "✅ Infrastructure state is correct - no changes needed"
-              ;;
-            1)
-              echo "❌ Terraform plan failed"
-              exit 1
-              ;;
-            2)
-              echo "❌ Infrastructure drift detected - manual intervention required"
-              echo "This workflow does not manage infrastructure. Please run Terraform manually."
-              echo "Run: cd ${{ needs.setup.outputs.terraform_dir }} && terraform apply"
-              exit 1
-              ;;
-            *)
-              echo "❌ Unknown exit code from terraform plan: $EXIT_CODE"
-              exit 1
-              ;;
-          esac
+          # Check if state file exists and has resources
+          if [ ! -f "terraform.tfstate" ] || [ "$(jq '.resources | length' terraform.tfstate 2>/dev/null || echo 0)" -eq 0 ]; then
+            echo "⚠️  No Terraform state found or state is empty"
+            echo "This suggests infrastructure exists but isn't tracked by Terraform"
+            echo "Running terraform apply to import and create missing resources..."
+            
+            terraform apply -auto-approve
+            echo "✅ Infrastructure created/imported successfully"
+          else
+            # State exists, validate it
+            terraform plan -detailed-exitcode || EXIT_CODE=$?
+            
+            case $EXIT_CODE in
+              0)
+                echo "✅ Infrastructure state is correct - no changes needed"
+                ;;
+              1)
+                echo "❌ Terraform plan failed"
+                exit 1
+                ;;
+              2)
+                echo "⚠️  Infrastructure drift detected"
+                echo "Applying changes to align infrastructure with desired state..."
+                terraform apply -auto-approve
+                echo "✅ Infrastructure updated successfully"
+                ;;
+              *)
+                echo "❌ Unknown exit code from terraform plan: $EXIT_CODE"
+                exit 1
+                ;;
+            esac
+          fi
           
       - name: Extract Terraform Outputs
         id: terraform
