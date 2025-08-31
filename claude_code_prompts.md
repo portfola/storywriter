@@ -196,6 +196,56 @@ Requirements:
 - Generate Terraform configuration files if missing
 ```
 
+### Cleanup Script for Frontend Resources
+```
+Create scripts/cleanup-frontend-duplicates.sh
+
+Script should identify and clean up duplicate frontend resources:
+
+1. Check for multiple S3 buckets with similar names
+2. Find orphaned CloudFront distributions
+3. Identify unused Route53 records
+4. Check for conflicting domain configurations
+5. Find duplicate ACM certificates
+
+Safety features:
+- Interactive confirmation for each deletion
+- Dry-run mode by default, showing what would be deleted
+- Real run requires the --real-run parameter
+- Backup existing configurations before cleanup
+- Skip deletion if resource is referenced by Terraform state
+
+Requirements:
+- Include --force flag for non-interactive mode
+- Add --environment flag for staging/production specific cleanup
+- Log all operations with timestamps
+- Generate cleanup report
+```
+
+### Update Frontend GitHub Actions for Terraform
+```
+Update .github/workflows/develop-frontend.yml to use Terraform-managed resources.
+
+Remove hardcoded resource references and use Terraform outputs:
+
+1. Add Terraform initialization step
+2. Get S3 bucket and CloudFront ID from Terraform outputs
+3. Add terraform plan validation before deployment
+4. Update deployment verification to use Terraform state
+
+New workflow steps:
+- Initialize Terraform backend
+- Extract resource IDs from Terraform outputs
+- Validate no infrastructure drift before deployment
+- Use Terraform outputs for S3 bucket and CloudFront distribution
+
+Requirements:
+- Maintain existing deployment functionality
+- Add infrastructure validation step
+- Include Terraform state backup before deployment
+- Add infrastructure drift detection
+```
+
 ## Shared Documentation
 
 ### Environment Variables Reference
