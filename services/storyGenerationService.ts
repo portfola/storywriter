@@ -137,13 +137,15 @@ class StoryGenerationService {
 
     // Make request to Laravel backend instead of direct Together AI
     const requestBody = {
-      prompt,
-      max_tokens: maxTokens,
-      temperature,
-      max_retries: maxRetries
+      transcript: prompt,
+      options: {
+        maxTokens,
+        temperature,
+        maxRetries
+      }
     };
 
-    const response = await this.makeApiRequest<{ story: string }>(
+    const response = await this.makeApiRequest<{ story: any }>(
       '/api/stories/generate',
       {
         method: 'POST',
@@ -151,7 +153,7 @@ class StoryGenerationService {
       }
     );
 
-    if (!response.success || !response.data) {
+    if (!response.success || !response.data || !response.data.story) {
       throw new Error(response.error || 'Story generation failed');
     }
 

@@ -106,33 +106,45 @@ export class ElevenLabsService {
 
       const requestBody = {
         text: text.trim(),
-        voice_id: voiceId || this.defaultVoiceId,
-        model_id: options?.model_id || this.defaultModelId,
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-          style: 0.0,
-          use_speaker_boost: true,
-          ...options?.voice_settings
-        },
-        ...options
+        voiceId: voiceId || this.defaultVoiceId,
+        options: {
+          model_id: options?.model_id || this.defaultModelId,
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.0,
+            use_speaker_boost: true,
+            ...options?.voice_settings
+          },
+          ...options
+        }
       };
 
-      const response = await this.makeApiRequest<{ audio: ArrayBuffer, request_id?: string }>(
-        '/api/elevenlabs/tts',
-        {
-          method: 'POST',
-          body: JSON.stringify(requestBody),
-        }
-      );
+      const url = `${API_BASE_URL}/api/voice/tts`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
 
-      if (!response.success || !response.data) {
-        throw new Error(response.error || 'Failed to generate speech');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
+      const audioBuffer = await response.arrayBuffer();
+
       return {
-        audio: new Uint8Array(response.data.audio),
-        request_id: response.data.request_id
+        audio: new Uint8Array(audioBuffer),
+        request_id: undefined // TTS endpoint doesn't return request_id
       };
 
     } catch (error) {
@@ -168,7 +180,7 @@ export class ElevenLabsService {
    */
   async getVoices(): Promise<any[]> {
     try {
-      const response = await this.makeApiRequest<{ voices: any[] }>('/api/elevenlabs/voices');
+      const response = await this.makeApiRequest<{ voices: any[] }>('/api/voice/voices');
       
       if (!response.success || !response.data) {
         throw new Error(response.error || 'Failed to fetch voices');
@@ -181,44 +193,30 @@ export class ElevenLabsService {
   }
 
   /**
-   * Get available models from Laravel backend
+   * Get available models (fallback list since backend doesn't provide this endpoint)
    */
   async getModels(): Promise<string[]> {
-    try {
-      const response = await this.makeApiRequest<{ models: string[] }>('/api/elevenlabs/models');
-      
-      if (!response.success || !response.data) {
-        // Fallback to common models if backend fails
-        return [
-          "eleven_multilingual_v2",
-          "eleven_flash_v2_5", 
-          "eleven_turbo_v2_5"
-        ];
-      }
-
-      return response.data.models;
-    } catch (error) {
-      // Return fallback models on error
-      return [
-        "eleven_multilingual_v2",
-        "eleven_flash_v2_5", 
-        "eleven_turbo_v2_5"
-      ];
-    }
+    // Backend doesn't provide models endpoint, return common models
+    return [
+      "eleven_multilingual_v2",
+      "eleven_flash_v2_5", 
+      "eleven_turbo_v2_5"
+    ];
   }
 
   /**
-   * Get a specific voice by ID from Laravel backend
+   * Get a specific voice by ID (searches through all voices since backend doesn't provide individual endpoints)
    */
   async getVoice(voiceId: string): Promise<any> {
     try {
-      const response = await this.makeApiRequest<any>(`/api/elevenlabs/voices/${voiceId}`);
+      const voices = await this.getVoices();
+      const voice = voices.find((v: any) => v.voice_id === voiceId);
       
-      if (!response.success || !response.data) {
-        throw new Error(response.error || `Failed to fetch voice with ID: ${voiceId}`);
+      if (!voice) {
+        throw new Error(`Voice with ID ${voiceId} not found`);
       }
 
-      return response.data;
+      return voice;
     } catch (error) {
       throw this.handleError(error, `Failed to fetch voice with ID: ${voiceId}`);
     }
@@ -283,7 +281,7 @@ export class ElevenLabsService {
       serviceLogger.elevenlabs.call('Starting conversation with StoryWriter Agent', { agentId: this.agentId });
 
       // Start conversation session via Laravel backend
-      const response = await this.makeApiRequest<{ session_id: string, websocket_url: string }>(
+      const response = await this.makeApiRequest<{ sessionId: string, websocketUrl: string }>(
         '/api/conversation/start',
         {
           method: 'POST',
@@ -295,8 +293,17 @@ export class ElevenLabsService {
         throw new Error(response.error || 'Failed to start conversation session');
       }
 
-      this.sessionId = response.data.session_id;
-      const websocketUrl = response.data.websocket_url || `ws://localhost:8000/ws/conversation/${this.sessionId}`;
+      if (!response.data.sessionId) {
+        throw new Error('No sessionId provided in API response');
+      }
+
+      this.sessionId = response.data.sessionId;
+      
+      if (!response.data.websocketUrl) {
+        throw new Error('No websocketUrl provided in API response');
+      }
+      
+      const websocketUrl = response.data.websocketUrl;
 
       // Connect to WebSocket
       await this.connectWebSocket(websocketUrl, callbacks);
@@ -428,7 +435,7 @@ export class ElevenLabsService {
       if (this.sessionId) {
         this.makeApiRequest('/api/conversation/end', {
           method: 'POST',
-          body: JSON.stringify({ session_id: this.sessionId }),
+          body: JSON.stringify({ sessionId: this.sessionId }),
         }).finally(() => {
           if (!resolved) {
             resolved = true;
