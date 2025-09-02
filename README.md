@@ -13,7 +13,7 @@ This app now uses a Laravel backend for AI services. Configure the backend URL i
 API_BASE_URL=https://api.storywriter.net
 ```
 
-For development, use `http://localhost:8000`. Optional alternative services require:
+For development, use `http://localhost`. Optional alternative services require:
 
 ```
 HUGGING_FACE_API_KEY=xxxxxx

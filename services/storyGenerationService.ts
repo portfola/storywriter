@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { Story, StoryPage, StoryGenerationResult, StoryGenerationOptions } from '../types/story';
 import { storyLogger } from '@/src/utils/logger';
 
-const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://localhost';
 
 const STORY_PROMPT_TEMPLATE = "You are a professional children's book author. Using the following conversation between a child and a story assistant, write a 5-page children's storybook. The conversation reveals the child's interests and ideas. Create an engaging story that incorporates their input naturally. Guidelines: Each page should be 2-3 sentences. Include vivid descriptions for illustrations. Maintain consistent characters. End positively. Conversation: [FULL_DIALOGUE]";
 

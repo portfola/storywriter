@@ -15,7 +15,7 @@ Implement proper error handling for backend API failures.
 Update frontend services to use Laravel backend instead of direct API calls:
 
 Create new environment variable in app.config.js:
-- API_BASE_URL: process.env.API_BASE_URL || 'http://localhost:8000'
+- API_BASE_URL: process.env.API_BASE_URL || 'http://localhost'
 
 Update services/elevenLabsService.ts:
 - Replace direct ElevenLabs SDK calls with HTTP requests to Laravel backend
@@ -262,8 +262,8 @@ FRONTEND_URL=https://app.yourdomain.com
 API_BASE_URL=https://api.yourdomain.com
 
 # Development
-API_BASE_URL=http://localhost:8000 (frontend)
-FRONTEND_URL=http://localhost:8081 (backend)
+API_BASE_URL=http://localhost (backend)
+FRONTEND_URL=http://localhost:8081 (frontend)
 ```
 
 ### Testing Commands

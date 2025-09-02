@@ -21,7 +21,7 @@ const getApiBaseUrl = () => {
       return 'https://api-staging.storywriter.net';
     case 'development':
     default:
-      return 'http://localhost:8000';
+      return 'http://localhost';
   }
 };
 
@@ -73,7 +73,7 @@ export default ({ config }) => ({
     ],
     extra: {
       // Backend Integration
-      API_BASE_URL: process.env.API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:8000' : 'https://api.storywriter.net'),
+      API_BASE_URL: process.env.API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost' : 'https://api.storywriter.net'),
       apiBaseUrl: getApiBaseUrl(),
       environment: IS_PRODUCTION ? 'production' : IS_STAGING ? 'staging' : 'development',
       

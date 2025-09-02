@@ -12,7 +12,7 @@ import {
 } from '../types/elevenlabs';
 import { serviceLogger } from '@/src/utils/logger';
 
-const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://localhost';
 
 enum ConnectionState {
   DISCONNECTED = 'disconnected',
@@ -37,7 +37,10 @@ export class ElevenLabsService {
   private shutdownTimeout: NodeJS.Timeout | null;
   private readonly GRACEFUL_SHUTDOWN_TIMEOUT = 5000; // 5 seconds
   private websocket: WebSocket | null;
+  private eventSource: EventSource | null;
   private sessionId: string | null;
+  private proxyMessageUrl: string | null;
+  private proxyAudioUrl: string | null;
 
   constructor() {
     // Default to a good narrative voice - you can change this to your preferred voice ID
@@ -48,7 +51,10 @@ export class ElevenLabsService {
     this.connectionState = ConnectionState.DISCONNECTED;
     this.shutdownTimeout = null;
     this.websocket = null;
+    this.eventSource = null;
     this.sessionId = null;
+    this.proxyMessageUrl = null;
+    this.proxyAudioUrl = null;
   }
 
   private async makeApiRequest<T>(
@@ -346,48 +352,68 @@ export class ElevenLabsService {
   }
 
   /**
-   * Connect to WebSocket for real-time conversation
+   * Connect to backend proxy for real-time conversation
    */
   private async connectWebSocket(url: string, callbacks: ConversationCallbacks): Promise<void> {
+    // New approach: Use EventSource for downstream and fetch for upstream
+    return this.connectToProxy(url, callbacks);
+  }
+
+  /**
+   * Connect to backend proxy using EventSource + HTTP
+   */
+  private async connectToProxy(url: string, callbacks: ConversationCallbacks): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.websocket = new WebSocket(url);
+        // Store session ID for sending messages
+        const sessionId = this.sessionId;
+        if (!sessionId) {
+          throw new Error('No session ID available for proxy connection');
+        }
 
-        this.websocket.onopen = () => {
+        // Create EventSource for receiving messages from backend
+        const eventSource = new EventSource(url);
+        this.eventSource = eventSource;
+
+        eventSource.addEventListener('connected', (event) => {
           this.connectionState = ConnectionState.CONNECTED;
-          serviceLogger.elevenlabs.call('WebSocket connected');
+          serviceLogger.elevenlabs.call('Proxy connected');
           callbacks.onConnect?.();
           resolve();
-        };
+        });
 
-        this.websocket.onclose = () => {
-          this.connectionState = ConnectionState.DISCONNECTED;
-          this.currentConversation = null;
-          this.websocket = null;
-          serviceLogger.elevenlabs.call('WebSocket disconnected');
-          callbacks.onDisconnect?.();
-        };
-
-        this.websocket.onmessage = (event) => {
+        eventSource.addEventListener('message', (event) => {
           if (this.connectionState === ConnectionState.CONNECTED || 
               this.connectionState === ConnectionState.CONNECTING) {
             try {
               const message = JSON.parse(event.data);
               callbacks.onMessage?.(message);
             } catch (error) {
-              serviceLogger.elevenlabs.error(error, { action: 'parse_websocket_message' });
+              serviceLogger.elevenlabs.error(error, { action: 'parse_proxy_message' });
             }
           }
-        };
+        });
 
-        this.websocket.onerror = (error) => {
+        eventSource.addEventListener('close', (event) => {
+          this.connectionState = ConnectionState.DISCONNECTED;
+          this.currentConversation = null;
+          this.eventSource = null;
+          serviceLogger.elevenlabs.call('Proxy disconnected');
+          callbacks.onDisconnect?.();
+        });
+
+        eventSource.addEventListener('error', (event) => {
           this.connectionState = ConnectionState.ERROR;
           this.currentConversation = null;
-          this.websocket = null;
-          serviceLogger.elevenlabs.error(error, { action: 'websocket_error' });
-          callbacks.onError?.(error);
-          reject(error);
-        };
+          this.eventSource = null;
+          serviceLogger.elevenlabs.error(event, { action: 'proxy_error' });
+          callbacks.onError?.(event);
+          reject(event);
+        });
+
+        // Store the message sending URL for later use
+        this.proxyMessageUrl = `${API_BASE_URL}/api/conversation/proxy/${sessionId}/message`;
+        this.proxyAudioUrl = `${API_BASE_URL}/api/conversation/proxy/${sessionId}/audio`;
 
         // Set timeout for connection
         setTimeout(() => {

@@ -33,7 +33,7 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 jest.mock('expo-constants', () => ({
   expoConfig: {
     extra: {
-      API_BASE_URL: 'http://localhost:8000',
+      API_BASE_URL: 'http://localhost',
     },
   },
 }));
