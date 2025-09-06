@@ -365,7 +365,7 @@ export class ElevenLabsService {
       const apiKey = response.data.apiKey;
 
       serviceLogger.elevenlabs.call('Got SDK credentials for conversation', {
-        sessionId: this.sessionId,
+        sessionId: this.sessionId ?? undefined,
         expiresAt: response.data.expiresAt
       });
 
@@ -458,14 +458,14 @@ export class ElevenLabsService {
         this.connectionState === ConnectionState.DISCONNECTING) {
       serviceLogger.elevenlabs.call('Graceful shutdown skipped - already disconnected/disconnecting', {
         currentState: this.connectionState,
-        sessionId: this.sessionId
+        sessionId: this.sessionId ?? undefined
       });
       return;
     }
 
     this.connectionState = ConnectionState.DISCONNECTING;
     serviceLogger.elevenlabs.call('Starting graceful shutdown', {
-      sessionId: this.sessionId
+      sessionId: this.sessionId ?? undefined
     });
 
     return new Promise<void>((resolve) => {
@@ -593,7 +593,7 @@ export class ElevenLabsService {
       if (this.currentConversation) {
         serviceLogger.elevenlabs.call('Force cleaning up conversation resources', {
           currentState: this.connectionState,
-          sessionId: this.sessionId
+          sessionId: this.sessionId ?? undefined
         });
         
         // Clear any pending shutdown timeout
