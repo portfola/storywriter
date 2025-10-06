@@ -1,0 +1,152 @@
+name: Rollback Frontend Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        type: choice
+        options:
+        - staging
+        - production
+      backup_timestamp:
+        description: 'Backup timestamp to rollback to (optional - uses latest if empty)'
+        required: false
+        type: string
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Set environment variables
+        id: set-env
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          
+          if [ "$ENV" = "production" ]; then
+            echo "s3_bucket=storywriter-prod-frontend" >> $GITHUB_OUTPUT
+            echo "cloudfront_id=${{ secrets.PROD_CLOUDFRONT_ID }}" >> $GITHUB_OUTPUT
+            echo "domain=storywriter.net" >> $GITHUB_OUTPUT
+          else
+            echo "s3_bucket=storywriter-staging-frontend" >> $GITHUB_OUTPUT
+            echo "cloudfront_id=${{ secrets.STAGING_CLOUDFRONT_ID }}" >> $GITHUB_OUTPUT
+            echo "domain=staging.storywriter.net" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: List available backups
+        run: |
+          echo "Available backups for ${{ github.event.inputs.environment }}:"
+          aws s3 ls s3://${{ steps.set-env.outputs.s3_bucket }}/backups/${{ github.event.inputs.environment }}/ || echo "No backups found"
+          
+      - name: Determine backup to use
+        id: backup
+        run: |
+          if [ -n "${{ github.event.inputs.backup_timestamp }}" ]; then
+            BACKUP_PATH="backups/${{ github.event.inputs.environment }}/${{ github.event.inputs.backup_timestamp }}/"
+            echo "backup_path=$BACKUP_PATH" >> $GITHUB_OUTPUT
+            echo "Using specified backup: $BACKUP_PATH"
+          else
+            # Get the most recent backup
+            LATEST_BACKUP=$(aws s3 ls s3://${{ steps.set-env.outputs.s3_bucket }}/backups/${{ github.event.inputs.environment }}/ | sort | tail -n 1 | awk '{print $2}')
+            if [ -n "$LATEST_BACKUP" ]; then
+              BACKUP_PATH="backups/${{ github.event.inputs.environment }}/${LATEST_BACKUP}"
+              echo "backup_path=$BACKUP_PATH" >> $GITHUB_OUTPUT
+              echo "Using latest backup: $BACKUP_PATH"
+            else
+              echo "❌ No backups found"
+              exit 1
+            fi
+          fi
+          
+      - name: Verify backup exists
+        run: |
+          echo "Verifying backup exists at: s3://${{ steps.set-env.outputs.s3_bucket }}/${{ steps.backup.outputs.backup_path }}"
+          if aws s3 ls s3://${{ steps.set-env.outputs.s3_bucket }}/${{ steps.backup.outputs.backup_path }} > /dev/null 2>&1; then
+            echo "✅ Backup verified"
+          else
+            echo "❌ Backup not found"
+            exit 1
+          fi
+          
+      - name: Create pre-rollback backup
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          PRE_ROLLBACK_KEY="backups/${{ github.event.inputs.environment }}/pre-rollback-${TIMESTAMP}/"
+          
+          echo "Creating pre-rollback backup at: s3://${{ steps.set-env.outputs.s3_bucket }}/${PRE_ROLLBACK_KEY}"
+          aws s3 sync s3://${{ steps.set-env.outputs.s3_bucket }}/ s3://${{ steps.set-env.outputs.s3_bucket }}/${PRE_ROLLBACK_KEY} \
+            --exclude "backups/*" || echo "No files to backup"
+          
+      - name: Perform rollback
+        run: |
+          echo "Rolling back from: s3://${{ steps.set-env.outputs.s3_bucket }}/${{ steps.backup.outputs.backup_path }}"
+          echo "Rolling back to: s3://${{ steps.set-env.outputs.s3_bucket }}/"
+          
+          # Clear current deployment (except backups)
+          aws s3 rm s3://${{ steps.set-env.outputs.s3_bucket }}/ --recursive --exclude "backups/*"
+          
+          # Restore from backup
+          aws s3 sync s3://${{ steps.set-env.outputs.s3_bucket }}/${{ steps.backup.outputs.backup_path }} s3://${{ steps.set-env.outputs.s3_bucket }}/
+          
+          echo "✅ Rollback completed"
+          
+      - name: Invalidate CloudFront distribution
+        run: |
+          echo "Invalidating CloudFront distribution: ${{ steps.set-env.outputs.cloudfront_id }}"
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.set-env.outputs.cloudfront_id }} \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+          
+          echo "Invalidation created with ID: ${INVALIDATION_ID}"
+          
+      - name: Wait for CloudFront invalidation
+        run: |
+          echo "Waiting for CloudFront invalidation to complete..."
+          aws cloudfront wait invalidation-completed \
+            --distribution-id ${{ steps.set-env.outputs.cloudfront_id }} \
+            --id ${{ env.INVALIDATION_ID }}
+          echo "✅ CloudFront invalidation completed"
+          
+      - name: Verify rollback
+        run: |
+          echo "Verifying rollback at https://${{ steps.set-env.outputs.domain }}"
+          
+          # Wait for changes to propagate
+          sleep 60
+          
+          # Test if the site is accessible
+          if curl -f -m 15 "https://${{ steps.set-env.outputs.domain }}"; then
+            echo "✅ Rollback verification passed"
+          else
+            echo "❌ Rollback verification failed"
+            echo "The site may need more time to propagate or there may be an issue"
+            exit 1
+          fi
+          
+      - name: Cleanup old backups
+        run: |
+          echo "Cleaning up old backups (keeping last 10)"
+          aws s3 ls s3://${{ steps.set-env.outputs.s3_bucket }}/backups/${{ github.event.inputs.environment }}/ | \
+            sort -k1,2 | \
+            head -n -10 | \
+            awk '{print $2}' | \
+            while read backup; do
+              if [ -n "$backup" ]; then
+                echo "Deleting old backup: $backup"
+                aws s3 rm s3://${{ steps.set-env.outputs.s3_bucket }}/backups/${{ github.event.inputs.environment }}/${backup} --recursive
+              fi
+            done || echo "No old backups to clean up"

@@ -14,7 +14,7 @@ import {
 } from '../types/elevenlabs';
 import { serviceLogger } from '@/src/utils/logger';
 
-const ELEVENLABS_API_KEY = Constants.expoConfig?.extra?.ELEVENLABS_API_KEY;
+const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://localhost';
 
 enum ConnectionState {
   DISCONNECTED = 'disconnected',
@@ -24,8 +24,14 @@ enum ConnectionState {
   ERROR = 'error'
 }
 
+interface ApiResponse<T = any> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
 export class ElevenLabsService {
-  private client: ElevenLabsClient;
+  private client: ElevenLabsClient | null;
   private defaultVoiceId: string;
   private defaultModelId: string;
   private agentId: string;
@@ -33,16 +39,9 @@ export class ElevenLabsService {
   private connectionState: ConnectionState;
   private shutdownTimeout: NodeJS.Timeout | null;
   private readonly GRACEFUL_SHUTDOWN_TIMEOUT = 5000; // 5 seconds
+  private sessionId: string | null;
 
   constructor() {
-    if (!ELEVENLABS_API_KEY) {
-      throw new Error('ELEVENLABS_API_KEY is not configured in environment variables');
-    }
-
-    this.client = new ElevenLabsClient({
-      apiKey: ELEVENLABS_API_KEY,
-    });
-    
     // Default to a good narrative voice - you can change this to your preferred voice ID
     this.defaultVoiceId = "EXAVITQu4vr4xnSDxMaL"; // Bella voice (good for storytelling)
     this.defaultModelId = "eleven_multilingual_v2"; // Recommended model
@@ -50,10 +49,48 @@ export class ElevenLabsService {
     this.currentConversation = null;
     this.connectionState = ConnectionState.DISCONNECTED;
     this.shutdownTimeout = null;
+    this.sessionId = null;
+    this.client = null; // Will be initialized with API key from backend
+  }
+
+  private async makeApiRequest<T>(
+    endpoint: string, 
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
+    try {
+      const url = `${API_BASE_URL}${endpoint}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      const response = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          ...options.headers,
+        },
+        signal: controller.signal,
+        ...options,
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return { success: true, data };
+    } catch (error) {
+      serviceLogger.elevenlabs.error(error, { endpoint, options });
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Network request failed' 
+      };
+    }
   }
 
   /**
-   * Convert text to speech using ElevenLabs TTS API
+   * Convert text to speech using ElevenLabs client or Laravel backend
    */
   async generateSpeech(
     text: string, 
@@ -69,27 +106,74 @@ export class ElevenLabsService {
         throw new Error('Text is too long. Maximum length is 5000 characters.');
       }
 
-      const ttsOptions: TextToSpeechOptions = {
+      // If we have an initialized client, use it directly
+      if (this.client) {
+        const ttsOptions: TextToSpeechOptions = {
+          text: text.trim(),
+          model_id: options?.model_id || this.defaultModelId,
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.0,
+            use_speaker_boost: true,
+            ...options?.voice_settings
+          },
+          ...options
+        };
+
+        const audio = await this.client.textToSpeech.convert(
+          voiceId || this.defaultVoiceId,
+          ttsOptions
+        );
+
+        return {
+          audio,
+          request_id: undefined // SDK doesn't return request_id in current version
+        };
+      }
+
+      // Fallback to Laravel backend
+      const requestBody = {
         text: text.trim(),
-        model_id: options?.model_id || this.defaultModelId,
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-          style: 0.0,
-          use_speaker_boost: true,
-          ...options?.voice_settings
-        },
-        ...options
+        voiceId: voiceId || this.defaultVoiceId,
+        options: {
+          model_id: options?.model_id || this.defaultModelId,
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.0,
+            use_speaker_boost: true,
+            ...options?.voice_settings
+          },
+          ...options
+        }
       };
 
-      const audio = await this.client.textToSpeech.convert(
-        voiceId || this.defaultVoiceId,
-        ttsOptions
-      );
+      const url = `${API_BASE_URL}/api/voice/tts`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg',
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const audioBuffer = await response.arrayBuffer();
 
       return {
-        audio,
-        request_id: undefined // SDK doesn't return request_id in current version
+        audio: new Uint8Array(audioBuffer),
+        request_id: undefined // TTS endpoint doesn't return request_id
       };
 
     } catch (error) {
@@ -110,25 +194,41 @@ export class ElevenLabsService {
         throw new Error('Text cannot be empty');
       }
 
-      const ttsOptions: TextToSpeechOptions = {
-        text: text.trim(),
-        model_id: options?.model_id || this.defaultModelId,
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-          style: 0.0,
-          use_speaker_boost: true,
-          ...options?.voice_settings
-        },
-        ...options
-      };
+      // If we have an initialized client, use it for streaming
+      if (this.client) {
+        const ttsOptions: TextToSpeechOptions = {
+          text: text.trim(),
+          model_id: options?.model_id || this.defaultModelId,
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 0.0,
+            use_speaker_boost: true,
+            ...options?.voice_settings
+          },
+          ...options
+        };
 
-      const audioStream = await this.client.textToSpeech.stream(
-        voiceId || this.defaultVoiceId,
-        ttsOptions
-      );
+        const audioStream = await this.client.textToSpeech.stream(
+          voiceId || this.defaultVoiceId,
+          ttsOptions
+        );
 
-      return audioStream;
+        return audioStream;
+      }
+
+      // Fallback to regular generation and create stream
+      const result = await this.generateSpeech(text, voiceId, options);
+      
+      return new ReadableStream({
+        start(controller) {
+          const audioData = result.audio instanceof ArrayBuffer 
+            ? new Uint8Array(result.audio)
+            : result.audio;
+          controller.enqueue(audioData);
+          controller.close();
+        }
+      });
 
     } catch (error) {
       throw this.handleError(error, 'Failed to generate speech stream');
@@ -136,21 +236,27 @@ export class ElevenLabsService {
   }
 
   /**
-   * Get available voices from ElevenLabs
+   * Get available voices from Laravel backend
    */
   async getVoices(): Promise<any[]> {
     try {
-      const response = await this.client.voices.getAll();
-      return response.voices;
+      const response = await this.makeApiRequest<{ voices: any[] }>('/api/voice/voices');
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Failed to fetch voices');
+      }
+
+      return response.data.voices;
     } catch (error) {
       throw this.handleError(error, 'Failed to fetch voices');
     }
   }
 
   /**
-   * Get available models from ElevenLabs (returns common models)
+   * Get available models (fallback list since backend doesn't provide this endpoint)
    */
-  getModels(): string[] {
+  async getModels(): Promise<string[]> {
+    // Backend doesn't provide models endpoint, return common models
     return [
       "eleven_multilingual_v2",
       "eleven_flash_v2_5", 
@@ -159,11 +265,17 @@ export class ElevenLabsService {
   }
 
   /**
-   * Get a specific voice by ID
+   * Get a specific voice by ID (searches through all voices since backend doesn't provide individual endpoints)
    */
   async getVoice(voiceId: string): Promise<any> {
     try {
-      const voice = await this.client.voices.get(voiceId);
+      const voices = await this.getVoices();
+      const voice = voices.find((v: any) => v.voice_id === voiceId);
+      
+      if (!voice) {
+        throw new Error(`Voice with ID ${voiceId} not found`);
+      }
+
       return voice;
     } catch (error) {
       throw this.handleError(error, `Failed to fetch voice with ID: ${voiceId}`);
@@ -216,7 +328,7 @@ export class ElevenLabsService {
   }
 
   /**
-   * Start a conversation with the StoryWriter Agent
+   * Start a conversation with the StoryWriter Agent using ElevenLabs SDK
    */
   async startConversationAgent(callbacks: ConversationCallbacks = {}): Promise<ConversationSession> {
     try {
@@ -228,6 +340,41 @@ export class ElevenLabsService {
       this.connectionState = ConnectionState.CONNECTING;
       serviceLogger.elevenlabs.call('Starting conversation with StoryWriter Agent', { agentId: this.agentId });
 
+      // Get SDK credentials from Laravel backend
+      const response = await this.makeApiRequest<{ 
+        sessionId: string, 
+        apiKey: string,
+        agentId: string,
+        expiresAt: string
+      }>('/api/conversation/sdk-credentials', {
+        method: 'POST',
+        body: JSON.stringify({ 
+          agentId: this.agentId
+        }),
+      });
+
+      if (!response.success || !response.data) {
+        throw new Error(response.error || 'Failed to get SDK credentials for conversation');
+      }
+
+      if (!response.data.sessionId || !response.data.apiKey) {
+        throw new Error('Missing sessionId or apiKey in response');
+      }
+
+      this.sessionId = response.data.sessionId;
+      const apiKey = response.data.apiKey;
+
+      serviceLogger.elevenlabs.call('Got SDK credentials for conversation', {
+        sessionId: this.sessionId ?? undefined,
+        expiresAt: response.data.expiresAt
+      });
+
+      // Initialize ElevenLabs client with API key from backend
+      this.client = new ElevenLabsClient({
+        apiKey: apiKey,
+      });
+
+      // Start conversation using ElevenLabs SDK
       const conversation = await Conversation.startSession({
         agentId: this.agentId,
         
@@ -302,20 +449,24 @@ export class ElevenLabsService {
     }
   }
 
+
   /**
    * Graceful shutdown with timeout
    */
-  private async gracefulShutdown(conversation: any): Promise<void> {
+  private async gracefulShutdown(conversation?: any): Promise<void> {
     if (this.connectionState === ConnectionState.DISCONNECTED || 
         this.connectionState === ConnectionState.DISCONNECTING) {
       serviceLogger.elevenlabs.call('Graceful shutdown skipped - already disconnected/disconnecting', {
-        currentState: this.connectionState
+        currentState: this.connectionState,
+        sessionId: this.sessionId ?? undefined
       });
       return;
     }
 
     this.connectionState = ConnectionState.DISCONNECTING;
-    serviceLogger.elevenlabs.call('Starting graceful shutdown');
+    serviceLogger.elevenlabs.call('Starting graceful shutdown', {
+      sessionId: this.sessionId ?? undefined
+    });
 
     return new Promise<void>((resolve) => {
       let resolved = false;
@@ -325,65 +476,90 @@ export class ElevenLabsService {
         if (!resolved) {
           resolved = true;
           serviceLogger.elevenlabs.call('Graceful shutdown timeout - forcing cleanup');
-          this.connectionState = ConnectionState.DISCONNECTED;
-          this.currentConversation = null;
+          this.forceCleanupSync();
           resolve();
         }
       }, this.GRACEFUL_SHUTDOWN_TIMEOUT);
 
-      // Attempt graceful close with additional error handling
-      try {
-        conversation.endSession()
-          .then(() => {
-            if (!resolved) {
-              resolved = true;
-              serviceLogger.elevenlabs.call('Graceful shutdown completed successfully');
-              this.connectionState = ConnectionState.DISCONNECTED;
-              this.currentConversation = null;
-              if (this.shutdownTimeout) {
-                clearTimeout(this.shutdownTimeout);
-                this.shutdownTimeout = null;
+      // If we have a conversation from SDK, end it gracefully
+      if (conversation) {
+        try {
+          conversation.endSession()
+            .then(() => {
+              if (!resolved) {
+                resolved = true;
+                serviceLogger.elevenlabs.call('Graceful shutdown completed successfully');
+                this.forceCleanupSync();
+                if (this.shutdownTimeout) {
+                  clearTimeout(this.shutdownTimeout);
+                  this.shutdownTimeout = null;
+                }
+                resolve();
               }
-              resolve();
+            })
+            .catch((error: any) => {
+              if (!resolved) {
+                resolved = true;
+                // Check if it's a WebSocket state error (common and expected)
+                const isWebSocketStateError = error?.message?.includes('CLOSING') || 
+                                            error?.message?.includes('CLOSED');
+                
+                if (isWebSocketStateError) {
+                  serviceLogger.elevenlabs.call('WebSocket already closing/closed - shutdown complete', {
+                    error: error.message
+                  });
+                } else {
+                  serviceLogger.elevenlabs.error(error, { action: 'graceful_shutdown_error' });
+                }
+                
+                this.forceCleanupSync();
+                if (this.shutdownTimeout) {
+                  clearTimeout(this.shutdownTimeout);
+                  this.shutdownTimeout = null;
+                }
+                resolve();
+              }
+            });
+        } catch (syncError: any) {
+          if (!resolved) {
+            resolved = true;
+            serviceLogger.elevenlabs.call('Synchronous error during shutdown - likely already closed', {
+              error: syncError?.message
+            });
+            this.forceCleanupSync();
+            if (this.shutdownTimeout) {
+              clearTimeout(this.shutdownTimeout);
+              this.shutdownTimeout = null;
             }
-          })
-          .catch((error: any) => {
-            if (!resolved) {
-              resolved = true;
-              // Check if it's a WebSocket state error (common and expected)
-              const isWebSocketStateError = error?.message?.includes('CLOSING') || 
-                                          error?.message?.includes('CLOSED');
-              
-              if (isWebSocketStateError) {
-                serviceLogger.elevenlabs.call('WebSocket already closing/closed - shutdown complete', {
-                  error: error.message
-                });
-              } else {
-                serviceLogger.elevenlabs.error(error, { action: 'graceful_shutdown_error' });
-              }
-              
-              this.connectionState = ConnectionState.DISCONNECTED;
-              this.currentConversation = null;
-              if (this.shutdownTimeout) {
-                clearTimeout(this.shutdownTimeout);
-                this.shutdownTimeout = null;
-              }
-              resolve();
-            }
-          });
-      } catch (syncError: any) {
-        if (!resolved) {
-          resolved = true;
-          serviceLogger.elevenlabs.call('Synchronous error during shutdown - likely already closed', {
-            error: syncError?.message
-          });
-          this.connectionState = ConnectionState.DISCONNECTED;
-          this.currentConversation = null;
-          if (this.shutdownTimeout) {
-            clearTimeout(this.shutdownTimeout);
-            this.shutdownTimeout = null;
+            resolve();
           }
-          resolve();
+        }
+      } else {
+        // Fallback: invalidate session in backend
+        if (this.sessionId) {
+          this.makeApiRequest(`/api/conversation/signed-url/${this.sessionId}`, {
+            method: 'DELETE'
+          }).finally(() => {
+            if (!resolved) {
+              resolved = true;
+              this.forceCleanupSync();
+              if (this.shutdownTimeout) {
+                clearTimeout(this.shutdownTimeout);
+                this.shutdownTimeout = null;
+              }
+              resolve();
+            }
+          });
+        } else {
+          if (!resolved) {
+            resolved = true;
+            this.forceCleanupSync();
+            if (this.shutdownTimeout) {
+              clearTimeout(this.shutdownTimeout);
+              this.shutdownTimeout = null;
+            }
+            resolve();
+          }
         }
       }
     });
@@ -400,12 +576,7 @@ export class ElevenLabsService {
       } catch (error) {
         serviceLogger.elevenlabs.error(error, { action: 'end_conversation' });
         // Force cleanup even if graceful shutdown fails
-        this.connectionState = ConnectionState.DISCONNECTED;
-        this.currentConversation = null;
-        if (this.shutdownTimeout) {
-          clearTimeout(this.shutdownTimeout);
-          this.shutdownTimeout = null;
-        }
+        this.forceCleanupSync();
       }
     }
   }
@@ -414,10 +585,15 @@ export class ElevenLabsService {
    * Force cleanup of any active conversation resources
    */
   forceCleanup(): void {
+    this.forceCleanupSync();
+  }
+
+  private forceCleanupSync(): void {
     try {
       if (this.currentConversation) {
         serviceLogger.elevenlabs.call('Force cleaning up conversation resources', {
-          currentState: this.connectionState
+          currentState: this.connectionState,
+          sessionId: this.sessionId ?? undefined
         });
         
         // Clear any pending shutdown timeout
@@ -454,6 +630,8 @@ export class ElevenLabsService {
       // Always reset state regardless of any errors
       this.connectionState = ConnectionState.DISCONNECTED;
       this.currentConversation = null;
+      this.sessionId = null;
+      this.client = null;
       if (this.shutdownTimeout) {
         clearTimeout(this.shutdownTimeout);
         this.shutdownTimeout = null;
@@ -501,7 +679,7 @@ export class ElevenLabsService {
   }
 
   /**
-   * Comprehensive error handling for ElevenLabs API errors
+   * Comprehensive error handling for backend API errors
    */
   private handleError(error: unknown, context: string): ElevenLabsError {
     serviceLogger.elevenlabs.error(error, { context });
@@ -527,7 +705,10 @@ export class ElevenLabsService {
           elevenlabsError.message = `${context}: Rate limit exceeded. Please try again later.`;
           break;
         case 500:
-          elevenlabsError.message = `${context}: ElevenLabs server error. Please try again later.`;
+          elevenlabsError.message = `${context}: Backend server error. Please try again later.`;
+          break;
+        case 503:
+          elevenlabsError.message = `${context}: Service temporarily unavailable. Please try again later.`;
           break;
       }
     }

@@ -7,7 +7,20 @@ This app is designed for kids to use on a tablet. They can speak with an AI assi
 ## Project Description
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
-An active connection to Hugging Face API is required ([https://huggingface.co](https://huggingface.co)). Add a .env file to the root directory with contents: [`HUGGING_FACE_API_KEY=xxxxxx'].
+This app now uses a Laravel backend for AI services. Configure the backend URL in your .env file:
+
+```
+API_BASE_URL=https://api.storywriter.net
+```
+
+For development, use `http://localhost`. Optional alternative services require:
+
+```
+HUGGING_FACE_API_KEY=xxxxxx
+AWS_ACCESS_KEY_ID=xxxxxx
+AWS_SECRET_ACCESS_KEY=xxxxxx
+AWS_REGION=us-east-1
+```
 
 ## Get started
 

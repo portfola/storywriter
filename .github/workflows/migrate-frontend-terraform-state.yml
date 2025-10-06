@@ -1,0 +1,710 @@
+name: Migrate Frontend Resources to Terraform State
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to migrate'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      dry_run:
+        description: 'Perform dry run (no state changes)'
+        required: false
+        default: true
+        type: boolean
+      skip_backup:
+        description: 'Skip state backup creation'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  AWS_REGION: us-east-1
+  TF_BACKEND_BUCKET: storywriter-terraform-state
+  TF_BACKEND_DYNAMODB: storywriter-terraform-locks
+  TF_VERSION: "1.5.7"
+
+jobs:
+  validate-inputs:
+    name: Validate Migration Inputs
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.validate.outputs.environment }}
+      tf_workspace: ${{ steps.validate.outputs.tf_workspace }}
+      tf_dir: ${{ steps.validate.outputs.tf_dir }}
+    steps:
+      - name: Validate environment input
+        id: validate
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          
+          if [[ "$ENV" == "staging" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "tf_workspace=staging" >> $GITHUB_OUTPUT
+            echo "tf_dir=terraform/frontend-staging" >> $GITHUB_OUTPUT
+          elif [[ "$ENV" == "production" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "tf_workspace=production" >> $GITHUB_OUTPUT
+            echo "tf_dir=terraform/frontend-production" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Invalid environment: $ENV"
+            exit 1
+          fi
+          
+          echo "✅ Environment validated: $ENV"
+
+  discover-resources:
+    name: Discover Existing AWS Resources
+    runs-on: ubuntu-latest
+    needs: validate-inputs
+    outputs:
+      resources_found: ${{ steps.discover.outputs.resources_found }}
+      discovery_output: ${{ steps.discover.outputs.discovery_output }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Discover frontend resources
+        id: discover
+        run: |
+          echo "🔍 Discovering existing AWS resources..."
+          
+          # Make script executable
+          chmod +x scripts/discover-frontend-resources.sh
+          
+          # Run discovery script
+          ./scripts/discover-frontend-resources.sh --verbose > discovery_output.txt 2>&1
+          
+          # Check if resources were found
+          if grep -q "Found" discovery_output.txt; then
+            echo "resources_found=true" >> $GITHUB_OUTPUT
+            echo "✅ AWS resources discovered"
+          else
+            echo "resources_found=false" >> $GITHUB_OUTPUT
+            echo "⚠️ No existing AWS resources found"
+          fi
+          
+          # Save discovery output
+          echo "discovery_output<<EOF" >> $GITHUB_OUTPUT
+          cat discovery_output.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Upload discovery artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: discovery-output-${{ needs.validate-inputs.outputs.environment }}
+          path: |
+            discovery_output.txt
+            terraform/discovered.tfvars
+            terraform/import-commands.sh
+          retention-days: 30
+
+  setup-terraform:
+    name: Setup Terraform Backend and Workspace
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, discover-resources]
+    if: needs.discover-resources.outputs.resources_found == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify backend resources exist
+        run: |
+          echo "🔍 Verifying Terraform backend resources..."
+          
+          # Check S3 bucket
+          if aws s3 ls "s3://$TF_BACKEND_BUCKET" >/dev/null 2>&1; then
+            echo "✅ S3 backend bucket exists: $TF_BACKEND_BUCKET"
+          else
+            echo "❌ S3 backend bucket not found: $TF_BACKEND_BUCKET"
+            exit 1
+          fi
+          
+          # Check DynamoDB table
+          if aws dynamodb describe-table --table-name "$TF_BACKEND_DYNAMODB" >/dev/null 2>&1; then
+            echo "✅ DynamoDB lock table exists: $TF_BACKEND_DYNAMODB"
+          else
+            echo "❌ DynamoDB lock table not found: $TF_BACKEND_DYNAMODB"
+            exit 1
+          fi
+
+      - name: Create Terraform directory structure
+        run: |
+          TF_DIR="${{ needs.validate-inputs.outputs.tf_dir }}"
+          
+          echo "📁 Setting up Terraform directory: $TF_DIR"
+          mkdir -p "$TF_DIR"
+          
+          # Create backend configuration
+          cat > "$TF_DIR/backend.tf" << EOF
+          terraform {
+            backend "s3" {
+              bucket         = "$TF_BACKEND_BUCKET"
+              key            = "frontend/${{ needs.validate-inputs.outputs.environment }}/terraform.tfstate"
+              region         = "$AWS_REGION"
+              dynamodb_table = "$TF_BACKEND_DYNAMODB"
+              encrypt        = true
+            }
+          }
+          EOF
+          
+          # Create basic provider configuration if it doesn't exist
+          if [[ ! -f "$TF_DIR/providers.tf" ]]; then
+            cat > "$TF_DIR/providers.tf" << EOF
+          terraform {
+            required_version = ">= 1.5"
+            required_providers {
+              aws = {
+                source  = "hashicorp/aws"
+                version = "~> 5.0"
+              }
+            }
+          }
+          
+          provider "aws" {
+            region = var.aws_region
+            
+            default_tags {
+              tags = {
+                Environment = "${{ needs.validate-inputs.outputs.environment }}"
+                Project     = "storywriter"
+                Component   = "frontend"
+                ManagedBy   = "terraform"
+              }
+            }
+          }
+          EOF
+          fi
+          
+          # Create variables file if it doesn't exist
+          if [[ ! -f "$TF_DIR/variables.tf" ]]; then
+            cat > "$TF_DIR/variables.tf" << EOF
+          variable "aws_region" {
+            description = "AWS region"
+            type        = string
+            default     = "$AWS_REGION"
+          }
+          
+          variable "environment" {
+            description = "Environment name"
+            type        = string
+            default     = "${{ needs.validate-inputs.outputs.environment }}"
+          }
+          
+          variable "project_name" {
+            description = "Project name"
+            type        = string
+            default     = "storywriter"
+          }
+          EOF
+          fi
+
+      - name: Initialize Terraform
+        working-directory: ${{ needs.validate-inputs.outputs.tf_dir }}
+        run: |
+          echo "🚀 Initializing Terraform..."
+          terraform init -input=false
+          
+          # Create or select workspace
+          WORKSPACE="${{ needs.validate-inputs.outputs.tf_workspace }}"
+          if terraform workspace list | grep -q "$WORKSPACE"; then
+            echo "📋 Selecting existing workspace: $WORKSPACE"
+            terraform workspace select "$WORKSPACE"
+          else
+            echo "📋 Creating new workspace: $WORKSPACE"
+            terraform workspace new "$WORKSPACE"
+          fi
+          
+          echo "✅ Terraform initialized successfully"
+
+      - name: Upload Terraform configuration
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-config-${{ needs.validate-inputs.outputs.environment }}
+          path: ${{ needs.validate-inputs.outputs.tf_dir }}
+          retention-days: 30
+
+  backup-state:
+    name: Create State Backup
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, discover-resources, setup-terraform]
+    if: needs.discover-resources.outputs.resources_found == 'true' && github.event.inputs.skip_backup != 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download Terraform configuration
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-config-${{ needs.validate-inputs.outputs.environment }}
+          path: ${{ needs.validate-inputs.outputs.tf_dir }}
+
+      - name: Create state backup
+        working-directory: ${{ needs.validate-inputs.outputs.tf_dir }}
+        run: |
+          echo "💾 Creating Terraform state backup..."
+          
+          # Initialize and select workspace
+          terraform init -input=false
+          terraform workspace select "${{ needs.validate-inputs.outputs.tf_workspace }}"
+          
+          # Create backup directory
+          BACKUP_DIR="backups/$(date +%Y%m%d-%H%M%S)-pre-migration"
+          mkdir -p "$BACKUP_DIR"
+          
+          # Pull current state
+          if terraform state pull > "$BACKUP_DIR/terraform.tfstate"; then
+            echo "✅ State backup created: $BACKUP_DIR/terraform.tfstate"
+            
+            # Create backup metadata
+            cat > "$BACKUP_DIR/backup-info.json" << EOF
+          {
+            "timestamp": "$(date -Iseconds)",
+            "environment": "${{ needs.validate-inputs.outputs.environment }}",
+            "workspace": "${{ needs.validate-inputs.outputs.tf_workspace }}",
+            "backup_type": "pre-migration",
+            "github_run_id": "${{ github.run_id }}",
+            "github_sha": "${{ github.sha }}"
+          }
+          EOF
+            
+            # Upload backup to S3
+            aws s3 cp "$BACKUP_DIR/" "s3://$TF_BACKEND_BUCKET/backups/frontend/${{ needs.validate-inputs.outputs.environment }}/$BACKUP_DIR/" --recursive
+            echo "☁️ Backup uploaded to S3"
+          else
+            echo "ℹ️ No existing state to backup (empty state)"
+          fi
+
+      - name: Upload backup artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: state-backup-${{ needs.validate-inputs.outputs.environment }}
+          path: ${{ needs.validate-inputs.outputs.tf_dir }}/backups
+          retention-days: 90
+
+  import-resources:
+    name: Import AWS Resources to Terraform
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, discover-resources, setup-terraform, backup-state]
+    if: always() && needs.discover-resources.outputs.resources_found == 'true' && (needs.backup-state.result == 'success' || needs.backup-state.result == 'skipped')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-${{ needs.validate-inputs.outputs.environment }}"
+
+      - name: Prepare Terraform configuration
+        working-directory: ${{ needs.validate-inputs.outputs.tf_dir }}
+        run: |
+          echo "📋 Preparing Terraform configuration for import..."
+          
+          # Copy discovery artifacts
+          cp ../discovery-output-${{ needs.validate-inputs.outputs.environment }}/terraform/discovered.tfvars ./
+          cp ../discovery-output-${{ needs.validate-inputs.outputs.environment }}/terraform/import-commands.sh ./
+          
+          # Make import script executable
+          chmod +x import-commands.sh
+          
+          echo "✅ Configuration prepared"
+
+      - name: Generate resource configurations
+        working-directory: ${{ needs.validate-inputs.outputs.tf_dir }}
+        run: |
+          echo "📝 Generating Terraform resource configurations..."
+          
+          # Create main resources file if it doesn't exist
+          if [[ ! -f "main.tf" ]]; then
+            cat > "main.tf" << 'EOF'
+          # S3 Bucket for static website hosting
+          resource "aws_s3_bucket" "frontend_staging" {
+            count  = var.environment == "staging" ? 1 : 0
+            bucket = "${var.project_name}-${var.environment}-frontend"
+          }
+          
+          resource "aws_s3_bucket" "frontend_production" {
+            count  = var.environment == "production" ? 1 : 0
+            bucket = "${var.project_name}-${var.environment}-frontend"
+          }
+          
+          # S3 Bucket website configuration
+          resource "aws_s3_bucket_website_configuration" "frontend_staging" {
+            count  = var.environment == "staging" ? 1 : 0
+            bucket = aws_s3_bucket.frontend_staging[0].id
+          
+            index_document {
+              suffix = "index.html"
+            }
+          
+            error_document {
+              key = "error.html"
+            }
+          }
+          
+          resource "aws_s3_bucket_website_configuration" "frontend_production" {
+            count  = var.environment == "production" ? 1 : 0
+            bucket = aws_s3_bucket.frontend_production[0].id
+          
+            index_document {
+              suffix = "index.html"
+            }
+          
+            error_document {
+              key = "error.html"
+            }
+          }
+          
+          # S3 Bucket public access configuration
+          resource "aws_s3_bucket_public_access_block" "frontend_staging" {
+            count  = var.environment == "staging" ? 1 : 0
+            bucket = aws_s3_bucket.frontend_staging[0].id
+          
+            block_public_acls       = false
+            block_public_policy     = false
+            ignore_public_acls      = false
+            restrict_public_buckets = false
+          }
+          
+          resource "aws_s3_bucket_public_access_block" "frontend_production" {
+            count  = var.environment == "production" ? 1 : 0
+            bucket = aws_s3_bucket.frontend_production[0].id
+          
+            block_public_acls       = false
+            block_public_policy     = false
+            ignore_public_acls      = false
+            restrict_public_buckets = false
+          }
+          
+          # CloudFront Distribution
+          resource "aws_cloudfront_distribution" "frontend_staging" {
+            count = var.environment == "staging" ? 1 : 0
+            # Configuration will be imported from existing resource
+          }
+          
+          resource "aws_cloudfront_distribution" "frontend_production" {
+            count = var.environment == "production" ? 1 : 0
+            # Configuration will be imported from existing resource
+          }
+          
+          # Route53 Records (data sources for existing hosted zone)
+          data "aws_route53_zone" "main" {
+            name         = "storywriter.net"
+            private_zone = false
+          }
+          
+          resource "aws_route53_record" "frontend_staging" {
+            count = var.environment == "staging" ? 1 : 0
+            # Configuration will be imported from existing resource
+          }
+          
+          resource "aws_route53_record" "frontend_production" {
+            count = var.environment == "production" ? 1 : 0
+            # Configuration will be imported from existing resource
+          }
+          
+          # ACM Certificate (data source reference)
+          data "aws_acm_certificate" "frontend" {
+            domain   = "*.storywriter.net"
+            statuses = ["ISSUED"]
+          }
+          EOF
+          fi
+          
+          echo "✅ Resource configurations generated"
+
+      - name: Initialize and import resources
+        working-directory: ${{ needs.validate-inputs.outputs.tf_dir }}
+        run: |
+          echo "🚀 Initializing Terraform and importing resources..."
+          
+          # Initialize Terraform
+          terraform init -input=false
+          terraform workspace select "${{ needs.validate-inputs.outputs.tf_workspace }}"
+          
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "🔍 DRY RUN MODE - Simulating import process..."
+            echo "Import commands that would be executed:"
+            cat import-commands.sh
+            echo "✅ Dry run completed"
+          else
+            echo "📦 Executing resource imports..."
+            
+            # Execute import commands with error handling
+            set +e
+            ./import-commands.sh > import_results.txt 2>&1
+            IMPORT_EXIT_CODE=$?
+            set -e
+            
+            if [[ $IMPORT_EXIT_CODE -eq 0 ]]; then
+              echo "✅ Resources imported successfully"
+            else
+              echo "❌ Import failed with exit code: $IMPORT_EXIT_CODE"
+              echo "Import output:"
+              cat import_results.txt
+              
+              # Upload failure artifacts
+              echo "📤 Uploading failure artifacts..."
+              exit $IMPORT_EXIT_CODE
+            fi
+          fi
+
+      - name: Upload import results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: import-results-${{ needs.validate-inputs.outputs.environment }}
+          path: |
+            ${{ needs.validate-inputs.outputs.tf_dir }}/import_results.txt
+            ${{ needs.validate-inputs.outputs.tf_dir }}/import-commands.sh
+            ${{ needs.validate-inputs.outputs.tf_dir }}/discovered.tfvars
+          retention-days: 30
+
+  validate-state:
+    name: Validate Terraform State
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, discover-resources, import-resources]
+    if: always() && needs.import-resources.result == 'success' && github.event.inputs.dry_run != 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download Terraform configuration
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-config-${{ needs.validate-inputs.outputs.environment }}
+          path: ${{ needs.validate-inputs.outputs.tf_dir }}
+
+      - name: Validate imported state
+        working-directory: ${{ needs.validate-inputs.outputs.tf_dir }}
+        run: |
+          echo "🔍 Validating imported Terraform state..."
+          
+          # Initialize and select workspace
+          terraform init -input=false
+          terraform workspace select "${{ needs.validate-inputs.outputs.tf_workspace }}"
+          
+          # Validate configuration
+          echo "📋 Validating Terraform configuration..."
+          terraform validate
+          
+          # Check state list
+          echo "📊 Checking imported resources in state..."
+          terraform state list > state_resources.txt
+          
+          if [[ -s state_resources.txt ]]; then
+            echo "✅ Resources found in state:"
+            cat state_resources.txt
+          else
+            echo "❌ No resources found in Terraform state"
+            exit 1
+          fi
+          
+          # Run terraform plan to check for drift
+          echo "📋 Running terraform plan to check for configuration drift..."
+          terraform plan -detailed-exitcode -out=validation.tfplan > plan_output.txt 2>&1
+          PLAN_EXIT_CODE=$?
+          
+          case $PLAN_EXIT_CODE in
+            0)
+              echo "✅ No changes detected - state matches configuration perfectly"
+              ;;
+            1)
+              echo "❌ Terraform plan failed"
+              cat plan_output.txt
+              exit 1
+              ;;
+            2)
+              echo "⚠️ Configuration drift detected - changes required:"
+              cat plan_output.txt
+              echo ""
+              echo "This is expected after import. Manual configuration updates may be needed."
+              ;;
+            *)
+              echo "❌ Unexpected terraform plan exit code: $PLAN_EXIT_CODE"
+              exit 1
+              ;;
+          esac
+
+      - name: Upload validation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-results-${{ needs.validate-inputs.outputs.environment }}
+          path: |
+            ${{ needs.validate-inputs.outputs.tf_dir }}/state_resources.txt
+            ${{ needs.validate-inputs.outputs.tf_dir }}/plan_output.txt
+            ${{ needs.validate-inputs.outputs.tf_dir }}/validation.tfplan
+          retention-days: 30
+
+  rollback-on-failure:
+    name: Rollback on Migration Failure
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, discover-resources, import-resources, validate-state]
+    if: always() && (needs.import-resources.result == 'failure' || needs.validate-state.result == 'failure') && github.event.inputs.dry_run != 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download state backup
+        uses: actions/download-artifact@v4
+        with:
+          name: state-backup-${{ needs.validate-inputs.outputs.environment }}
+          path: state-backups/
+
+      - name: Restore previous state
+        run: |
+          echo "🔄 Rolling back Terraform state..."
+          
+          # Find the most recent backup
+          LATEST_BACKUP=$(find state-backups -name "*.tfstate" -type f | head -1)
+          
+          if [[ -n "$LATEST_BACKUP" && -f "$LATEST_BACKUP" ]]; then
+            echo "📁 Found backup: $LATEST_BACKUP"
+            
+            # Push backup state back to remote backend
+            terraform state push "$LATEST_BACKUP"
+            echo "✅ State rolled back successfully"
+          else
+            echo "⚠️ No backup state found - manual cleanup may be required"
+          fi
+
+  migration-summary:
+    name: Migration Summary
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, discover-resources, setup-terraform, import-resources, validate-state, rollback-on-failure]
+    if: always()
+    steps:
+      - name: Generate migration summary
+        run: |
+          echo "## 📊 Frontend Terraform Migration Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "**Environment:** ${{ needs.validate-inputs.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Dry Run:** ${{ github.event.inputs.dry_run }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -Iseconds)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### Job Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Discovery | ${{ needs.discover-resources.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform Setup | ${{ needs.setup-terraform.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource Import | ${{ needs.import-resources.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| State Validation | ${{ needs.validate-state.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Rollback | ${{ needs.rollback-on-failure.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.discover-resources.outputs.resources_found }}" == "true" ]]; then
+            echo "### 🔍 Discovery Results" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo '${{ needs.discover-resources.outputs.discovery_output }}' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [[ "${{ needs.import-resources.result }}" == "success" && "${{ github.event.inputs.dry_run }}" == "false" ]]; then
+            echo "### ✅ Migration Completed Successfully" >> $GITHUB_STEP_SUMMARY
+            echo "- AWS resources have been imported into Terraform state" >> $GITHUB_STEP_SUMMARY
+            echo "- State backup created before migration" >> $GITHUB_STEP_SUMMARY
+            echo "- Validation completed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+            echo "1. Review and update Terraform configurations as needed" >> $GITHUB_STEP_SUMMARY
+            echo "2. Run \`terraform plan\` to ensure no drift" >> $GITHUB_STEP_SUMMARY
+            echo "3. Commit updated configurations to version control" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "### 🔍 Dry Run Completed" >> $GITHUB_STEP_SUMMARY
+            echo "- Resources discovered and validated" >> $GITHUB_STEP_SUMMARY
+            echo "- Import commands generated" >> $GITHUB_STEP_SUMMARY
+            echo "- No actual state changes made" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**To perform actual migration:** Re-run with dry_run=false" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Migration Failed" >> $GITHUB_STEP_SUMMARY
+            echo "- Check job logs for detailed error information" >> $GITHUB_STEP_SUMMARY
+            echo "- State rollback attempted if applicable" >> $GITHUB_STEP_SUMMARY
+            echo "- Review artifacts for troubleshooting" >> $GITHUB_STEP_SUMMARY
+          fi
