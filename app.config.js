@@ -20,7 +20,9 @@ export default ({ config }) => ({
     web: {
       "favicon": "./assets/images/favicon.png",
       "output": "static",
-      "publicPath": "/storywriter/"
+       "build": {
+        "publicPath": "/storywriter/"
+      },
     },
     ios: {
       supportsTablet: true,
