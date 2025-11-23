@@ -2,7 +2,9 @@ import Constants from 'expo-constants';
 import { Story, StoryPage, StoryGenerationResult, StoryGenerationOptions } from '../types/story';
 import { storyLogger } from '@/src/utils/logger';
 
-const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://localhost';
+// MAKE SURE THIS CHANGES BACK BEFORE PUSHING ANYTHING LIVE
+//const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
 const STORY_PROMPT_TEMPLATE = "You are a professional children's book author. Using the following conversation between a child and a story assistant, write a 5-page children's storybook. The conversation reveals the child's interests and ideas. Create an engaging story that incorporates their input naturally. Guidelines: Each page should be 2-3 sentences. Include vivid descriptions for illustrations. Maintain consistent characters. End positively. Conversation: [FULL_DIALOGUE]";
 
@@ -145,7 +147,7 @@ class StoryGenerationService {
       }
     };
 
-    const response = await this.makeApiRequest<{ story: any }>(
+    const response = await this.makeApiRequest<any>(
       '/api/stories/generate',
       {
         method: 'POST',
@@ -153,16 +155,25 @@ class StoryGenerationService {
       }
     );
 
-    if (!response.success || !response.data || !response.data.story) {
+    // Handle both shapes: {story: "..."} and {data: {story: "..."}}
+    const raw = response.data;
+    const storyText = raw?.story ?? raw?.data?.story;
+
+    //KEEP THESE IN TEMPORARILY FOR TESTING LIVE
+    console.log('RESPONSE:', response);
+    console.log('RAW: ', raw);
+    console.log('storyText: ', storyText);
+
+    if (!response.success || !storyText) {
       throw new Error(response.error || 'Story generation failed');
     }
 
     storyLogger.complete({ 
       backend: 'laravel',
-      hasContent: !!response.data.story
+      hasContent: !!storyText
     });
-
-    return response.data.story;
+    
+    return storyText;
   }
 
   async generateStoryFromTranscript(

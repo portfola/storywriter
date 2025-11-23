@@ -21,7 +21,8 @@ const getApiBaseUrl = () => {
       return 'https://api-staging.storywriter.net';
     case 'development':
     default:
-      return 'http://localhost';
+      // return 'http://localhost';
+      return 'http://127.0.0.1:8000';
   }
 };
 
