@@ -6,12 +6,24 @@ import { storyLogger } from '@/src/utils/logger';
 const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
 //const API_BASE_URL = 'http://127.0.0.1:8000';
 
-const STORY_PROMPT_TEMPLATE = "You are a professional children's book author. Using the following conversation between a child and a story assistant, write a 5-page children's storybook. The conversation reveals the child's interests and ideas. Create an engaging story that incorporates their input naturally. Guidelines: Each page should be 2-3 sentences. Include vivid descriptions for illustrations. Maintain consistent characters. End positively. Conversation: [FULL_DIALOGUE]";
-
 interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+interface BackendStoryPage {
+  page_number: number;
+  content: string;
+  illustration_prompt: string;
+}
+
+interface BackendStoryResponse {
+  id: number;
+  title: string;
+  pages: BackendStoryPage[];
+  page_count: number;
+  created_at: string;
 }
 
 class StoryGenerationService {
@@ -216,26 +228,26 @@ private naiveChunk(text: string): string[] {
   }
 
   private async generateWithRetry(
-    prompt: string, 
+    transcript: string,
     options: StoryGenerationOptions = {}
-  ): Promise<string> {
+  ): Promise<Story> {
     const { maxRetries = 3, temperature = 0.7, maxTokens = 1000 } = options;
 
-    storyLogger.generating({ 
-      promptLength: prompt.length,
+    storyLogger.generating({
+      transcriptLength: transcript.length,
       maxRetries,
       temperature,
       maxTokens,
       backend: 'laravel'
     });
 
-    // Make request to Laravel backend instead of direct Together AI
+    // Make request to Laravel backend
     const requestBody = {
-      transcript: prompt,
+      transcript,
       options: {
-        maxTokens,
+        max_tokens: maxTokens,
         temperature,
-        maxRetries
+        max_retries: maxRetries
       }
     };
 
@@ -260,7 +272,10 @@ private naiveChunk(text: string): string[] {
       throw new Error(response.error || 'Story generation failed at line 168');
     }
 
-    storyLogger.complete({ 
+    // Transform backend response to frontend Story type
+    const story = this.transformBackendStoryToFrontend(response.data.story, transcript);
+
+    storyLogger.complete({
       backend: 'laravel',
       hasContent: !!storyText
     });
@@ -269,7 +284,7 @@ private naiveChunk(text: string): string[] {
   }
 
   async generateStoryFromTranscript(
-    transcript: string, 
+    transcript: string,
     options: StoryGenerationOptions = {}
   ): Promise<StoryGenerationResult> {
     if (!transcript?.trim()) {
@@ -286,9 +301,8 @@ private naiveChunk(text: string): string[] {
     }
 
     try {
-      const prompt = STORY_PROMPT_TEMPLATE.replace('[FULL_DIALOGUE]', transcript.trim());
-      const generatedText = await this.generateWithRetry(prompt, options);
-      const story = this.parseStoryResponse(generatedText, transcript);
+      // Call backend API which handles prompting and story generation
+      const story = await this.generateWithRetry(transcript.trim(), options);
 
       return {
         story,
@@ -296,7 +310,21 @@ private naiveChunk(text: string): string[] {
       };
     } catch (error) {
       storyLogger.error(error, { transcript: transcript.substring(0, 100) });
-      
+
+      // Provide user-friendly error messages
+      let errorMessage = 'Story generation failed. Please try again.';
+      if (error instanceof Error) {
+        if (error.message.includes('timeout') || error.message.includes('aborted')) {
+          errorMessage = 'Story generation timed out. Please try again with a shorter conversation.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (error.message.includes('Invalid story response')) {
+          errorMessage = 'Generated story format is invalid. Please try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       return {
         story: {
           id: this.generateStoryId(),
@@ -306,7 +334,7 @@ private naiveChunk(text: string): string[] {
           transcript
         },
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred during story generation'
+        error: errorMessage
       };
     }
   }
