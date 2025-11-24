@@ -52,7 +52,7 @@ jobs:
           if [ "$ENV" = "production" ]; then
             echo "api_base_url=https://api.storywriter.net" >> $GITHUB_OUTPUT
           else
-            echo "api_base_url=https://api-staging.storywriter.net" >> $GITHUB_OUTPUT
+            echo "api_base_url=https://api.storywriter.net" >> $GITHUB_OUTPUT
           fi
 
   # Infrastructure management phase (creates/validates infrastructure)
@@ -114,7 +114,7 @@ jobs:
             DOMAIN_NAME="storywriter.net"
             S3_BUCKET="storywriter-production-frontend"
           else
-            DOMAIN_NAME="staging.storywriter.net"
+            DOMAIN_NAME="storywriter.net"
             S3_BUCKET="storywriter-staging-frontend"
           fi
           

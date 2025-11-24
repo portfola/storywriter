@@ -6,12 +6,24 @@ import { storyLogger } from '@/src/utils/logger';
 //const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
-const STORY_PROMPT_TEMPLATE = "You are a professional children's book author. Using the following conversation between a child and a story assistant, write a 5-page children's storybook. The conversation reveals the child's interests and ideas. Create an engaging story that incorporates their input naturally. Guidelines: Each page should be 2-3 sentences. Include vivid descriptions for illustrations. Maintain consistent characters. End positively. Conversation: [FULL_DIALOGUE]";
-
 interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+interface BackendStoryPage {
+  page_number: number;
+  content: string;
+  illustration_prompt: string;
+}
+
+interface BackendStoryResponse {
+  id: number;
+  title: string;
+  pages: BackendStoryPage[];
+  page_count: number;
+  created_at: string;
 }
 
 class StoryGenerationService {
@@ -55,95 +67,104 @@ class StoryGenerationService {
     return `story_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private parseStoryResponse(response: string, transcript: string): Story {
-    const lines = response.split('\n').filter(line => line.trim());
-    const pages: StoryPage[] = [];
-    let currentPage = 1;
-    let title = "Untitled Story";
-
-    // Extract title if present
-    const titleMatch = response.match(/(?:Title|TITLE):\s*(.+)/i);
-    if (titleMatch) {
-      title = titleMatch[1].trim();
+  /**
+   * Validate backend story response structure
+   */
+  private validateBackendStoryResponse(data: any): data is { story: BackendStoryResponse } {
+    if (!data || typeof data !== 'object') {
+      storyLogger.error(new Error('Invalid response: data is not an object'), { data });
+      return false;
     }
 
-    // Parse pages - look for page markers or split by paragraphs
-    const pagePattern = /(?:Page|PAGE)\s*(\d+)[:.]?\s*(.+?)(?=(?:Page|PAGE)\s*\d+|$)/gis;
-    const pageMatches = [...response.matchAll(pagePattern)];
-
-    if (pageMatches.length > 0) {
-      // Found explicit page markers
-      pageMatches.forEach((match, index) => {
-        if (index < 5) { // Limit to 5 pages
-          const pageContent = match[2].trim();
-          pages.push({
-            pageNumber: index + 1,
-            content: pageContent,
-            illustrationPrompt: this.extractIllustrationPrompt(pageContent)
-          });
-        }
-      });
-    } else {
-      // Split by paragraphs and take first 5
-      const paragraphs = response
-        .split(/\n\s*\n/)
-        .filter(p => p.trim() && !p.match(/(?:Title|TITLE):/i))
-        .slice(0, 5);
-
-      paragraphs.forEach((paragraph, index) => {
-        pages.push({
-          pageNumber: index + 1,
-          content: paragraph.trim(),
-          illustrationPrompt: this.extractIllustrationPrompt(paragraph.trim())
-        });
-      });
+    if (!data.story || typeof data.story !== 'object') {
+      storyLogger.error(new Error('Invalid response: missing story object'), { data });
+      return false;
     }
 
-    // Ensure we have exactly 5 pages
-    while (pages.length < 5) {
-      pages.push({
-        pageNumber: pages.length + 1,
-        content: "The story continues...",
-        illustrationPrompt: "A peaceful scene continuing the adventure"
-      });
+    const story = data.story;
+
+    if (!story.title || typeof story.title !== 'string') {
+      storyLogger.error(new Error('Invalid response: missing or invalid title'), { story });
+      return false;
     }
+
+    if (!Array.isArray(story.pages)) {
+      storyLogger.error(new Error('Invalid response: pages is not an array'), { story });
+      return false;
+    }
+
+    if (story.pages.length !== 5) {
+      storyLogger.error(new Error(`Invalid response: expected 5 pages, got ${story.pages.length}`), { story });
+      return false;
+    }
+
+    // Validate each page structure
+    for (let i = 0; i < story.pages.length; i++) {
+      const page = story.pages[i];
+      if (!page || typeof page !== 'object') {
+        storyLogger.error(new Error(`Invalid page structure at index ${i}`), { page });
+        return false;
+      }
+
+      if (typeof page.page_number !== 'number' || page.page_number !== i + 1) {
+        storyLogger.error(new Error(`Invalid page_number at index ${i}`), { page });
+        return false;
+      }
+
+      if (!page.content || typeof page.content !== 'string') {
+        storyLogger.error(new Error(`Missing or invalid content at page ${i + 1}`), { page });
+        return false;
+      }
+
+      if (!page.illustration_prompt || typeof page.illustration_prompt !== 'string') {
+        storyLogger.error(new Error(`Missing or invalid illustration_prompt at page ${i + 1}`), { page });
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Transform backend response to frontend Story type
+   */
+  private transformBackendStoryToFrontend(backendStory: BackendStoryResponse, transcript: string): Story {
+    const pages: StoryPage[] = backendStory.pages.map(page => ({
+      pageNumber: page.page_number,
+      content: page.content,
+      illustrationPrompt: page.illustration_prompt
+    }));
 
     return {
-      id: this.generateStoryId(),
-      title,
-      pages: pages.slice(0, 5),
-      createdAt: new Date(),
+      id: `story_${backendStory.id}`,
+      title: backendStory.title,
+      pages,
+      createdAt: new Date(backendStory.created_at),
       transcript
     };
   }
 
-  private extractIllustrationPrompt(content: string): string {
-    // Extract visual elements from the content for illustration
-    const cleanContent = content.replace(/[.!?]+$/, '');
-    return `Child-friendly cartoon illustration of: ${cleanContent}`;
-  }
-
   private async generateWithRetry(
-    prompt: string, 
+    transcript: string,
     options: StoryGenerationOptions = {}
-  ): Promise<string> {
+  ): Promise<Story> {
     const { maxRetries = 3, temperature = 0.7, maxTokens = 1000 } = options;
 
-    storyLogger.generating({ 
-      promptLength: prompt.length,
+    storyLogger.generating({
+      transcriptLength: transcript.length,
       maxRetries,
       temperature,
       maxTokens,
       backend: 'laravel'
     });
 
-    // Make request to Laravel backend instead of direct Together AI
+    // Make request to Laravel backend
     const requestBody = {
-      transcript: prompt,
+      transcript,
       options: {
-        maxTokens,
+        max_tokens: maxTokens,
         temperature,
-        maxRetries
+        max_retries: maxRetries
       }
     };
 
@@ -168,7 +189,10 @@ class StoryGenerationService {
       throw new Error(response.error || 'Story generation failed');
     }
 
-    storyLogger.complete({ 
+    // Transform backend response to frontend Story type
+    const story = this.transformBackendStoryToFrontend(response.data.story, transcript);
+
+    storyLogger.complete({
       backend: 'laravel',
       hasContent: !!storyText
     });
@@ -177,7 +201,7 @@ class StoryGenerationService {
   }
 
   async generateStoryFromTranscript(
-    transcript: string, 
+    transcript: string,
     options: StoryGenerationOptions = {}
   ): Promise<StoryGenerationResult> {
     if (!transcript?.trim()) {
@@ -194,9 +218,8 @@ class StoryGenerationService {
     }
 
     try {
-      const prompt = STORY_PROMPT_TEMPLATE.replace('[FULL_DIALOGUE]', transcript.trim());
-      const generatedText = await this.generateWithRetry(prompt, options);
-      const story = this.parseStoryResponse(generatedText, transcript);
+      // Call backend API which handles prompting and story generation
+      const story = await this.generateWithRetry(transcript.trim(), options);
 
       return {
         story,
@@ -204,7 +227,21 @@ class StoryGenerationService {
       };
     } catch (error) {
       storyLogger.error(error, { transcript: transcript.substring(0, 100) });
-      
+
+      // Provide user-friendly error messages
+      let errorMessage = 'Story generation failed. Please try again.';
+      if (error instanceof Error) {
+        if (error.message.includes('timeout') || error.message.includes('aborted')) {
+          errorMessage = 'Story generation timed out. Please try again with a shorter conversation.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (error.message.includes('Invalid story response')) {
+          errorMessage = 'Generated story format is invalid. Please try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       return {
         story: {
           id: this.generateStoryId(),
@@ -214,7 +251,7 @@ class StoryGenerationService {
           transcript
         },
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred during story generation'
+        error: errorMessage
       };
     }
   }

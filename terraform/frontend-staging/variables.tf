@@ -12,7 +12,7 @@ variable "environment" {
 variable "domain_name" {
   description = "Domain name for the frontend application"
   type        = string
-  default     = "staging.storywriter.net"
+  default     = "storywriter.net"
 }
 
 variable "s3_bucket_name" {
