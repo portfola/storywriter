@@ -2,7 +2,9 @@ import Constants from 'expo-constants';
 import { Story, StoryPage, StoryGenerationResult, StoryGenerationOptions } from '../types/story';
 import { storyLogger } from '@/src/utils/logger';
 
-const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://localhost';
+// MAKE SURE THIS CHANGES BACK BEFORE PUSHING ANYTHING LIVE
+//const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -166,7 +168,7 @@ class StoryGenerationService {
       }
     };
 
-    const response = await this.makeApiRequest<{ story: BackendStoryResponse }>(
+    const response = await this.makeApiRequest<any>(
       '/api/stories/generate',
       {
         method: 'POST',
@@ -174,15 +176,17 @@ class StoryGenerationService {
       }
     );
 
-    if (!response.success || !response.data) {
-      const errorMessage = response.error || 'Story generation failed';
-      storyLogger.error(new Error(errorMessage), { transcriptLength: transcript.length });
-      throw new Error(errorMessage);
-    }
+    // Handle both shapes: {story: "..."} and {data: {story: "..."}}
+    const raw = response.data;
+    const storyText = raw?.story ?? raw?.data?.story;
 
-    // Validate response structure
-    if (!this.validateBackendStoryResponse(response.data)) {
-      throw new Error('Invalid story response structure from backend');
+    //KEEP THESE IN TEMPORARILY FOR TESTING LIVE
+    console.log('RESPONSE:', response);
+    console.log('RAW: ', raw);
+    console.log('storyText: ', storyText);
+
+    if (!response.success || !storyText) {
+      throw new Error(response.error || 'Story generation failed');
     }
 
     // Transform backend response to frontend Story type
@@ -190,12 +194,10 @@ class StoryGenerationService {
 
     storyLogger.complete({
       backend: 'laravel',
-      storyId: story.id,
-      title: story.title,
-      pageCount: story.pages.length
+      hasContent: !!storyText
     });
-
-    return story;
+    
+    return storyText;
   }
 
   async generateStoryFromTranscript(

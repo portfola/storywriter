@@ -21,7 +21,8 @@ const getApiBaseUrl = () => {
       return 'https://api.storywriter.net';
     case 'development':
     default:
-      return 'http://localhost';
+      // return 'http://localhost';
+      return 'http://127.0.0.1:8000';
   }
 };
 
@@ -45,7 +46,9 @@ export default ({ config }) => ({
     web: {
       "favicon": "./assets/images/favicon.png",
       "output": "static",
-      "publicPath": "/storywriter/"
+       "build": {
+        "publicPath": "/storywriter/"
+      },
     },
     ios: {
       supportsTablet: true,

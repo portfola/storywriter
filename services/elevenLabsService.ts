@@ -14,7 +14,8 @@ import {
 } from '../types/elevenlabs';
 import { serviceLogger } from '@/src/utils/logger';
 
-const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://localhost';
+const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
+// const API_BASE_URL = 'http://127.0.0.1:8000';
 
 enum ConnectionState {
   DISCONNECTED = 'disconnected',
@@ -59,6 +60,7 @@ export class ElevenLabsService {
   ): Promise<ApiResponse<T>> {
     try {
       const url = `${API_BASE_URL}${endpoint}`;
+      console.log("URL:", url);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
       
