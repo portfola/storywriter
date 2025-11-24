@@ -3,8 +3,8 @@ import { Story, StoryPage, StoryGenerationResult, StoryGenerationOptions } from 
 import { storyLogger } from '@/src/utils/logger';
 
 // MAKE SURE THIS CHANGES BACK BEFORE PUSHING ANYTHING LIVE
-//const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
+//const API_BASE_URL = 'http://127.0.0.1:8000';
 
 const STORY_PROMPT_TEMPLATE = "You are a professional children's book author. Using the following conversation between a child and a story assistant, write a 5-page children's storybook. The conversation reveals the child's interests and ideas. Create an engaging story that incorporates their input naturally. Guidelines: Each page should be 2-3 sentences. Include vivid descriptions for illustrations. Maintain consistent characters. End positively. Conversation: [FULL_DIALOGUE]";
 
@@ -51,71 +51,163 @@ class StoryGenerationService {
     }
   }
 
+  
   private generateStoryId(): string {
     return `story_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
+
+
+  // private parseStoryResponse(response: string, transcript: string): Story {
+
+  //   const lines = response.split('\n').filter(line => line.trim());
+  //   const pages: StoryPage[] = [];
+  //   let currentPage = 1;
+  //   let title = "Untitled Story";
+
+  //   // Extract title if present
+  //   // const titleMatch = response.match(/(?:Title|TITLE):\s*(.+)/i);
+  //   // if (titleMatch) {
+  //   //   title = titleMatch[1].trim();
+  //   // }
+
+  //   // Replacement (from Chat GPT)
+  //    const titleMatch = response.match(/(?:Title|TITLE)[:\-]?\s*(.+)/i);
+  //     if (titleMatch) {
+  //       title = titleMatch[1].trim();
+  //     }
+
+  //   // Parse pages - look for page markers or split by paragraphs
+  //   // const pagePattern = /(?:Page|PAGE)\s*(\d+)[:.]?\s*(.+?)(?=(?:Page|PAGE)\s*\d+|$)/gis;
+  //   // const pageMatches = [...response.matchAll(pagePattern)];
+  //   // SAFER PAGE PATTERN
+  //   const pagePattern = /(?:Page|PAGE)\s*(\d+)[:.]?\s*(.*?)(?=(?:Page|PAGE)\s*\d+|$)/gis;
+  //   const pageMatches = [...response.matchAll(pagePattern)];
+
+  //   console.log("PAGE MARKERS:", pageMatches.length);
+  //   console.log("PARAGRAPH SPLIT TEST:", response.includes("\n\n"));
+
+  //   if (pageMatches.length > 0) {
+  //     // Found explicit page markers
+  //     pageMatches.forEach((match, index) => {
+  //       if (index < 5) { // Limit to 5 pages
+  //         const pageContent = match[2].trim();
+  //         pages.push({
+  //           pageNumber: index + 1,
+  //           content: pageContent,
+  //           illustrationPrompt: this.extractIllustrationPrompt(pageContent)
+  //         });
+  //       }
+  //     });
+  //   } else {
+  //     // Split by paragraphs and take first 5
+  //     const paragraphs = response
+  //       .split(/\n\s*\n/)
+  //       .filter(p => p.trim() && !p.match(/(?:Title|TITLE):/i))
+  //       .slice(0, 5);
+
+  //     paragraphs.forEach((paragraph, index) => {
+  //       pages.push({
+  //         pageNumber: index + 1,
+  //         content: paragraph.trim(),
+  //         illustrationPrompt: this.extractIllustrationPrompt(paragraph.trim())
+  //       });
+  //     });
+  //   }
+
+  //   // Ensure we have exactly 5 pages
+  //   while (pages.length < 5) {
+  //     pages.push({
+  //       pageNumber: pages.length + 1,
+  //       content: "The story continues...",
+  //       illustrationPrompt: "A peaceful scene continuing the adventure"
+  //     });
+  //   }
+
+  //   return {
+  //     id: this.generateStoryId(),
+  //     title,
+  //     pages: pages.slice(0, 5),
+  //     createdAt: new Date(),
+  //     transcript
+  //   };
+  // }
+
+
   private parseStoryResponse(response: string, transcript: string): Story {
-    const lines = response.split('\n').filter(line => line.trim());
-    const pages: StoryPage[] = [];
-    let currentPage = 1;
-    let title = "Untitled Story";
+  let title = "Untitled Story";
 
-    // Extract title if present
-    const titleMatch = response.match(/(?:Title|TITLE):\s*(.+)/i);
-    if (titleMatch) {
-      title = titleMatch[1].trim();
-    }
-
-    // Parse pages - look for page markers or split by paragraphs
-    const pagePattern = /(?:Page|PAGE)\s*(\d+)[:.]?\s*(.+?)(?=(?:Page|PAGE)\s*\d+|$)/gis;
-    const pageMatches = [...response.matchAll(pagePattern)];
-
-    if (pageMatches.length > 0) {
-      // Found explicit page markers
-      pageMatches.forEach((match, index) => {
-        if (index < 5) { // Limit to 5 pages
-          const pageContent = match[2].trim();
-          pages.push({
-            pageNumber: index + 1,
-            content: pageContent,
-            illustrationPrompt: this.extractIllustrationPrompt(pageContent)
-          });
-        }
-      });
-    } else {
-      // Split by paragraphs and take first 5
-      const paragraphs = response
-        .split(/\n\s*\n/)
-        .filter(p => p.trim() && !p.match(/(?:Title|TITLE):/i))
-        .slice(0, 5);
-
-      paragraphs.forEach((paragraph, index) => {
-        pages.push({
-          pageNumber: index + 1,
-          content: paragraph.trim(),
-          illustrationPrompt: this.extractIllustrationPrompt(paragraph.trim())
-        });
-      });
-    }
-
-    // Ensure we have exactly 5 pages
-    while (pages.length < 5) {
-      pages.push({
-        pageNumber: pages.length + 1,
-        content: "The story continues...",
-        illustrationPrompt: "A peaceful scene continuing the adventure"
-      });
-    }
-
-    return {
-      id: this.generateStoryId(),
-      title,
-      pages: pages.slice(0, 5),
-      createdAt: new Date(),
-      transcript
-    };
+  const titleMatch = response.match(/(?:Title|TITLE)[:\-]?\s*(.+)/i);
+  if (titleMatch) {
+    title = titleMatch[1].trim();
   }
+
+  // SAFER PAGE PATTERN
+  const pagePattern = /(?:Page|PAGE)\s*(\d+)[:.]?\s*(.*?)(?=(?:Page|PAGE)\s*\d+|$)/gis;
+  const pageMatches = [...response.matchAll(pagePattern)];
+
+  let pages: StoryPage[] = [];
+
+  if (pageMatches.length > 0) {
+    // If explicit Page X markers exist
+    pages = pageMatches.slice(0, 5).map((match, index) => {
+      const content = match[2].trim();
+      return {
+        pageNumber: index + 1,
+        content,
+        illustrationPrompt: this.extractIllustrationPrompt(content)
+      };
+    });
+  } else {
+    // NO PAGE MARKERS — fallback paragraph splitting
+    // Allow ANY number of newlines, not just \n\n
+    const rawParagraphs = response
+      .split(/\n{1,}/)  // split on ANY newline
+      .map(p => p.trim())
+      .filter(p => p.length > 0 && !/(?:Title|TITLE)[:\-]?/i.test(p));
+
+    // If splitting STILL results in 1 giant block, force naive chunking
+    let paragraphs: string[] = rawParagraphs.length > 1
+      ? rawParagraphs
+      : this.naiveChunk(response);
+
+    pages = paragraphs.slice(0, 5).map((paragraph, index) => ({
+      pageNumber: index + 1,
+      content: paragraph.trim(),
+      illustrationPrompt: this.extractIllustrationPrompt(paragraph)
+    }));
+  }
+
+  // FINAL GUARANTEE: always return 5 pages
+  while (pages.length < 5) {
+    pages.push({
+      pageNumber: pages.length + 1,
+      content: "The story continues...",
+      illustrationPrompt: "A child-friendly illustration"
+    });
+  }
+
+  return {
+    id: this.generateStoryId(),
+    title,
+    pages: pages.slice(0, 5),
+    createdAt: new Date(),
+    transcript
+  };
+}
+
+// Backup fallback when the model returns one giant block
+private naiveChunk(text: string): string[] {
+  const words = text.split(/\s+/);
+  const chunkSize = Math.ceil(words.length / 5);
+
+  let chunks: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    chunks.push(words.slice(i * chunkSize, (i + 1) * chunkSize).join(" "));
+  }
+  return chunks;
+}
+
 
   private extractIllustrationPrompt(content: string): string {
     // Extract visual elements from the content for illustration
@@ -165,7 +257,7 @@ class StoryGenerationService {
     console.log('storyText: ', storyText);
 
     if (!response.success || !storyText) {
-      throw new Error(response.error || 'Story generation failed');
+      throw new Error(response.error || 'Story generation failed at line 168');
     }
 
     storyLogger.complete({ 
@@ -273,15 +365,15 @@ class StoryGenerationService {
   /**
    * Test connection to Laravel backend
    */
-  async testConnection(): Promise<boolean> {
-    try {
-      const response = await this.makeApiRequest('/api/health');
-      return response.success;
-    } catch (error) {
-      storyLogger.error(error, { action: 'test_connection' });
-      return false;
-    }
-  }
+  // async testConnection(): Promise<boolean> {
+  //   try {
+  //     const response = await this.makeApiRequest('/api/health');
+  //     return response.success;
+  //   } catch (error) {
+  //     storyLogger.error(error, { action: 'test_connection' });
+  //     return false;
+  //   }
+  // }
 
   /**
    * Get available story generation models from backend
