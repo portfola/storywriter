@@ -15,15 +15,16 @@ interface ApiResponse<T = any> {
 }
 
 class StoryGenerationService {
+
   private async makeApiRequest<T>(
-    endpoint: string, 
+    endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     try {
       const url = `${API_BASE_URL}${endpoint}`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for story generation
-      
+
       const response = await fetch(url, {
         headers: {
           'Content-Type': 'application/json',
@@ -33,7 +34,7 @@ class StoryGenerationService {
         signal: controller.signal,
         ...options,
       });
-      
+
       clearTimeout(timeoutId);
 
       if (!response.ok) {
@@ -44,9 +45,9 @@ class StoryGenerationService {
       return { success: true, data };
     } catch (error) {
       storyLogger.error(error, { endpoint, options });
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Network request failed' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Network request failed'
       };
     }
   }
@@ -127,12 +128,12 @@ class StoryGenerationService {
   }
 
   private async generateWithRetry(
-    prompt: string, 
+    prompt: string,
     options: StoryGenerationOptions = {}
   ): Promise<string> {
     const { maxRetries = 3, temperature = 0.7, maxTokens = 1000 } = options;
 
-    storyLogger.generating({ 
+    storyLogger.generating({
       promptLength: prompt.length,
       maxRetries,
       temperature,
@@ -171,16 +172,16 @@ class StoryGenerationService {
       throw new Error(response.error || 'Story generation failed at line 168');
     }
 
-    storyLogger.complete({ 
+    storyLogger.complete({
       backend: 'laravel',
       hasContent: !!storyText
     });
-    
+
     return storyText;
   }
 
   async generateStoryFromTranscript(
-    transcript: string, 
+    transcript: string,
     options: StoryGenerationOptions = {}
   ): Promise<StoryGenerationResult> {
     if (!transcript?.trim()) {
@@ -207,7 +208,7 @@ class StoryGenerationService {
       };
     } catch (error) {
       storyLogger.error(error, { transcript: transcript.substring(0, 100) });
-      
+
       return {
         story: {
           id: this.generateStoryId(),
@@ -223,12 +224,12 @@ class StoryGenerationService {
   }
 
   async generateStoryAutomatically(
-    transcript: string, 
+    transcript: string,
     options: StoryGenerationOptions = {},
     onProgress?: (message: string) => void
   ): Promise<StoryGenerationResult> {
     onProgress?.("Creating your story...");
-    
+
     try {
       // Enhanced generation with progress updates
       const result = await this.generateStoryFromTranscript(transcript, {
@@ -236,29 +237,29 @@ class StoryGenerationService {
         maxRetries: 3,
         temperature: 0.7
       });
-      
+
       if (result.success) {
         onProgress?.("Story created successfully!");
         return result;
       } else {
         // If generation failed, try with fallback options
         onProgress?.("Trying with different settings...");
-        
+
         const fallbackResult = await this.generateStoryFromTranscript(transcript, {
           ...options,
           maxRetries: 2,
           temperature: 0.5,
           maxTokens: 800
         });
-        
+
         return fallbackResult;
       }
     } catch (error) {
-      storyLogger.error(error, { 
+      storyLogger.error(error, {
         transcript: transcript.substring(0, 100),
         action: 'automatic_generation'
       });
-      
+
       return {
         story: {
           id: this.generateStoryId(),
@@ -292,11 +293,11 @@ class StoryGenerationService {
   async getAvailableModels(): Promise<string[]> {
     try {
       const response = await this.makeApiRequest<{ models: string[] }>('/api/stories/models');
-      
+
       if (response.success && response.data) {
         return response.data.models;
       }
-      
+
       // Fallback models if backend fails
       return ["openai/gpt-oss-20b"];
     } catch (error) {
