@@ -12,7 +12,7 @@ export default function HomeScreen() {
       <View style={s.container}>
         <Text style={s.title}>StoryWriter</Text>
         <Text style={s.subtitle}>Create amazing stories with your voice!</Text>
-
+        <Text>This is the app/(tabs)/home.tsx</Text>
         <View style={s.buttonContainer}></View>
 
         <Link href="/" asChild>
