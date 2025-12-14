@@ -1,7 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router'; // <--- 1. Import useRouter, useSegments
 import * as SplashScreen from 'expo-splash-screen';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect } from 'react';
@@ -13,31 +13,24 @@ import BackendConnectivityService from '@/src/utils/backendConnectivity';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
 export {
-  // Catch any errors thrown by the Layout component.
   ErrorBoundary,
 } from 'expo-router';
 
-export const unstable_settings = {
-  initialRouteName: '(auth)', // Changed to point to your likely starting group
-};
+// Delete the unstable_settings; the useEffect below handles this better
+// export const unstable_settings = { ... }; 
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 void SplashScreen.preventAutoHideAsync();
 
-// 1. THE OUTER COMPONENT
-// Its ONLY job is to load fonts and wrap the app in the AuthProvider.
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
 
-  // Handle Font Errors
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
-  // Hide Splash Screen once fonts are loaded
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
@@ -48,7 +41,6 @@ export default function RootLayout() {
     return null;
   }
 
-  // CRITICAL FIX: The AuthProvider wraps the inner component
   return (
     <AuthProvider>
       <RootLayoutNav />
@@ -56,22 +48,38 @@ export default function RootLayout() {
   );
 }
 
-// 2. THE INNER COMPONENT
-// This component is INSIDE the Provider, so useAuth() works here.
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const { isAuthenticated, loading } = useAuth(); // Now safe to use!
+  const { isAuthenticated, loading } = useAuth();
 
-  // Run your Side Effects (Orientation, Connectivity) here
+  // 2. SETUP THE TRAFFIC COP HOOKS
+  const segments = useSegments();
+  const router = useRouter();
+
   useEffect(() => {
     if (Platform.OS !== 'web') {
       void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     }
-    // Test backend connectivity
     void BackendConnectivityService.testConnection();
   }, []);
 
-  // Show a spinner while checking if user is logged in
+  // 3. THE REDIRECT LOGIC (The "Integration" you asked for)
+  useEffect(() => {
+    if (loading) return; // Don't do anything while checking session
+
+    const inAuthGroup = segments[0] === '(auth)';
+
+    if (!isAuthenticated && !inAuthGroup) {
+      // User is NOT logged in, but is trying to access app screens (or root /)
+      // Redirect them to the sign-in page
+      router.replace('/(auth)/login');
+    } else if (isAuthenticated && inAuthGroup) {
+      // User IS logged in, but is on the login page
+      // Redirect them to the tabs
+      router.replace('/(tabs)/home');
+    }
+  }, [isAuthenticated, segments, loading]);
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -82,20 +90,15 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      {/* 4. CLEANER STACK
+         Don't conditionally render the screens here. 
+         Let the useEffect above handle the security. 
+         This prevents "Route not found" errors during the transition.
+      */}
       <Stack screenOptions={{ headerShown: false }}>
-
-        {/* CONDITIONALLY RENDER GROUPS */}
-        {isAuthenticated ? (
-          // If logged in, only show the App/Tabs
-          <Stack.Screen name="(app)" />
-        ) : (
-          // If logged out, only show the Auth flow
-          <Stack.Screen name="(auth)" />
-        )}
-
-        {/* The modal is available globally */}
+        <Stack.Screen name="(app)" />
+        <Stack.Screen name="(auth)" />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-
       </Stack>
     </ThemeProvider>
   );
