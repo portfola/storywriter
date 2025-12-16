@@ -13,7 +13,7 @@ const client = axios.create({ baseURL });
 client.interceptors.request.use(async (config) => {
     let token;
     if (Platform.OS === 'web') {
-        token = localStorage.getItem('userToken'); // Simple storage for Web
+        token = window.localStorage.getItem('userToken'); // Simple storage for Web
     } else {
         token = await SecureStore.getItemAsync('userToken'); // Secure storage for Mobile
     }
