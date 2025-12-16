@@ -78,7 +78,8 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
     });
     
     pendingFlushRef.current = false;
-    handleEndConversation(finalTranscript);
+    void handleEndConversation(finalTranscript);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Cleanup on unmount and reset messages when starting new conversation
@@ -150,6 +151,56 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
         },
         
         onMessage: (message: ConversationMessage) => {
+          // Handle audio messages from ElevenLabs
+          if (message.type === 'audio' && (message.audio || message.data)) {
+            try {
+              let audioArray: Uint8Array;
+              
+              if (message.audio) {
+                // Base64 encoded audio data
+                const audioData = atob(message.audio);
+                audioArray = new Uint8Array(audioData.length);
+                for (let i = 0; i < audioData.length; i++) {
+                  audioArray[i] = audioData.charCodeAt(i);
+                }
+              } else if (message.data instanceof ArrayBuffer) {
+                // Binary audio data
+                audioArray = new Uint8Array(message.data);
+              } else if (typeof message.data === 'string') {
+                // Base64 data field
+                const audioData = atob(message.data);
+                audioArray = new Uint8Array(audioData.length);
+                for (let i = 0; i < audioData.length; i++) {
+                  audioArray[i] = audioData.charCodeAt(i);
+                }
+              } else {
+                throw new Error('Unsupported audio data format');
+              }
+              
+              const audioBlob = new Blob([audioArray], { type: 'audio/mpeg' });
+              const audioUrl = URL.createObjectURL(audioBlob);
+              
+              const audio = new Audio(audioUrl);
+              audio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+              };
+              audio.onerror = (e) => {
+                logger.error(LogCategory.CONVERSATION, 'Audio playback error', { error: e });
+                URL.revokeObjectURL(audioUrl);
+              };
+              
+              audio.play().catch(error => {
+                logger.error(LogCategory.CONVERSATION, 'Failed to play audio', { error });
+              });
+              
+              logger.debug(LogCategory.CONVERSATION, 'Playing audio chunk', { 
+                audioSize: audioArray.length
+              });
+            } catch (error) {
+              logger.error(LogCategory.CONVERSATION, 'Failed to process audio message', { error });
+            }
+          }
+          
           // Capture messages for real transcript generation
           if (message.source && message.message && message.message.trim()) {
             const role = message.source === 'user' ? 'user' : 'agent';
@@ -202,7 +253,10 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
             logger.debug(LogCategory.CONVERSATION, 'Received message', {
               messageType: message.type,
               source: message.source,
-              hasContent: !!message.message
+              hasContent: !!message.message,
+              hasAudio: !!message.audio,
+              hasData: !!message.data,
+              keys: Object.keys(message)
             });
           }
         },

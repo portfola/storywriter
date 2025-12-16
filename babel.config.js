@@ -13,8 +13,7 @@ module.exports = function(api) {
         },
       }],
 
-      'module:react-native-dotenv', // ✅ Environment variables
-      'expo-router/babel'           // ✅ Required for expo-router
+      'module:react-native-dotenv' // ✅ Environment variables
     ],
   };
 };

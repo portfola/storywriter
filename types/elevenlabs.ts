@@ -150,6 +150,9 @@ export interface ConversationMessage {
     parameters: Record<string, any>;
   };
   
+  // Audio data
+  audio?: string; // Base64 encoded audio data
+  
   // Fallback text fields
   text?: string;
   content?: string;

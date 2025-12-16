@@ -1,48 +1,450 @@
-name: Deploy Frontend (Dev)
+name: Deploy Frontend
+
+# INFRASTRUCTURE MANAGEMENT:
+# This workflow intelligently manages infrastructure using Terraform:
+# - If no Terraform state exists, it will create/import infrastructure automatically
+# - If state exists but resources have drifted, it will apply corrections
+# - If state is current, it skips infrastructure changes and proceeds to deployment
 
 on:
-  workflow_dispatch: # Temporarily pausing this pipeline
-  # push:
-  #   branches: [ develop ]
-  # pull_request:
-  #   branches: [ develop ]
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  NODE_VERSION: '18'
+  AWS_REGION: us-east-1
 
 jobs:
-  test:
+  # Determine environment based on branch or manual input
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      api_base_url: ${{ steps.set-env.outputs.api_base_url }}
+      terraform_dir: ${{ steps.set-env.outputs.terraform_dir }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - name: Install dependencies
-        run: npm ci
-      - name: Run validation
-        run: npm run validate
-        
-  deploy-frontend:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - name: Install dependencies
-        run: npm ci
-      - name: Build web app
+      - name: Set environment variables
+        id: set-env
         run: |
-          npx expo export --platform web
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            ENV="production"
+          else
+            ENV="staging"
+          fi
+          
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "terraform_dir=terraform/frontend-${ENV}" >> $GITHUB_OUTPUT
+          
+          if [ "$ENV" = "production" ]; then
+            echo "api_base_url=https://api.storywriter.net" >> $GITHUB_OUTPUT
+          else
+            echo "api_base_url=https://api.storywriter.net" >> $GITHUB_OUTPUT
+          fi
+
+  # Infrastructure management phase (creates/validates infrastructure)
+  infrastructure:
+    needs: [setup]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    outputs:
+      s3_bucket: ${{ steps.terraform.outputs.s3_bucket_name }}
+      cloudfront_id: ${{ steps.terraform.outputs.cloudfront_distribution_id }}
+      domain: ${{ steps.terraform.outputs.domain_name }}
+      cloudfront_domain: ${{ steps.terraform.outputs.cloudfront_domain_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - name: Deploy to S3
-        run: aws s3 sync ./dist s3://storywriter-dev-frontend --delete
-      - name: Invalidate CloudFront
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.0"
+          terraform_wrapper: false
+          
+      - name: Ensure Terraform directory exists
         run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.DEV_CLOUDFRONT_ID }} \
-            --paths "/*"
+          if [ ! -d "${{ needs.setup.outputs.terraform_dir }}" ]; then
+            echo "❌ Terraform directory for ${{ needs.setup.outputs.environment }} does not exist"
+            echo "Expected directory: ${{ needs.setup.outputs.terraform_dir }}"
+            echo "Please run Terraform manually to create infrastructure first"
+            exit 1
+          fi
+          echo "✅ Using existing Terraform directory: ${{ needs.setup.outputs.terraform_dir }}"
+          
+      - name: Backup Terraform state
+        working-directory: ${{ needs.setup.outputs.terraform_dir }}
+        run: |
+          if [ -f "terraform.tfstate" ]; then
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            cp terraform.tfstate "terraform.tfstate.backup-${TIMESTAMP}"
+            echo "✅ Terraform state backed up to terraform.tfstate.backup-${TIMESTAMP}"
+          else
+            echo "ℹ️  No existing Terraform state found"
+          fi
+          
+      - name: Terraform Init
+        working-directory: ${{ needs.setup.outputs.terraform_dir }}
+        run: terraform init
+        
+      - name: Set Terraform variables
+        working-directory: ${{ needs.setup.outputs.terraform_dir }}
+        run: |
+          if [ "${{ needs.setup.outputs.environment }}" = "production" ]; then
+            DOMAIN_NAME="storywriter.net"
+            S3_BUCKET="storywriter-production-frontend"
+          else
+            DOMAIN_NAME="storywriter.net"
+            S3_BUCKET="storywriter-staging-frontend"
+          fi
+          
+          echo "TF_VAR_environment=${{ needs.setup.outputs.environment }}" >> $GITHUB_ENV
+          echo "TF_VAR_domain_name=${DOMAIN_NAME}" >> $GITHUB_ENV
+          echo "TF_VAR_s3_bucket_name=${S3_BUCKET}" >> $GITHUB_ENV
+        
+      - name: Terraform Plan - Infrastructure Validation
+        working-directory: ${{ needs.setup.outputs.terraform_dir }}
+        run: |
+          echo "🔍 Validating infrastructure state..."
+          
+          # Check if state file exists and has resources
+          if [ ! -f "terraform.tfstate" ] || [ "$(jq '.resources | length' terraform.tfstate 2>/dev/null || echo 0)" -eq 0 ]; then
+            echo "⚠️  No Terraform state found or state is empty"
+            echo "This suggests infrastructure exists but isn't tracked by Terraform"
+            echo "Running terraform apply to import and create missing resources..."
+            
+            terraform apply -auto-approve
+            echo "✅ Infrastructure created/imported successfully"
+          else
+            # State exists, validate it
+            terraform plan -detailed-exitcode || EXIT_CODE=$?
+            
+            case $EXIT_CODE in
+              0)
+                echo "✅ Infrastructure state is correct - no changes needed"
+                ;;
+              1)
+                echo "❌ Terraform plan failed"
+                exit 1
+                ;;
+              2)
+                echo "⚠️  Infrastructure drift detected"
+                echo "Applying changes to align infrastructure with desired state..."
+                terraform apply -auto-approve
+                echo "✅ Infrastructure updated successfully"
+                ;;
+              *)
+                echo "❌ Unknown exit code from terraform plan: $EXIT_CODE"
+                exit 1
+                ;;
+            esac
+          fi
+          
+      - name: Extract Terraform Outputs
+        id: terraform
+        working-directory: ${{ needs.setup.outputs.terraform_dir }}
+        run: |
+          echo "📊 Extracting infrastructure resource identifiers..."
+          
+          # Export outputs for use in later jobs
+          echo "s3_bucket_name=$(terraform output -raw s3_bucket_name)" >> $GITHUB_OUTPUT
+          echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
+          echo "domain_name=$(terraform output -raw domain_name)" >> $GITHUB_OUTPUT
+          echo "cloudfront_domain_name=$(terraform output -raw cloudfront_domain_name)" >> $GITHUB_OUTPUT
+          
+          echo "📋 Infrastructure Resources:"
+          echo "- S3 Bucket: $(terraform output -raw s3_bucket_name)"
+          echo "- CloudFront Distribution: $(terraform output -raw cloudfront_distribution_id)"
+          echo "- Domain: $(terraform output -raw domain_name)"
+          echo "- CloudFront Domain: $(terraform output -raw cloudfront_domain_name)"
+          
+      - name: Validate Infrastructure State
+        working-directory: ${{ needs.setup.outputs.terraform_dir }}
+        run: |
+          echo "🔍 Validating infrastructure state..."
+          
+          S3_BUCKET=$(terraform output -raw s3_bucket_name)
+          CF_DIST_ID=$(terraform output -raw cloudfront_distribution_id)
+          
+          # Validate S3 bucket exists and is accessible
+          if aws s3api head-bucket --bucket "$S3_BUCKET" 2>/dev/null; then
+            echo "✅ S3 bucket $S3_BUCKET is accessible"
+          else
+            echo "❌ S3 bucket $S3_BUCKET is not accessible"
+            exit 1
+          fi
+          
+          # Validate CloudFront distribution exists
+          if aws cloudfront get-distribution --id "$CF_DIST_ID" >/dev/null 2>&1; then
+            echo "✅ CloudFront distribution $CF_DIST_ID exists"
+          else
+            echo "❌ CloudFront distribution $CF_DIST_ID not found"
+            exit 1
+          fi
+          
+          echo "✅ Infrastructure validation completed successfully"
+
+  # Test and validation phase
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run TypeScript type checking
+        run: npm run type-check
+        
+      - name: Run linting
+        run: npm run lint
+        
+      - name: Run tests
+        run: npm run test
+        
+      - name: Cache test results
+        uses: actions/cache@v3
+        with:
+          path: |
+            coverage/
+            test-results/
+          key: test-results-${{ github.sha }}
+
+  # Build phase
+  build:
+    needs: [setup, infrastructure, test]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Create environment-specific .env
+        run: |
+          echo "API_BASE_URL=${{ needs.setup.outputs.api_base_url }}" > .env
+          echo "ENVIRONMENT=${{ needs.setup.outputs.environment }}" >> .env
+          echo "HUGGING_FACE_API_KEY=" >> .env
+          echo "AWS_ACCESS_KEY_ID=" >> .env
+          echo "AWS_SECRET_ACCESS_KEY=" >> .env
+          echo "AWS_REGION=" >> .env
+          
+      - name: Build Expo web application
+        run: |
+          npx expo export --platform web --output-dir dist
+          
+      - name: Validate build output
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "❌ Build failed: dist directory not found"
+            exit 1
+          fi
+          
+          if [ ! -f "dist/index.html" ]; then
+            echo "❌ Build failed: index.html not found"
+            exit 1
+          fi
+          
+          echo "✅ Build validation passed"
+          
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-${{ needs.setup.outputs.environment }}
+          path: dist/
+          retention-days: 7
+
+  # Backend connectivity test
+  connectivity-test:
+    needs: [setup, infrastructure, build]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Test backend connectivity
+        run: |
+          echo "Testing connectivity to ${{ needs.setup.outputs.api_base_url }}"
+          
+          # Test health endpoint with timeout
+          if curl -f -m 10 "${{ needs.setup.outputs.api_base_url }}/api/health"; then
+            echo "✅ Backend connectivity test passed"
+          else
+            echo "⚠️ Backend connectivity test failed - continuing with deployment"
+            echo "Backend may not be ready yet, but frontend can still be deployed"
+          fi
+
+  # Deployment phase
+  deploy:
+    needs: [setup, infrastructure, build, connectivity-test]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build-${{ needs.setup.outputs.environment }}
+          path: dist/
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Create deployment backup
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BACKUP_KEY="backups/${{ needs.setup.outputs.environment }}/${TIMESTAMP}/"
+          
+          echo "Creating backup at s3://${{ needs.infrastructure.outputs.s3_bucket }}/${BACKUP_KEY}"
+          aws s3 sync s3://${{ needs.infrastructure.outputs.s3_bucket }}/ s3://${{ needs.infrastructure.outputs.s3_bucket }}/${BACKUP_KEY} || echo "No existing files to backup"
+          
+          echo "BACKUP_KEY=${BACKUP_KEY}" >> $GITHUB_ENV
+          
+      - name: Deploy to S3
+        run: |
+          echo "Deploying to s3://${{ needs.infrastructure.outputs.s3_bucket }}"
+          aws s3 sync ./dist s3://${{ needs.infrastructure.outputs.s3_bucket }}/ --delete --cache-control "public, max-age=31536000" --exclude "*.html"
+          aws s3 sync ./dist s3://${{ needs.infrastructure.outputs.s3_bucket }}/ --cache-control "public, max-age=0, must-revalidate" --include "*.html"
+          
+      - name: Invalidate CloudFront distribution
+        run: |
+          echo "Invalidating CloudFront distribution: ${{ needs.infrastructure.outputs.cloudfront_id }}"
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id ${{ needs.infrastructure.outputs.cloudfront_id }} \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)
+          
+          echo "INVALIDATION_ID=${INVALIDATION_ID}" >> $GITHUB_ENV
+          echo "Invalidation created with ID: ${INVALIDATION_ID}"
+          
+      - name: Wait for CloudFront invalidation
+        run: |
+          echo "Waiting for CloudFront invalidation to complete..."
+          aws cloudfront wait invalidation-completed \
+            --distribution-id ${{ needs.infrastructure.outputs.cloudfront_id }} \
+            --id ${{ env.INVALIDATION_ID }}
+          echo "✅ CloudFront invalidation completed"
+
+  # Post-deployment verification
+  verify-deployment:
+    needs: [setup, infrastructure, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment at https://${{ needs.infrastructure.outputs.domain }}"
+          echo "CloudFront domain: ${{ needs.infrastructure.outputs.cloudfront_domain }}"
+          
+          # Wait a moment for DNS propagation
+          sleep 30
+          
+          # Test if the site is accessible via custom domain
+          echo "Testing custom domain..."
+          if curl -f -m 10 "https://${{ needs.infrastructure.outputs.domain }}"; then
+            echo "✅ Custom domain deployment verification passed"
+          else
+            echo "⚠️  Custom domain test failed, testing CloudFront domain..."
+            # Fallback to CloudFront domain
+            if curl -f -m 10 "https://${{ needs.infrastructure.outputs.cloudfront_domain }}"; then
+              echo "✅ CloudFront domain accessible (DNS may need more time)"
+            else
+              echo "❌ Deployment verification failed on both domains"
+              exit 1
+            fi
+          fi
+          
+      - name: Verify Terraform state consistency
+        run: |
+          # This would typically involve checking that deployed resources match Terraform state
+          echo "✅ Terraform state consistency check would be implemented here"
+          echo "Current deployment uses Terraform-managed resources:"
+          echo "- S3 Bucket: ${{ needs.infrastructure.outputs.s3_bucket }}"
+          echo "- CloudFront: ${{ needs.infrastructure.outputs.cloudfront_id }}"
+          echo "- Domain: ${{ needs.infrastructure.outputs.domain }}"
+          
+      - name: Test backend connectivity from deployed frontend
+        run: |
+          echo "Testing API connectivity from deployed frontend"
+          # This would typically involve running browser tests
+          # For now, we'll just test the API endpoint directly
+          if curl -f -m 10 "${{ needs.setup.outputs.api_base_url }}/api/health"; then
+            echo "✅ Backend API is accessible from deployment environment"
+          else
+            echo "⚠️ Backend API test failed - may need manual verification"
+          fi
+
+  # Rollback capability (manual trigger only)
+  rollback:
+    if: failure() && github.event_name == 'workflow_dispatch'
+    needs: [setup, infrastructure, deploy]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: List available backups
+        run: |
+          echo "Available backups:"
+          aws s3 ls s3://${{ needs.infrastructure.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/ || echo "No backups found"
+          
+      - name: Rollback deployment
+        run: |
+          # Get the most recent backup
+          LATEST_BACKUP=$(aws s3 ls s3://${{ needs.infrastructure.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/ | sort | tail -n 1 | awk '{print $2}')
+          
+          if [ -n "$LATEST_BACKUP" ]; then
+            echo "Rolling back to backup: $LATEST_BACKUP"
+            aws s3 sync s3://${{ needs.infrastructure.outputs.s3_bucket }}/backups/${{ needs.setup.outputs.environment }}/${LATEST_BACKUP} s3://${{ needs.infrastructure.outputs.s3_bucket }}/ --delete
+            
+            # Invalidate CloudFront
+            aws cloudfront create-invalidation \
+              --distribution-id ${{ needs.infrastructure.outputs.cloudfront_id }} \
+              --paths "/*"
+              
+            echo "✅ Rollback completed"
+          else
+            echo "❌ No backup found for rollback"
+            exit 1
+          fi

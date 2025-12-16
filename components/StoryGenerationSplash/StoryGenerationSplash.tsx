@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, Animated, Easing, Platform } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
 
@@ -20,7 +20,7 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
   // Web compatibility: use native driver only on mobile platforms
   const useNativeDriver = Platform.OS !== 'web';
 
-  const loadingMessages = [
+  const loadingMessages = useMemo(() => [
     {
       text: "Creating your story...",
       emoji: "✨",
@@ -36,7 +36,7 @@ const StoryGenerationSplash: React.FC<StoryGenerationSplashProps> = ({
       emoji: "🌟",
       duration: 2000
     }
-  ];
+  ], []);
 
   const childFriendlyErrorMessages = [
     "Oops! Our story machine needs a quick break. Let's try again! 🔧",
@@ -320,10 +320,7 @@ const styles = {
     paddingVertical: 15,
     borderRadius: 25,
     elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    boxShadow: '0 2px 3px rgba(0, 0, 0, 0.1)',
   },
   retryButtonText: {
     color: 'white',

@@ -1,9 +1,35 @@
 require('dotenv').config();
 
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const IS_STAGING = process.env.NODE_ENV === 'staging' || process.env.EXPO_ENV === 'staging';
+const IS_DEVELOPMENT = !IS_PRODUCTION && !IS_STAGING;
+
+
+const getApiBaseUrl = () => {
+  // Explicit override from environment variable
+  if (process.env.API_BASE_URL) {
+    return process.env.API_BASE_URL;
+  }
+
+  // Environment-based defaults
+  const env = process.env.NODE_ENV || process.env.EXPO_ENV || 'development';
+
+  switch (env) {
+    case 'production':
+      return 'https://api.storywriter.net';
+    case 'staging':
+      return 'https://api.storywriter.net';
+    case 'development':
+    default:
+      // return 'http://localhost';
+      return 'http://127.0.0.1:8000';
+  }
+};
+
 export default ({ config }) => ({
-  ...config, 
+  ...config,
   expo: {
-    name: "StoryWriter",
+    name: IS_PRODUCTION ? 'StoryWriter' : IS_STAGING ? 'StoryWriter (Staging)' : 'StoryWriter (Dev)',
     slug: "storywriter",
     version: "0.5.0",
     sdkVersion: "52.0.0",
@@ -20,7 +46,9 @@ export default ({ config }) => ({
     web: {
       "favicon": "./assets/images/favicon.png",
       "output": "static",
-      "publicPath": "/storywriter/"
+      "build": {
+        "publicPath": "/storywriter/"
+      },
     },
     ios: {
       supportsTablet: true,
@@ -44,22 +72,21 @@ export default ({ config }) => ({
       orientation: "landscape"  // Changed from screenOrientation
     },
     plugins: [
-      "expo-dev-client"
+      "expo-dev-client",
+      "expo-secure-store"
     ],
     extra: {
-      // Primary AI Services (Currently Active)
-      TOGETHER_API_KEY: process.env.TOGETHER_API_KEY,
-      ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY,
-      
+      // Backend Integration
+      API_BASE_URL: process.env.API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost' : 'https://api.storywriter.net'),
+      apiBaseUrl: getApiBaseUrl(),
+      environment: IS_PRODUCTION ? 'production' : IS_STAGING ? 'staging' : 'development',
+
       // Alternative AI Services (Available for Future Use)
       HUGGING_FACE_API_KEY: process.env.HUGGING_FACE_API_KEY,
       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
       AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
       AWS_REGION: process.env.AWS_REGION,
-      
-      // Backend Integration (Optional)
-      BACKEND_URL: process.env.BACKEND_URL,
-      
+
       eas: {
         projectId: "ddc93476-3b8d-4b46-8ffa-de979a17a116"
       }
