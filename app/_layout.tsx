@@ -1,27 +1,24 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Slot } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router'; // <--- 1. Import useRouter, useSegments
 import * as SplashScreen from 'expo-splash-screen';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View, ActivityIndicator } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import BackendConnectivityService from '@/src/utils/backendConnectivity';
+import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
 export {
-  // Catch any errors thrown by the Layout component.
   ErrorBoundary,
 } from 'expo-router';
 
-export const unstable_settings = {
-  // Make story screen the main entry point.
-  initialRouteName: 'index',
-};
+// Delete the unstable_settings; the useEffect below handles this better
+// export const unstable_settings = { ... }; 
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -30,41 +27,79 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
   useEffect(() => {
     if (loaded) {
-      void SplashScreen.hideAsync();
+      SplashScreen.hideAsync();
     }
   }, [loaded]);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web') {
-      // Allow both landscape orientations for better usability
-      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-    }
-    
-    // Test backend connectivity on startup
-    void BackendConnectivityService.testConnection();
-  }, []);
 
   if (!loaded) {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <AuthProvider>
+      <RootLayoutNav />
+    </AuthProvider>
+  );
 }
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const { isAuthenticated, loading } = useAuth();
+
+  // 2. SETUP THE TRAFFIC COP HOOKS
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    }
+    void BackendConnectivityService.testConnection();
+  }, []);
+
+  // 3. THE REDIRECT LOGIC (The "Integration" you asked for)
+  useEffect(() => {
+    if (loading) return; // Don't do anything while checking session
+
+    const inAuthGroup = segments[0] === '(auth)';
+
+    if (!isAuthenticated && !inAuthGroup) {
+      // User is NOT logged in, but is trying to access app screens (or root /)
+      // Redirect them to the sign-in page
+      router.replace('/(auth)/login');
+    } else if (isAuthenticated && inAuthGroup) {
+      // User IS logged in, but is on the login page
+      // Redirect them to the tabs
+      router.replace('/(tabs)/home');
+    }
+  }, [isAuthenticated, segments, loading]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Slot />
+      {/* 4. CLEANER STACK
+         Don't conditionally render the screens here. 
+         Let the useEffect above handle the security. 
+         This prevents "Route not found" errors during the transition.
+      */}
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(app)" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+      </Stack>
     </ThemeProvider>
   );
-
 }
