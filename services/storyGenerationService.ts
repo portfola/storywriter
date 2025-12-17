@@ -11,11 +11,7 @@ import { storyLogger } from '@/src/utils/logger';
 
 // MAKE SURE THIS CHANGES BACK BEFORE PUSHING ANYTHING LIVE
 const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
-<<<<<<< HEAD
-//const API_BASE_URL = 'http://127.0.0.1:8000';
-=======
 // const API_BASE_URL = 'http://127.0.0.1:8000';  
->>>>>>> 9173e54b075f0b4ae33dd16e0c4266866be262c5
 
 const STORY_PROMPT_TEMPLATE = `
 You are a professional children's book author. Using the following 
