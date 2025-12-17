@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setLoading(false);
             }
         };
-        loadUser();
+        loadUser().catch(console.error);
     }, []);
 
     // Updated to match your login.tsx: accepts (email, name, device_name)

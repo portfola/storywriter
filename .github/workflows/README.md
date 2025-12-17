@@ -4,7 +4,7 @@ This directory contains GitHub Actions workflows for deploying the StoryWriter f
 
 ## Workflows
 
-### 1. Deploy Frontend (`develop-frontend.yml`)
+### 1. Deploy Frontend (`deploy-frontend.yml`)
 
 Main deployment workflow that handles both staging and production deployments.
 

@@ -330,10 +330,10 @@ jobs:
         run: |
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           BACKUP_KEY="backups/${{ needs.setup.outputs.environment }}/${TIMESTAMP}/"
-          
+
           echo "Creating backup at s3://${{ needs.infrastructure.outputs.s3_bucket }}/${BACKUP_KEY}"
-          aws s3 sync s3://${{ needs.infrastructure.outputs.s3_bucket }}/ s3://${{ needs.infrastructure.outputs.s3_bucket }}/${BACKUP_KEY} || echo "No existing files to backup"
-          
+          aws s3 sync s3://${{ needs.infrastructure.outputs.s3_bucket }}/ s3://${{ needs.infrastructure.outputs.s3_bucket }}/${BACKUP_KEY} --exclude "backups/*" || echo "No existing files to backup"
+
           echo "BACKUP_KEY=${BACKUP_KEY}" >> $GITHUB_ENV
           
       - name: Deploy to S3
@@ -343,6 +343,7 @@ jobs:
           aws s3 sync ./dist s3://${{ needs.infrastructure.outputs.s3_bucket }}/ --cache-control "public, max-age=0, must-revalidate" --include "*.html"
           
       - name: Invalidate CloudFront distribution
+        id: invalidate
         run: |
           echo "Invalidating CloudFront distribution: ${{ needs.infrastructure.outputs.cloudfront_id }}"
           INVALIDATION_ID=$(aws cloudfront create-invalidation \
@@ -350,16 +351,16 @@ jobs:
             --paths "/*" \
             --query 'Invalidation.Id' \
             --output text)
-          
-          echo "INVALIDATION_ID=${INVALIDATION_ID}" >> $GITHUB_ENV
+
+          echo "invalidation_id=${INVALIDATION_ID}" >> $GITHUB_OUTPUT
           echo "Invalidation created with ID: ${INVALIDATION_ID}"
-          
+
       - name: Wait for CloudFront invalidation
         run: |
           echo "Waiting for CloudFront invalidation to complete..."
           aws cloudfront wait invalidation-completed \
             --distribution-id ${{ needs.infrastructure.outputs.cloudfront_id }} \
-            --id ${{ env.INVALIDATION_ID }}
+            --id ${{ steps.invalidate.outputs.invalidation_id }}
           echo "✅ CloudFront invalidation completed"
 
   # Post-deployment verification
