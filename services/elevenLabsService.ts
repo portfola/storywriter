@@ -14,9 +14,14 @@ import {
 } from '../types/elevenlabs';
 import { serviceLogger } from '@/src/utils/logger';
 
+import client from '@/src/api/client';
+
 // --- Configuration and Types ---
 
-const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
+//const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
+const API_BASE_URL = 'http://127.0.0.1:8000';
+// console.log(API_BASE_URL);
+
 const DEFAULT_TIMEOUT_MS = 30000; // 30 seconds
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5000; // 5 seconds
 
