@@ -14,8 +14,8 @@ import client from '@/src/api/client';
 
 
 // MAKE SURE THIS CHANGES BACK BEFORE PUSHING ANYTHING LIVE
-//const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
+//const API_BASE_URL = 'http://127.0.0.1:8000';
 
 const STORY_PROMPT_TEMPLATE = `
 You are a professional children's book author. Using the following 
