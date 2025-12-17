@@ -96,7 +96,7 @@ function RootLayoutNav() {
          This prevents "Route not found" errors during the transition.
       */}
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(app)" />
+        <Stack.Screen name="(tabs)" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>

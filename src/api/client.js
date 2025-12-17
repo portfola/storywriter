@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 // Use localhost for iOS simulator, specific IP for Android emulator, or your domain
 const baseURL = __DEV__
-    ? 'http://localhost:8000/api' // Or http://10.0.2.2:8000/api for Android
+    ? 'http://127.0.0.1:8000/api' // Or http://10.0.2.2:8000/api for Android
     : 'https://api.storywriter.net/api';
 
 const client = axios.create({ baseURL });
