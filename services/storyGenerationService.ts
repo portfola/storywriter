@@ -9,7 +9,24 @@ import { Story, StoryPage, StoryGenerationResult } from '../types/story';
 //     ? `http://${Constants.expoConfig.hostUri.split(':').shift()}:8000`
 //     : 'http://127.0.0.1:8000';
 
+
 const API_BASE_URL = 'http://127.0.0.1:8000';
+
+const STORY_PROMPT_TEMPLATE = `
+You are a professional children's book author. Using the following 
+conversation between a child and a story assistant, write a 5 - page 
+children's storybook. Each page should be 2–3 sentences. Include vivid 
+illustration details.Maintain consistent characters.End positively.
+
+    Conversation:
+[FULL_DIALOGUE]
+`;
+
+interface ApiResponse<T = any> {
+    success: boolean;
+    data?: T;
+    error?: string;
+}
 
 class StoryGenerationService {
 
