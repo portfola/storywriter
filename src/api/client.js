@@ -7,6 +7,8 @@ const baseURL = __DEV__
     ? 'http://127.0.0.1:8000/api' // Or http://10.0.2.2:8000/api for Android
     : 'https://api.storywriter.net/api';
 
+//const baseURL = 'http://127.0.0.1:8000/api';
+
 const client = axios.create({ baseURL });
 
 // Interceptor to add Token to every request
