@@ -5,9 +5,13 @@ import { Story, StoryPage, StoryGenerationResult } from '../types/story';
 
 // 1. Dynamic Base URL
 // Use localhost for iOS simulator, but allow overrides for physical devices
-const API_BASE_URL = Constants.expoConfig?.hostUri
-    ? `http://${Constants.expoConfig.hostUri.split(':').shift()}:8000`
-    : 'http://127.0.0.1:8000';
+// const API_BASE_URL = Constants.expoConfig?.hostUri
+//     ? `http://${Constants.expoConfig.hostUri.split(':').shift()}:8000`
+//     : 'http://127.0.0.1:8000';
+
+const API_BASE_URL = __DEV__
+    ? 'http://127.0.0.1:8000'              // Used during development
+    : 'https://api.storywriter.net';       // Used in production build
 
 
 // const API_BASE_URL = 'http://127.0.0.1:8000';
