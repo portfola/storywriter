@@ -16,13 +16,35 @@ const API_BASE_URL = __DEV__
 
 // const API_BASE_URL = 'http://127.0.0.1:8000';
 
-const STORY_PROMPT_TEMPLATE = `
-You are a professional children's book author. Using the following 
-conversation between a child and a story assistant, write a 5 - page 
-children's storybook. Each page should be 2–3 sentences. Include vivid 
-illustration details.Maintain consistent characters.End positively.
+// const STORY_PROMPT_TEMPLATE = `
+// You are a professional children's book author. Using the following 
+// conversation between a child and a story assistant, write a 5 - page 
+// children's storybook. Each page should be 4–5 sentences. Include vivid 
+// illustration details.Maintain consistent characters.End positively.
 
-    Conversation:
+//     Conversation:
+// [FULL_DIALOGUE]
+// `;
+
+const STORY_PROMPT_TEMPLATE = `
+You are a professional children's book author. sing the following 
+conversation between a child and a story assistant, write a 5-page story based on 
+the conversation below. 
+
+STRICT OUTPUT FORMAT:
+You must output at least 3 pages. separate each page with "---PAGE BREAK---".
+On each page, include an "Illustration:" line describing the scene.
+
+Example format:
+Page 1
+[Story text here...]
+Illustration: [Visual description]
+---PAGE BREAK---
+Page 2
+[Story text here...]
+...
+
+Conversation:
 [FULL_DIALOGUE]
 `;
 
@@ -77,6 +99,7 @@ class StoryGenerationService {
 
             // Laravel usually returns { data: { story: "..." } }
             // We normalize it here so the rest of the app gets clean data
+            console.log('The returned output: ' + json.data.story);
             return json.data || json;
 
         } catch (error: any) {
@@ -131,28 +154,92 @@ class StoryGenerationService {
     // ------------------------------------------------------------
     // 4. HELPER: PARSE TEXT TO STORY OBJECT
     // ------------------------------------------------------------
+    // private parseStoryText(text: string, transcript: string): Story {
+    //     // Extract Title (assumes "Title: Some Title" format)
+    //     const titleMatch = text.match(/^Title[:.]?\s*(.+)$/im);
+    //     const title = titleMatch ? titleMatch[1].trim() : 'New Story';
+
+    //     // Clean up the text
+    //     const cleanBody = text
+    //         .replace(/^Title[:.]?.+$/im, '') // Remove title line
+    //         .replace(/Page\s*\d+[:.]?/gi, '') // Remove "Page 1" labels
+    //         .trim();
+
+    //     // Single Page Structure (as requested in your previous code)
+    //     const pages: StoryPage[] = [{
+    //         pageNumber: 1,
+    //         content: cleanBody,
+    //         illustrationPrompt: "Illustration of the story"
+    //     }];
+
+    //     return {
+    //         id: `story_${Date.now()}`,
+    //         title,
+    //         pages,
+    //         transcript,
+    //         createdAt: new Date(),
+    //     };
+    // }
+
+    // ------------------------------------------------------------
+    // 4. HELPER: PARSE TEXT TO STORY OBJECT
+    // ------------------------------------------------------------
+
+    // ------------------------------------------------------------
+    // 4. HELPER: PARSE TEXT TO STORY OBJECT (Robust Regex Version)
+    // ------------------------------------------------------------
     private parseStoryText(text: string, transcript: string): Story {
-        // Extract Title (assumes "Title: Some Title" format)
+        // 1. Extract Title (if present, otherwise generic)
         const titleMatch = text.match(/^Title[:.]?\s*(.+)$/im);
-        const title = titleMatch ? titleMatch[1].trim() : 'New Story';
+        const title = titleMatch ? titleMatch[1].trim() : 'My Xmas Story';
 
-        // Clean up the text
-        const cleanBody = text
-            .replace(/^Title[:.]?.+$/im, '') // Remove title line
-            .replace(/Page\s*\d+[:.]?/gi, '') // Remove "Page 1" labels
-            .trim();
+        // 2. Clean the text
+        // Remove the Title line so it doesn't duplicate
+        let body = text.replace(/^Title[:.]?.+$/im, '').trim();
 
-        // Single Page Structure (as requested in your previous code)
-        const pages: StoryPage[] = [{
-            pageNumber: 1,
-            content: cleanBody,
-            illustrationPrompt: "Illustration of the story"
-        }];
+        // 3. SPLIT BY "Page X" MARKERS
+        // We look for "Page" followed by a number and a colon/dot (e.g., "Page 1:", "Page 2.")
+        // The filter(Boolean) removes empty chunks caused by the split
+        let rawPages = body.split(/Page\s*\d+[:.]?/i).filter(p => p.trim().length > 10);
+
+        // Fallback: If the regex didn't find any "Page X" markers, split by double newlines
+        if (rawPages.length < 2) {
+            rawPages = body.split(/\n\s*\n/).filter(p => p.length > 20);
+        }
+
+        const pages: StoryPage[] = rawPages.map((rawPage, index) => {
+            // A. Extract the Illustration Prompt (so we can hide it)
+            let illustrationPrompt = "Magical story scene";
+            const illMatch = rawPage.match(/Illustration[:.]?\s*(.+)/i);
+
+            if (illMatch) {
+                illustrationPrompt = illMatch[1].trim();
+            }
+
+            // B. Clean the Story Text
+            // Remove the "Illustration: ..." line from the visible text
+            const cleanContent = rawPage
+                .replace(/Illustration[:.]?.+/gi, '')
+                .trim();
+
+            // C. ADD DEMO IMAGES (Xmas Hack) 🎄
+            // Using picsum.photos for reliable, nice demo images
+            // We use the index to ensure different images for each page
+            const imageId = 10 + index;
+            const demoImageUrl = `https://picsum.photos/seed/${imageId}/800/600`;
+
+            return {
+                pageNumber: index + 1,
+                content: cleanContent,
+                illustrationPrompt: illustrationPrompt,
+                imageUrl: demoImageUrl
+            };
+        });
 
         return {
             id: `story_${Date.now()}`,
             title,
-            pages,
+            pages: pages.slice(0, 5), // Ensure we strictly return 5 pages max
             transcript,
             createdAt: new Date(),
         };

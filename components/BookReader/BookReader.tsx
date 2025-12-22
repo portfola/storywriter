@@ -33,6 +33,32 @@ const BookReader = () => {
     const flatListRef = useRef<FlatList>(null);
     const [currentIndex, setCurrentIndex] = useState(0);
 
+    // ... inside BookReader component ...
+
+    // Keyboard Support for Web
+    useEffect(() => {
+        if (Platform.OS === 'web') {
+            const handleKeyDown = (e: KeyboardEvent) => {
+                if (e.key === 'ArrowRight') {
+                    // We need the latest state, so we check the ref or just let the function handle it
+                    if (currentIndex < pages.length - 1) {
+                        flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
+                    }
+                }
+                if (e.key === 'ArrowLeft') {
+                    if (currentIndex > 0) {
+                        flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true });
+                    }
+                }
+            };
+
+            window.addEventListener('keydown', handleKeyDown);
+            return () => window.removeEventListener('keydown', handleKeyDown);
+        }
+    }, [currentIndex, pages.length]); // Re-bind when index changes so we have fresh state
+
+    // ... render ...
+
     // --- NAVIGATION LOGIC ---
     const goNext = () => {
         if (currentIndex < pages.length - 1) {
@@ -158,7 +184,7 @@ const styles = StyleSheet.create({
     },
     pageContent: {
         width: '100%',
-        maxWidth: 600, // Reads better on Desktop if we limit width
+        maxWidth: 800, // Reads better on Desktop if we limit width
         backgroundColor: '#FFF', // Make the page pop slightly
         borderRadius: 8,
         padding: 30,
