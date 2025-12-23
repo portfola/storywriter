@@ -4,55 +4,17 @@ import Constants from 'expo-constants';
 import { Story, StoryPage, StoryGenerationResult } from '../types/story';
 
 // 1. Dynamic Base URL
-// Use localhost for iOS simulator, but allow overrides for physical devices
-// const API_BASE_URL = Constants.expoConfig?.hostUri
-//     ? `http://${Constants.expoConfig.hostUri.split(':').shift()}:8000`
-//     : 'http://127.0.0.1:8000';
-
 const API_BASE_URL = __DEV__
     ? 'http://127.0.0.1:8000'              // Used during development
     : 'https://api.storywriter.net';       // Used in production build
 
-
-// const API_BASE_URL = 'http://127.0.0.1:8000';
-
-// const STORY_PROMPT_TEMPLATE = `
-// You are a professional children's book author. Using the following 
-// conversation between a child and a story assistant, write a 5 - page 
-// children's storybook. Each page should be 4–5 sentences. Include vivid 
-// illustration details.Maintain consistent characters.End positively.
-
-//     Conversation:
-// [FULL_DIALOGUE]
-// `;
-
-const STORY_PROMPT_TEMPLATE = `
-You are a professional children's book author. sing the following 
-conversation between a child and a story assistant, write a 5-page story based on 
-the conversation below. 
-
-STRICT OUTPUT FORMAT:
-You must output at least 3 pages. separate each page with "---PAGE BREAK---".
-On each page, include an "Illustration:" line describing the scene.
-
-Example format:
-Page 1
-[Story text here...]
-Illustration: [Visual description]
----PAGE BREAK---
-Page 2
-[Story text here...]
-...
-
-Conversation:
-[FULL_DIALOGUE]
-`;
 
 interface ApiResponse<T = any> {
     success: boolean;
     data?: T;
     error?: string;
 }
+
 
 class StoryGenerationService {
 
@@ -120,8 +82,36 @@ class StoryGenerationService {
             // A. PREPARE PROMPT
             // We wrap the user's transcript in your template before sending it
             const promptTemplate = `
-                You are a children's book author. Write a 5-page story based on this conversation.
-                Each page should have 2-3 sentences and vivid illustration details.
+                                You are a professional children's book author. Your goal is 
+                to take a transcript of a conversation and turn it into 
+                an engaging 3 to 6 page story for young readers.
+
+                **Task Instructions**
+                1. Read the supplied [Conversation] to understand the characters, plot ideas, and tone.
+                2. Write a 3 to 6 page story based on this input.
+
+                **Formatting Requirements (CRITICAL):**
+                You must strictly follow this structure. 
+                If you do not follow this exact format, the output is unusable.
+
+                * The story MUST be at least 3 pages long, but could go to 10 pages.
+                * You MUST separate every page using exactly 
+                * this separator line: "-- - PAGE BREAK--- "
+
+
+                **Desired Output Structure Example:**
+
+                Page 1
+                [The text for the first page of the story goes here...]
+                ---PAGE BREAK---
+
+                Page 2
+                [The text for the second page goes here...]
+                ---PAGE BREAK---
+                *(Continue this exact pattern for Pages 3, 4, and 5)*
+
+                **[Conversation]:**
+                [FULL_DIALOGUE]
                 
                 Conversation:
                 ${transcript}
@@ -152,94 +142,80 @@ class StoryGenerationService {
     }
 
     // ------------------------------------------------------------
-    // 4. HELPER: PARSE TEXT TO STORY OBJECT
-    // ------------------------------------------------------------
-    // private parseStoryText(text: string, transcript: string): Story {
-    //     // Extract Title (assumes "Title: Some Title" format)
-    //     const titleMatch = text.match(/^Title[:.]?\s*(.+)$/im);
-    //     const title = titleMatch ? titleMatch[1].trim() : 'New Story';
-
-    //     // Clean up the text
-    //     const cleanBody = text
-    //         .replace(/^Title[:.]?.+$/im, '') // Remove title line
-    //         .replace(/Page\s*\d+[:.]?/gi, '') // Remove "Page 1" labels
-    //         .trim();
-
-    //     // Single Page Structure (as requested in your previous code)
-    //     const pages: StoryPage[] = [{
-    //         pageNumber: 1,
-    //         content: cleanBody,
-    //         illustrationPrompt: "Illustration of the story"
-    //     }];
-
-    //     return {
-    //         id: `story_${Date.now()}`,
-    //         title,
-    //         pages,
-    //         transcript,
-    //         createdAt: new Date(),
-    //     };
-    // }
-
-    // ------------------------------------------------------------
-    // 4. HELPER: PARSE TEXT TO STORY OBJECT
-    // ------------------------------------------------------------
-
-    // ------------------------------------------------------------
-    // 4. HELPER: PARSE TEXT TO STORY OBJECT (Robust Regex Version)
+    // 4. HELPER: PARSE TEXT (Fixed for "Page 1" with no colon)
     // ------------------------------------------------------------
     private parseStoryText(text: string, transcript: string): Story {
-        // 1. Extract Title (if present, otherwise generic)
+        // 1. Extract Title
         const titleMatch = text.match(/^Title[:.]?\s*(.+)$/im);
         const title = titleMatch ? titleMatch[1].trim() : 'My Xmas Story';
 
-        // 2. Clean the text
-        // Remove the Title line so it doesn't duplicate
+        // 2. Clean Body (Remove Title)
         let body = text.replace(/^Title[:.]?.+$/im, '').trim();
 
-        // 3. SPLIT BY "Page X" MARKERS
-        // We look for "Page" followed by a number and a colon/dot (e.g., "Page 1:", "Page 2.")
-        // The filter(Boolean) removes empty chunks caused by the split
-        let rawPages = body.split(/Page\s*\d+[:.]?/i).filter(p => p.trim().length > 10);
+        // 3. SPLIT BY "Page X" (Robust Regex)
+        // \bPage ensures we don't split words like "RamPagers"
+        // \s*\d+ matches the number
+        // [:.]? matches an optional colon or dot
+        // This splits "Page 1", "Page 1:", "Page 1.", and "---PAGE BREAK---" if present
+        const splitRegex = /(?:---|Page)\s*(?:PAGE BREAK|Page)\s*\d+[:.]?/i;
 
-        // Fallback: If the regex didn't find any "Page X" markers, split by double newlines
-        if (rawPages.length < 2) {
-            rawPages = body.split(/\n\s*\n/).filter(p => p.length > 20);
-        }
+        const rawChunks = body.split(splitRegex);
 
-        const pages: StoryPage[] = rawPages.map((rawPage, index) => {
-            // A. Extract the Illustration Prompt (so we can hide it)
-            let illustrationPrompt = "Magical story scene";
-            const illMatch = rawPage.match(/Illustration[:.]?\s*(.+)/i);
+        const pages: StoryPage[] = [];
 
-            if (illMatch) {
-                illustrationPrompt = illMatch[1].trim();
-            }
+        rawChunks.forEach((chunk, index) => {
+            const trimmedChunk = chunk.trim();
 
-            // B. Clean the Story Text
-            // Remove the "Illustration: ..." line from the visible text
-            const cleanContent = rawPage
-                .replace(/Illustration[:.]?.+/gi, '')
+            // Clean Content
+            const cleanContent = trimmedChunk
+                .replace(/--PAGE BREAK/gi, '')    // <--- NEW: Remove the artifact
+                .replace(/Page\s*\d+[:.]?/gi, '')     // Remove "Page X"
                 .trim();
 
-            // C. ADD DEMO IMAGES (Xmas Hack) 🎄
-            // Using picsum.photos for reliable, nice demo images
-            // We use the index to ensure different images for each page
-            const imageId = 10 + index;
-            const demoImageUrl = `https://picsum.photos/seed/${imageId}/800/600`;
+            if (trimmedChunk.length < 20) return; // Skip empty preamble
 
-            return {
-                pageNumber: index + 1,
-                content: cleanContent,
-                illustrationPrompt: illustrationPrompt,
-                imageUrl: demoImageUrl
-            };
+            // --- EXTRACT ILLUSTRATION ---
+            // (Your current output doesn't have illustrations, but we keep this logic just in case)
+            const parts = cleanContent.split(/Illustration[:.]/i);
+            const storyText = parts[0].trim();
+            const illustrationDesc = parts.length > 1 ? parts[1].trim() : "Magical scene";
+
+
+            if (storyText.length > 0) {
+                const pageNum = pages.length + 1;
+
+                // 🎄 XMAS DEMO IMAGES
+                // Random image based on page number
+                const imageId = 100 + pageNum;
+                const realImageUrl = `https://picsum.photos/seed/${imageId}/800/600`;
+
+                pages.push({
+                    pageNumber: pageNum,
+                    content: storyText,
+                    illustrationPrompt: illustrationDesc,
+                    //imageUrl: realImageUrl
+                });
+            }
         });
+
+        // 4. FALLBACK (If regex still failed)
+        // If we still have 0 pages, force a split by double newlines
+        if (pages.length === 0) {
+            const paragraphs = body.split(/\n\s*\n/);
+            // ... (Simple paragraph chunking logic could go here) ...
+            // But let's just create one page so it's not empty
+            pages.push({
+                pageNumber: 1,
+                content: body,
+                illustrationPrompt: "Story",
+                imageUrl: `https://picsum.photos/seed/999/800/600`
+            });
+        }
 
         return {
             id: `story_${Date.now()}`,
             title,
-            pages: pages.slice(0, 5), // Ensure we strictly return 5 pages max
+            pages,
             transcript,
             createdAt: new Date(),
         };

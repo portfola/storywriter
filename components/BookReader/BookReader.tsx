@@ -1,169 +1,119 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
     StyleSheet,
-    FlatList,
-    Dimensions,
-    TouchableOpacity,
-    useWindowDimensions,
     Image,
-    Platform
+    TouchableOpacity,
+    Platform,
+    ScrollView
 } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
 
-// Kindle-like colors
 const THEME = {
-    paper: '#FAF9F6', // Off-white "Warm" background
-    text: '#2D2D2D',  // Soft black (easier on eyes)
-    accent: '#D35400', // Burnt orange for buttons
+    paper: '#FAF9F6',
+    text: '#2D2D2D',
+    accent: '#D35400',
 };
 
 const BookReader = () => {
     const { story } = useConversationStore();
 
-    // Use 'story.sections' if that's what your store populates, 
-    // or 'storyPages' depending on your recent refactor.
-    // Adapting to the store structure you showed earlier:
+    // Safety check: ensure we have pages
     const pages = story.sections && story.sections.length > 0
         ? story.sections
-        : [{ text: "No story content available yet.", imageUrl: null }];
+        : [{ text: "Loading story...", imageUrl: null }];
 
-    const { width: windowWidth } = useWindowDimensions();
-    const flatListRef = useRef<FlatList>(null);
     const [currentIndex, setCurrentIndex] = useState(0);
 
-    // ... inside BookReader component ...
-
-    // Keyboard Support for Web
+    // 1. KEYBOARD NAVIGATION
     useEffect(() => {
         if (Platform.OS === 'web') {
             const handleKeyDown = (e: KeyboardEvent) => {
-                if (e.key === 'ArrowRight') {
-                    // We need the latest state, so we check the ref or just let the function handle it
-                    if (currentIndex < pages.length - 1) {
-                        flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
-                    }
-                }
-                if (e.key === 'ArrowLeft') {
-                    if (currentIndex > 0) {
-                        flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true });
-                    }
-                }
+                if (e.key === 'ArrowRight') goNext();
+                if (e.key === 'ArrowLeft') goPrev();
             };
-
             window.addEventListener('keydown', handleKeyDown);
             return () => window.removeEventListener('keydown', handleKeyDown);
         }
-    }, [currentIndex, pages.length]); // Re-bind when index changes so we have fresh state
+    }, [currentIndex, pages.length]);
 
-    // ... render ...
-
-    // --- NAVIGATION LOGIC ---
+    // 2. NAVIGATION ACTIONS
     const goNext = () => {
         if (currentIndex < pages.length - 1) {
-            flatListRef.current?.scrollToIndex({
-                index: currentIndex + 1,
-                animated: true,
-            });
+            setCurrentIndex(prev => prev + 1);
         }
     };
 
     const goPrev = () => {
         if (currentIndex > 0) {
-            flatListRef.current?.scrollToIndex({
-                index: currentIndex - 1,
-                animated: true,
-            });
+            setCurrentIndex(prev => prev - 1);
         }
     };
 
-    // Sync index when user swipes manually
-    const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-        if (viewableItems.length > 0) {
-            setCurrentIndex(viewableItems[0].index ?? 0);
-        }
-    }).current;
-
-    // --- RENDER A SINGLE PAGE ---
-    const renderPage = ({ item, index }: { item: any, index: number }) => {
-        return (
-            <View style={[styles.pageContainer, { width: windowWidth }]}>
-                <View style={styles.pageContent}>
-
-                    {/* Header: Page Number */}
-                    <Text style={styles.pageNumber}>Page {index + 1} of {pages.length}</Text>
-
-                    {/* Optional Illustration */}
-                    {item.imageUrl && (
-                        <Image
-                            source={{ uri: item.imageUrl }}
-                            style={styles.illustration}
-                            resizeMode="contain"
-                        />
-                    )}
-
-                    {/* Story Text */}
-                    <View style={styles.textWrapper}>
-                        <Text style={styles.storyText}>
-                            {item.text}
-                        </Text>
-                    </View>
-
-                </View>
-            </View>
-        );
-    };
+    const currentPage = pages[currentIndex];
 
     return (
         <View style={styles.container}>
 
-            {/* THE BOOK (Horizontal List) */}
-            <FlatList
-                ref={flatListRef}
-                data={pages}
-                renderItem={renderPage}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                onViewableItemsChanged={onViewableItemsChanged}
-                viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
-                keyExtractor={(_, index) => index.toString()}
-                style={{ flex: 1 }}
-            />
+            {/* --- THE PAGE CONTENT --- */}
+            <View style={styles.pageWrapper}>
 
-            {/* FOOTER CONTROLS (Floating Overlay) */}
+                {/* Page Header */}
+                <Text style={styles.pageNumber}>
+                    Page {currentIndex + 1} of {pages.length}
+                </Text>
+
+                {/* Scrollable Content Area (In case text is long) */}
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                >
+                    {/* Illustration */}
+                    {currentPage.imageUrl && (
+                        <Image
+                            source={{ uri: currentPage.imageUrl }}
+                            style={styles.illustration}
+                            resizeMode="cover"
+                        />
+                    )}
+
+                    {/* Text */}
+                    <Text style={styles.storyText}>
+                        {currentPage.text || currentPage.content}
+                    </Text>
+                </ScrollView>
+            </View>
+
+            {/* --- FLOATING CONTROLS --- */}
             <View style={styles.controlsOverlay}>
 
-                {/* Previous Button (Hidden on first page) */}
+                {/* LEFT BUTTON */}
                 <TouchableOpacity
                     onPress={goPrev}
-                    style={[styles.navButton, { opacity: currentIndex === 0 ? 0 : 1 }]}
+                    style={[styles.navButton, currentIndex === 0 && styles.disabledBtn]}
                     disabled={currentIndex === 0}
                 >
-                    <Text style={styles.navText}>‹</Text>
+                    <Text style={styles.navArrow}>‹</Text>
                 </TouchableOpacity>
 
-                {/* Progress Dots */}
-                <View style={styles.paginationDots}>
+                {/* DOTS */}
+                <View style={styles.dotsContainer}>
                     {pages.map((_, i) => (
                         <View
                             key={i}
-                            style={[
-                                styles.dot,
-                                i === currentIndex && styles.dotActive
-                            ]}
+                            style={[styles.dot, i === currentIndex && styles.dotActive]}
                         />
                     ))}
                 </View>
 
-                {/* Next Button (Hidden on last page) */}
+                {/* RIGHT BUTTON */}
                 <TouchableOpacity
                     onPress={goNext}
-                    style={[styles.navButton, { opacity: currentIndex === pages.length - 1 ? 0 : 1 }]}
+                    style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
                     disabled={currentIndex === pages.length - 1}
                 >
-                    <Text style={styles.navText}>›</Text>
+                    <Text style={styles.navArrow}>›</Text>
                 </TouchableOpacity>
             </View>
 
@@ -175,81 +125,91 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: THEME.paper,
-    },
-    pageContainer: {
-        flex: 1,
-        paddingHorizontal: 20,
-        justifyContent: 'center', // Centers vertically like a book
         alignItems: 'center',
-    },
-    pageContent: {
+        justifyContent: 'center',
         width: '100%',
-        maxWidth: 800, // Reads better on Desktop if we limit width
-        backgroundColor: '#FFF', // Make the page pop slightly
-        borderRadius: 8,
-        padding: 30,
-        // Add subtle shadow for "Physical Page" feel
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 3, // Android shadow
-        minHeight: '60%', // Ensure it looks substantial
+        height: '100%',
+    },
+    pageWrapper: {
+        width: '100%',
+        maxWidth: 800, // Limit width for readability on Desktop
+        height: '100%',
+        paddingBottom: 80, // Make room for bottom buttons
+        paddingTop: 20,
+        paddingHorizontal: 20,
+    },
+    scrollContent: {
+        flexGrow: 1,
+        alignItems: 'center',
+        paddingBottom: 40,
     },
     pageNumber: {
-        position: 'absolute',
-        top: 15,
-        right: 20,
-        fontSize: 12,
+        textAlign: 'center',
         color: '#999',
-        fontWeight: '600',
-        letterSpacing: 1,
+        fontSize: 12,
+        marginBottom: 10,
         textTransform: 'uppercase',
+        letterSpacing: 1,
     },
     illustration: {
         width: '100%',
-        height: 200,
+        height: 300, // Fixed height for image
+        borderRadius: 8,
         marginBottom: 20,
-        borderRadius: 4,
-    },
-    textWrapper: {
-        flex: 1,
-        justifyContent: 'center',
+        backgroundColor: '#eee', // Placeholder color while loading
     },
     storyText: {
-        fontSize: 20, // Nice and large for kids/grandparents
-        lineHeight: 32,
+        fontSize: 22,
+        lineHeight: 34,
         color: THEME.text,
-        fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', // Serif is key for "Book" feel
+        fontFamily: Platform.OS === 'web' ? 'Georgia, serif' : 'serif',
         textAlign: 'left',
+        width: '100%',
     },
 
-    // Controls
+    // CONTROLS
     controlsOverlay: {
         position: 'absolute',
-        bottom: 30,
+        bottom: 0,
         left: 0,
         right: 0,
+        height: 80,
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
+        justifyContent: 'space-between',
         paddingHorizontal: 20,
+        backgroundColor: 'rgba(250, 249, 246, 0.9)', // Semi-transparent background
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(0,0,0,0.05)',
+        zIndex: 9999, // FORCE ON TOP
     },
     navButton: {
         width: 50,
         height: 50,
         borderRadius: 25,
-        backgroundColor: 'rgba(0,0,0,0.05)',
-        justifyContent: 'center',
+        backgroundColor: '#fff',
         alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 4,
+        borderWidth: 1,
+        borderColor: '#eee',
+        cursor: 'pointer', // Web cursor pointer
     },
-    navText: {
-        fontSize: 30,
-        lineHeight: 34, // Fix vertical alignment of arrow
-        color: THEME.text,
-        paddingBottom: 4, // Visual tweak for arrow character
+    disabledBtn: {
+        opacity: 0.3,
+        backgroundColor: '#f5f5f5',
     },
-    paginationDots: {
+    navArrow: {
+        fontSize: 32,
+        color: THEME.accent,
+        marginTop: -4, // Visual centering
+        fontWeight: '300',
+    },
+    dotsContainer: {
         flexDirection: 'row',
         gap: 8,
     },
@@ -257,12 +217,12 @@ const styles = StyleSheet.create({
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: '#DDD',
+        backgroundColor: '#ddd',
     },
     dotActive: {
         backgroundColor: THEME.accent,
-        width: 12, // Active dot grows slightly
-    },
+        width: 12,
+    }
 });
 
 export default BookReader;
