@@ -2,6 +2,7 @@ export interface StoryPage {
   pageNumber: number;
   content: string;
   illustrationPrompt?: string;
+  imageUrl?: string | null;
 }
 
 export interface Story {
