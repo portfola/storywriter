@@ -97,7 +97,7 @@ const BookReader = () => {
                     )}
 
                     <Text style={styles.storyText}>
-                        {currentPage.text || currentPage.content}
+                        {currentPage.text || currentPage.text}
                     </Text>
                 </ScrollView>
             </View>
