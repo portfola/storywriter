@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // <--- Added useRef
 import {
     View,
     Text,
@@ -6,7 +6,8 @@ import {
     Image,
     TouchableOpacity,
     Platform,
-    ScrollView
+    ScrollView,
+    PanResponder // <--- Added PanResponder
 } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
 
@@ -19,26 +20,13 @@ const THEME = {
 const BookReader = () => {
     const { story } = useConversationStore();
 
-    // Safety check: ensure we have pages
     const pages = story.sections && story.sections.length > 0
         ? story.sections
         : [{ text: "Loading story...", imageUrl: null }];
 
     const [currentIndex, setCurrentIndex] = useState(0);
 
-    // 1. KEYBOARD NAVIGATION
-    useEffect(() => {
-        if (Platform.OS === 'web') {
-            const handleKeyDown = (e: KeyboardEvent) => {
-                if (e.key === 'ArrowRight') goNext();
-                if (e.key === 'ArrowLeft') goPrev();
-            };
-            window.addEventListener('keydown', handleKeyDown);
-            return () => window.removeEventListener('keydown', handleKeyDown);
-        }
-    }, [currentIndex, pages.length]);
-
-    // 2. NAVIGATION ACTIONS
+    // --- ACTIONS ---
     const goNext = () => {
         if (currentIndex < pages.length - 1) {
             setCurrentIndex(prev => prev + 1);
@@ -51,25 +39,55 @@ const BookReader = () => {
         }
     };
 
+    // --- 1. SWIPE DETECTOR (PanResponder) ---
+    const panResponder = useRef(
+        PanResponder.create({
+            // Only active if the user moves their finger horizontally > 20 pixels
+            onMoveShouldSetPanResponder: (_, gestureState) => {
+                return Math.abs(gestureState.dx) > 20;
+            },
+            onPanResponderRelease: (_, gestureState) => {
+                // If swiped LEFT (dragged finger left) -> Go Next
+                if (gestureState.dx < -50) {
+                    goNext();
+                }
+                // If swiped RIGHT (dragged finger right) -> Go Prev
+                else if (gestureState.dx > 50) {
+                    goPrev();
+                }
+            }
+        })
+    ).current;
+
+    // --- 2. KEYBOARD SUPPORT (Web) ---
+    useEffect(() => {
+        if (Platform.OS === 'web') {
+            const handleKeyDown = (e: KeyboardEvent) => {
+                if (e.key === 'ArrowRight') goNext();
+                if (e.key === 'ArrowLeft') goPrev();
+            };
+            window.addEventListener('keydown', handleKeyDown);
+            return () => window.removeEventListener('keydown', handleKeyDown);
+        }
+    }, [currentIndex, pages.length]);
+
     const currentPage = pages[currentIndex];
 
     return (
-        <View style={styles.container}>
+        // --- 3. ATTACH GESTURE HANDLERS TO CONTAINER ---
+        <View style={styles.container} {...panResponder.panHandlers}>
 
-            {/* --- THE PAGE CONTENT --- */}
             <View style={styles.pageWrapper}>
-
-                {/* Page Header */}
                 <Text style={styles.pageNumber}>
                     Page {currentIndex + 1} of {pages.length}
                 </Text>
 
-                {/* Scrollable Content Area (In case text is long) */}
                 <ScrollView
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
+                    // Important: On web, we want the mouse interaction to still work for scrolling
+                    scrollEnabled={true}
                 >
-                    {/* Illustration */}
                     {currentPage.imageUrl && (
                         <Image
                             source={{ uri: currentPage.imageUrl }}
@@ -78,17 +96,13 @@ const BookReader = () => {
                         />
                     )}
 
-                    {/* Text */}
                     <Text style={styles.storyText}>
-                        {currentPage.text || currentPage.text}
+                        {currentPage.text || currentPage.content}
                     </Text>
                 </ScrollView>
             </View>
 
-            {/* --- FLOATING CONTROLS --- */}
             <View style={styles.controlsOverlay}>
-
-                {/* LEFT BUTTON */}
                 <TouchableOpacity
                     onPress={goPrev}
                     style={[styles.navButton, currentIndex === 0 && styles.disabledBtn]}
@@ -97,7 +111,6 @@ const BookReader = () => {
                     <Text style={styles.navArrow}>‹</Text>
                 </TouchableOpacity>
 
-                {/* DOTS */}
                 <View style={styles.dotsContainer}>
                     {pages.map((_, i) => (
                         <View
@@ -107,7 +120,6 @@ const BookReader = () => {
                     ))}
                 </View>
 
-                {/* RIGHT BUTTON */}
                 <TouchableOpacity
                     onPress={goNext}
                     style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
@@ -122,6 +134,7 @@ const BookReader = () => {
 };
 
 const styles = StyleSheet.create({
+    // ... (Keep your existing styles exactly the same) ...
     container: {
         flex: 1,
         backgroundColor: THEME.paper,
@@ -132,9 +145,9 @@ const styles = StyleSheet.create({
     },
     pageWrapper: {
         width: '100%',
-        maxWidth: 800, // Limit width for readability on Desktop
+        maxWidth: 800,
         height: '100%',
-        paddingBottom: 80, // Make room for bottom buttons
+        paddingBottom: 100, // <--- INCREASE THIS (Make room for the taller footer)
         paddingTop: 20,
         paddingHorizontal: 20,
     },
@@ -153,10 +166,10 @@ const styles = StyleSheet.create({
     },
     illustration: {
         width: '100%',
-        height: 300, // Fixed height for image
+        height: 300,
         borderRadius: 8,
         marginBottom: 20,
-        backgroundColor: '#eee', // Placeholder color while loading
+        backgroundColor: '#eee',
     },
     storyText: {
         fontSize: 22,
@@ -166,22 +179,22 @@ const styles = StyleSheet.create({
         textAlign: 'left',
         width: '100%',
     },
-
-    // CONTROLS
     controlsOverlay: {
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
-        height: 80,
+        height: 90, // Increased height slightly
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: 20,
-        backgroundColor: 'rgba(250, 249, 246, 0.9)', // Semi-transparent background
+        backgroundColor: 'rgba(250, 249, 246, 0.95)',
         borderTopWidth: 1,
         borderTopColor: 'rgba(0,0,0,0.05)',
-        zIndex: 9999, // FORCE ON TOP
+        zIndex: 9999,
+        // iOS FIX: Add padding at the bottom to push buttons up above the address bar
+        paddingBottom: Platform.OS === 'ios' ? 20 : 0,
     },
     navButton: {
         width: 50,
@@ -197,7 +210,7 @@ const styles = StyleSheet.create({
         elevation: 4,
         borderWidth: 1,
         borderColor: '#eee',
-        cursor: 'pointer', // Web cursor pointer
+        cursor: 'pointer',
     },
     disabledBtn: {
         opacity: 0.3,
@@ -206,7 +219,7 @@ const styles = StyleSheet.create({
     navArrow: {
         fontSize: 32,
         color: THEME.accent,
-        marginTop: -4, // Visual centering
+        marginTop: -4,
         fontWeight: '300',
     },
     dotsContainer: {

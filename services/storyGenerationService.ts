@@ -87,8 +87,9 @@ class StoryGenerationService {
                 an engaging 3 to 6 page story for young readers.
 
                 **Task Instructions**
-                1. Read the supplied [Conversation] to understand the characters, plot ideas, and tone.
-                2. Write a 3 to 6 page story based on this input.
+                1. Read the supplied [Conversation] to understand the characters, plot ideas, 
+                and tone.
+                2. Write a 3 to 6 page story based on this input. Make it 4 or 5 sentences per page.
 
                 **Formatting Requirements (CRITICAL):**
                 You must strictly follow this structure. 
@@ -187,13 +188,15 @@ class StoryGenerationService {
                 // 🎄 XMAS DEMO IMAGES
                 // Random image based on page number
                 const imageId = 100 + pageNum;
-                const realImageUrl = `https://picsum.photos/seed/${imageId}/800/600`;
+                // const realImageUrl = `https://picsum.photos/seed/${imageId}/800/600`;
+                const realImageUrl = `/assets/images/Beaverlodge_Lake_Morning.jpg`;
+                console.log(realImageUrl);
 
                 pages.push({
                     pageNumber: pageNum,
                     content: storyText,
                     illustrationPrompt: illustrationDesc,
-                    //imageUrl: realImageUrl
+                    imageUrl: realImageUrl
                 });
             }
         });
@@ -208,7 +211,7 @@ class StoryGenerationService {
                 pageNumber: 1,
                 content: body,
                 illustrationPrompt: "Story",
-                imageUrl: `https://picsum.photos/seed/999/800/600`
+                imageUrl: `/assets/images/Beaverlodge_Lake_Morning.jpg`
             });
         }
 
