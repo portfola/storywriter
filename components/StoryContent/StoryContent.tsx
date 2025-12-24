@@ -1,8 +1,7 @@
 import React from 'react';
-import { ScrollView, Image, Text, View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Text, View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
 import BookReader from '@/components/BookReader/BookReader';
-import { s } from '../../pages/StoryScreen/StoryScreen.style';
 
 /**
  * StoryContent Component
