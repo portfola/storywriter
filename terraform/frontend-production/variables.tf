@@ -1,7 +1,7 @@
 variable "environment" {
   description = "Environment name (staging/production)"
   type        = string
-  default     = "staging"
+  default     = "production"
 
   validation {
     condition     = contains(["staging", "production"], var.environment)
@@ -12,13 +12,13 @@ variable "environment" {
 variable "domain_name" {
   description = "Domain name for the frontend application"
   type        = string
-  default     = "staging.storywriter.net"
+  default     = "storywriter.net"
 }
 
 variable "s3_bucket_name" {
   description = "S3 bucket name for static website hosting"
   type        = string
-  default     = "storywriter-staging-frontend"
+  default     = "storywriter-production-frontend"
 }
 
 variable "price_class" {
