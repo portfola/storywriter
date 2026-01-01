@@ -14,9 +14,17 @@ import {
 } from '../types/elevenlabs';
 import { serviceLogger } from '@/src/utils/logger';
 
+import client from '@/src/api/client';
+
 // --- Configuration and Types ---
 
-const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
+//const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'http://127.0.0.1:8000';
+// const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = __DEV__
+  ? 'http://127.0.0.1:8000'              // Used during development
+  : 'https://api.storywriter.net';       // Used in production build
+
+
 const DEFAULT_TIMEOUT_MS = 30000; // 30 seconds
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5000; // 5 seconds
 

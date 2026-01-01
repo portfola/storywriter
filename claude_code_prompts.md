@@ -69,7 +69,7 @@ Requirements:
 ### Frontend Deployment Pipeline
 
 ```
-Update .github/workflows/develop-frontend.yml for production deployment:
+Update .github/workflows/deploy-frontend.yml for production deployment:
 
 1. Build Expo web application with production API_BASE_URL
 2. Run frontend tests and linting
@@ -224,7 +224,7 @@ Requirements:
 
 ### Update Frontend GitHub Actions for Terraform
 ```
-Update .github/workflows/develop-frontend.yml to use Terraform-managed resources.
+Update .github/workflows/deploy-frontend.yml to use Terraform-managed resources.
 
 Remove hardcoded resource references and use Terraform outputs:
 
