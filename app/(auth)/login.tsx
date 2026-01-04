@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import {
     View,
-    // SafeAreaView,
     Text,
     TextInput,
     TouchableOpacity,
@@ -11,7 +10,8 @@ import {
     Platform,
     Alert
 } from 'react-native';
-import { useAuth } from '../../src/context/AuthContext'; // Adjust path as needed
+import { useAuth } from '../../src/context/AuthContext';
+import BackgroundImage from '../../components/BackgroundImage/BackgroundImage';
 
 // Helper to display errors clearly
 const ErrorMessage = ({ messages }: { messages: string[] }) => {
@@ -20,7 +20,7 @@ const ErrorMessage = ({ messages }: { messages: string[] }) => {
         <View style={styles.errorContainer}>
             {messages.map((msg, index) => (
                 <Text key={index} style={styles.errorText}>
-                    - {msg}
+                    • {msg}
                 </Text>
             ))}
         </View>
@@ -42,25 +42,20 @@ export default function LoginScreen() {
         setIsLoading(true);
         setErrors({});
 
-        // The device name is crucial for Sanctum to generate a token tied to the device
         const deviceName = Platform.OS === 'web' ? 'web-browser' : Platform.OS;
 
         try {
             await login(email, name, deviceName);
-            // Success: AuthContext updates, RootLayout redirects to (app)/(tabs)
-            Alert.alert('Login Successful!');
+            Alert.alert('Welcome to StoryWriter! 🎉');
         } catch (error: any) {
             console.error("Login Error:", error);
 
-            // --- Handle Laravel Validation Errors (422 status) ---
             if (error.response && error.response.status === 422) {
-                // Laravel returns validation messages under error.response.data.errors
                 setErrors(error.response.data.errors);
             } else {
-                // Generic error handling
                 Alert.alert(
-                    'Sign In Failed',
-                    'Could not connect to the API. Please check your network or try again.'
+                    'Oops! Something went wrong',
+                    'Please check your connection and try again.'
                 );
             }
         } finally {
@@ -69,48 +64,58 @@ export default function LoginScreen() {
     };
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Welcome to StoryWriter</Text>
-            <Text style={styles.subtitle}>Sign In to Test the App</Text>
+        <BackgroundImage opacity={0.4}>
+            <View style={styles.container}>
+                <View style={styles.card}>
+                    <View style={styles.titleContainer}>
+                        <Text style={styles.title}>Welcome to the</Text>
+                        <Text style={styles.labTitle}>StoryWriter Lab!</Text>
+                        <View style={styles.decorativeLine} />
+                    </View>
 
-            {/* Name Input (Used for first-time registration/data collection) */}
-            <TextInput
-                style={styles.input}
-                placeholder="Full Name"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-                editable={!isLoading}
-            />
-            <ErrorMessage messages={errors.name} />
+                    <Text style={styles.subtitle}>Let's get you started on your adventure!</Text>
 
-            {/* Email Input */}
-            <TextInput
-                style={styles.input}
-                placeholder="Email Address"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                editable={!isLoading}
-            />
-            <ErrorMessage messages={errors.email} />
+                    <View style={styles.formContainer}>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Your Name"
+                            placeholderTextColor="#999"
+                            value={name}
+                            onChangeText={setName}
+                            autoCapitalize="words"
+                            editable={!isLoading}
+                        />
+                        <ErrorMessage messages={errors.name} />
 
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Parent's Email"
+                            placeholderTextColor="#999"
+                            value={email}
+                            onChangeText={setEmail}
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            editable={!isLoading}
+                        />
+                        <ErrorMessage messages={errors.email} />
 
-            <TouchableOpacity
-                style={[styles.button, isLoading && styles.buttonDisabled]}
-                onPress={handleLogin}
-                disabled={isLoading}
-            >
-                <Text style={styles.buttonText}>
-                    {isLoading ? 'Signing In...' : 'Sign In / Register'}
-                </Text>
-            </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.button, isLoading && styles.buttonDisabled]}
+                            onPress={handleLogin}
+                            disabled={isLoading}
+                        >
+                            <Text style={styles.buttonText}>
+                                {isLoading ? 'Getting Ready...' : 'Enter the Lab! ✨'}
+                            </Text>
+                        </TouchableOpacity>
 
-            <Text style={styles.infoText}>
-                (If your email is new, an account will be created.)
-            </Text>
-        </View>
+                        <Text style={styles.infoText}>
+                            New here? No worries! We'll create your account automatically.
+                        </Text>
+                    </View>
+                </View>
+            </View>
+        </BackgroundImage>
     );
 }
 
@@ -118,57 +123,115 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         justifyContent: 'center',
-        padding: 30,
-        backgroundColor: '#fff',
+        alignItems: 'center',
+        padding: 20,
+    },
+    card: {
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderRadius: 24,
+        padding: 32,
+        maxWidth: 480,
+        width: '100%',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+        elevation: 8,
+        borderWidth: 3,
+        borderColor: '#FFD93D',
+    },
+    titleContainer: {
+        alignItems: 'center',
+        marginBottom: 16,
     },
     title: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        marginBottom: 10,
+        fontSize: 24,
+        fontWeight: '600',
+        color: '#444',
         textAlign: 'center',
+    },
+    labTitle: {
+        fontSize: 36,
+        fontWeight: 'bold',
+        color: '#FF6B6B',
+        textAlign: 'center',
+        marginTop: 4,
+        textShadowColor: 'rgba(255, 107, 107, 0.2)',
+        textShadowOffset: { width: 2, height: 2 },
+        textShadowRadius: 4,
+    },
+    decorativeLine: {
+        width: 120,
+        height: 4,
+        backgroundColor: '#FFD93D',
+        borderRadius: 2,
+        marginTop: 12,
     },
     subtitle: {
         fontSize: 18,
         color: '#666',
-        marginBottom: 40,
+        marginBottom: 24,
         textAlign: 'center',
+        fontWeight: '500',
+    },
+    formContainer: {
+        width: '100%',
     },
     input: {
-        height: 50,
-        borderColor: '#ddd',
-        borderWidth: 1,
-        borderRadius: 8,
-        paddingHorizontal: 15,
-        marginBottom: 10,
-        backgroundColor: '#f9f9f9',
+        height: 54,
+        borderColor: '#DDD',
+        borderWidth: 2,
+        borderRadius: 16,
+        paddingHorizontal: 20,
+        marginBottom: 12,
+        backgroundColor: '#FFF',
+        fontSize: 16,
+        fontWeight: '500',
     },
     button: {
-        backgroundColor: '#007aff',
-        padding: 15,
-        borderRadius: 8,
+        backgroundColor: '#4ECDC4',
+        paddingVertical: 16,
+        borderRadius: 16,
         alignItems: 'center',
-        marginTop: 20,
+        marginTop: 8,
+        shadowColor: '#4ECDC4',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+        borderWidth: 2,
+        borderColor: '#45B8B0',
     },
     buttonDisabled: {
-        backgroundColor: '#a3c3e8',
+        backgroundColor: '#B8E6E3',
+        borderColor: '#A0D5D2',
+        shadowOpacity: 0.1,
     },
     buttonText: {
-        color: '#fff',
-        fontSize: 18,
-        fontWeight: '600',
+        color: '#FFF',
+        fontSize: 20,
+        fontWeight: 'bold',
+        letterSpacing: 0.5,
     },
     errorContainer: {
-        marginBottom: 10,
+        marginBottom: 12,
+        backgroundColor: '#FFE5E5',
+        padding: 12,
+        borderRadius: 12,
+        borderLeftWidth: 4,
+        borderLeftColor: '#FF6B6B',
     },
     errorText: {
-        color: '#d9534f',
-        fontSize: 13,
-        marginLeft: 5,
+        color: '#D63031',
+        fontSize: 14,
+        fontWeight: '500',
+        marginLeft: 4,
     },
     infoText: {
-        marginTop: 15,
+        marginTop: 16,
         textAlign: 'center',
-        fontSize: 12,
+        fontSize: 13,
         color: '#888',
+        fontStyle: 'italic',
     }
 });
