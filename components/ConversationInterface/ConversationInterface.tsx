@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import ElevenLabsService from '@/services/elevenLabsService';
 import { ConversationSession, ConversationMessage } from '@/types/elevenlabs';
@@ -10,9 +10,14 @@ import { TranscriptNormalizer, DialogueTurn } from '@/src/utils/transcriptNormal
 
 interface Props {
   disabled?: boolean;
+  hideButtons?: boolean;
 }
 
-const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
+export interface ConversationInterfaceRef {
+  startConversation: () => void;
+}
+
+const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ disabled = false, hideButtons = false }, ref) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [conversationSession, setConversationSession] = useState<ConversationSession | null>(null);
   const rawMessages = useRef<{role: 'user'|'agent', content: string, timestamp: number}[]>([]);
@@ -32,6 +37,11 @@ const ConversationInterface: React.FC<Props> = ({ disabled = false }) => {
   });
   
   const isConversationActive = phase === 'ACTIVE';
+
+  // Expose startConversation to parent via ref
+  useImperativeHandle(ref, () => ({
+    startConversation
+  }));
 
   // Message capture debounce (for logging/validation only - does NOT end conversation)
   const scheduleMessageProcessing = useCallback(() => {
@@ -374,25 +384,40 @@ Agent: That's such a wonderful and heartwarming idea! I think we have everything
 
   return (
     <View style={styles.container}>
-      
-      {/* Main Conversation Button */}
-      <TouchableOpacity
-        style={[
-          styles.primaryButton,
-          (disabled || isConnecting || isConversationActive) && styles.disabledButton
-        ]}
-        onPress={startConversation}
-        disabled={disabled || isConnecting || isConversationActive}
-      >
-        <Text style={[
-          styles.primaryButtonText,
-          (disabled || isConnecting || isConversationActive) && styles.disabledButtonText
-        ]}>
-          {isConnecting ? '🔄 Connecting...' : 
-           isConversationActive ? '🎤 Conversation Active' : 
-           '🤖 Talk with StoryWriter Agent'}
-        </Text>
-      </TouchableOpacity>
+
+      {!hideButtons && (
+        <>
+          {/* Main Conversation Button */}
+          <TouchableOpacity
+            style={[
+              styles.primaryButton,
+              (disabled || isConnecting || isConversationActive) && styles.disabledButton
+            ]}
+            onPress={startConversation}
+            disabled={disabled || isConnecting || isConversationActive}
+          >
+            <Text style={[
+              styles.primaryButtonText,
+              (disabled || isConnecting || isConversationActive) && styles.disabledButtonText
+            ]}>
+              {isConnecting ? '🔄 Connecting...' :
+               isConversationActive ? '🎤 Conversation Active' :
+               '🤖 Talk with StoryWriter Agent'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Test Button */}
+          <TouchableOpacity
+            style={[styles.testButton, disabled && styles.disabledButton]}
+            onPress={handleTestMode}
+            disabled={disabled}
+          >
+            <Text style={[styles.testButtonText, disabled && styles.disabledButtonText]}>
+              🧪 Skip to Story Generation (Test)
+            </Text>
+          </TouchableOpacity>
+        </>
+      )}
 
       {/* Active Conversation Controls */}
       {isConversationActive && (
@@ -421,20 +446,11 @@ Agent: That's such a wonderful and heartwarming idea! I think we have everything
         </View>
       )}
 
-      {/* Test Button */}
-      <TouchableOpacity
-        style={[styles.testButton, disabled && styles.disabledButton]}
-        onPress={handleTestMode}
-        disabled={disabled}
-      >
-        <Text style={[styles.testButtonText, disabled && styles.disabledButtonText]}>
-          🧪 Skip to Story Generation (Test)
-        </Text>
-      </TouchableOpacity>
-
     </View>
   );
-};
+});
+
+ConversationInterface.displayName = 'ConversationInterface';
 
 const styles = {
   container: {

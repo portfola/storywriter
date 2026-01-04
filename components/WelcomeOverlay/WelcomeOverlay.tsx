@@ -37,7 +37,7 @@ const WelcomeOverlay: React.FC<WelcomeOverlayProps> = ({ onStart, visible }) => 
         </TouchableOpacity>
 
         <Text style={styles.instruction}>
-          Tap the button and tell me what kind of story you'd like to make!
+          Tap the button to speak with a lab assistant.
         </Text>
       </View>
     </View>
