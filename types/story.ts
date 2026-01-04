@@ -24,3 +24,9 @@ export interface StoryGenerationOptions {
   temperature?: number;
   maxTokens?: number;
 }
+
+// This represents the shape of data your BookReader actually uses
+export interface StorySection {
+  text: string;
+  imageUrl?: string | null;
+}

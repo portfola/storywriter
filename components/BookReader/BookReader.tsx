@@ -73,6 +73,9 @@ const BookReader = () => {
 
     const currentPage = pages[currentIndex];
 
+    // 1. Debug Log: Add this right before the return statement
+    console.log("BookReader Current Page:", currentPage);
+
     return (
         // --- 3. ATTACH GESTURE HANDLERS TO CONTAINER ---
         <View style={styles.container} {...panResponder.panHandlers}>
@@ -92,7 +95,7 @@ const BookReader = () => {
                         <Image
                             source={{ uri: currentPage.imageUrl }}
                             style={styles.illustration}
-                            resizeMode="cover"
+                            resizeMode="contain"
                         />
                     )}
 
@@ -170,6 +173,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         marginBottom: 20,
         backgroundColor: '#eee',
+        resizeMode: 'contain',
     },
     storyText: {
         fontSize: 22,

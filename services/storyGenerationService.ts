@@ -98,6 +98,7 @@ class StoryGenerationService {
                 * The story MUST be at least 3 pages long, but could go to 10 pages.
                 * You MUST separate every page using exactly 
                 * this separator line: "-- - PAGE BREAK--- "
+                * HOWEVER you MUST make the "-- - PAGE BREAK--- " invisible on the page
 
 
                 **Desired Output Structure Example:**
@@ -142,76 +143,88 @@ class StoryGenerationService {
         }
     }
 
+
     // ------------------------------------------------------------
-    // 4. HELPER: PARSE TEXT (Fixed for "Page 1" with no colon)
+    // 4. HELPER: PARSE TEXT (Extracts Markdown Image)
     // ------------------------------------------------------------
     private parseStoryText(text: string, transcript: string): Story {
         // 1. Extract Title
         const titleMatch = text.match(/^Title[:.]?\s*(.+)$/im);
-        const title = titleMatch ? titleMatch[1].trim() : 'My Xmas Story';
+        const title = titleMatch ? titleMatch[1].trim() : 'New Story';
 
-        // 2. Clean Body (Remove Title)
         let body = text.replace(/^Title[:.]?.+$/im, '').trim();
 
-        // 3. SPLIT BY "Page X" (Robust Regex)
-        // \bPage ensures we don't split words like "RamPagers"
-        // \s*\d+ matches the number
-        // [:.]? matches an optional colon or dot
-        // This splits "Page 1", "Page 1:", "Page 1.", and "---PAGE BREAK---" if present
-        const splitRegex = /(?:---|Page)\s*(?:PAGE BREAK|Page)\s*\d+[:.]?/i;
+        // ---------------------------------------------------------
+        // 2. EXTRACT COVER IMAGE (The New Part)
+        // ---------------------------------------------------------
+        let coverImageUrl: string | null = null;
 
+        // Regex explanation:
+        // !\[.*?\]  -> Matches ![alt text]
+        // \(        -> Opening parenthesis
+        // \s* -> Optional whitespace
+        // (https?://[^)]+) -> CAPTURE GROUP: The actual URL
+        // \s* -> Optional whitespace
+        // \)        -> Closing parenthesis
+        const imageRegex = /!\[.*?\]\(\s*(https?:\/\/[^)]+)\s*\)/i;
+        const imageMatch = body.match(imageRegex);
+
+        if (imageMatch && imageMatch[1]) {
+            coverImageUrl = imageMatch[1].trim(); // Save the URL
+            body = body.replace(imageRegex, '').trim(); // Remove the tag from text
+            console.log('coverImageUrl: ' + coverImageUrl);
+        }
+
+        // ---------------------------------------------------------
+        // 3. SPLIT PAGES (Standard Logic)
+        // ---------------------------------------------------------
+        // Split by "Page X" or "---PAGE BREAK---"
+        const splitRegex = /(?:---|Page)\s*(?:PAGE BREAK|Page)\s*\d+[:.]?/i;
         const rawChunks = body.split(splitRegex);
 
         const pages: StoryPage[] = [];
 
         rawChunks.forEach((chunk, index) => {
             const trimmedChunk = chunk.trim();
+            if (trimmedChunk.length < 20) return;
 
-            // Clean Content
+            // Clean up content
             const cleanContent = trimmedChunk
-                .replace(/--PAGE BREAK/gi, '')    // <--- NEW: Remove the artifact
-                .replace(/Page\s*\d+[:.]?/gi, '')     // Remove "Page X"
+                .replace(/Illustration[:.]?.+/gi, '')
+                .replace(/---PAGE BREAK---/gi, '')
                 .trim();
 
-            if (trimmedChunk.length < 20) return; // Skip empty preamble
-
-            // --- EXTRACT ILLUSTRATION ---
-            // (Your current output doesn't have illustrations, but we keep this logic just in case)
-            const parts = cleanContent.split(/Illustration[:.]/i);
-            const storyText = parts[0].trim();
-            const illustrationDesc = parts.length > 1 ? parts[1].trim() : "Magical scene";
-
-
-            if (storyText.length > 0) {
+            if (cleanContent.length > 0) {
                 const pageNum = pages.length + 1;
 
-                // 🎄 XMAS DEMO IMAGES
-                // Random image based on page number
-                const imageId = 100 + pageNum;
-                // const realImageUrl = `https://picsum.photos/seed/${imageId}/800/600`;
-                const realImageUrl = `/assets/images/Beaverlodge_Lake_Morning.jpg`;
-                console.log(realImageUrl);
+                // LOGIC: Use the Real AI Image for Page 1, fallback to placeholder for others
+                let finalImageUrl = null;
+
+                if (pageNum === 1 && coverImageUrl) {
+                    finalImageUrl = coverImageUrl; // ✅ USE REAL AI IMAGE
+                    console.log('finalImageUrl:' + finalImageUrl);
+                } else {
+                    // (Optional) Keep using Picsum for other pages if you want
+                    // finalImageUrl = `https://picsum.photos/seed/${100 + pageNum}/800/600`;
+                    finalImageUrl = null; // Or just have text only
+                }
 
                 pages.push({
                     pageNumber: pageNum,
-                    content: storyText,
-                    illustrationPrompt: illustrationDesc,
-                    imageUrl: realImageUrl
+                    content: cleanContent,
+                    illustrationPrompt: "Cover Art",
+                    imageUrl: finalImageUrl
                 });
             }
         });
 
-        // 4. FALLBACK (If regex still failed)
-        // If we still have 0 pages, force a split by double newlines
+        // Fallback if parsing failed
         if (pages.length === 0) {
-            const paragraphs = body.split(/\n\s*\n/);
-            // ... (Simple paragraph chunking logic could go here) ...
-            // But let's just create one page so it's not empty
             pages.push({
                 pageNumber: 1,
                 content: body,
                 illustrationPrompt: "Story",
-                imageUrl: `/assets/images/Beaverlodge_Lake_Morning.jpg`
+                imageUrl: coverImageUrl // Ensure image is attached even if pagination fails
             });
         }
 
@@ -223,6 +236,7 @@ class StoryGenerationService {
             createdAt: new Date(),
         };
     }
+
 
     // ------------------------------------------------------------
     // 5. HELPER: CREATE FAILURE OBJECT
