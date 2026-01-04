@@ -76,7 +76,7 @@ function RootLayoutNav() {
     } else if (isAuthenticated && inAuthGroup) {
       // User IS logged in, but is on the login page
       // Redirect them to the tabs
-      router.replace('/(tabs)/home');
+      router.replace('/(tabs)');
     }
   }, [isAuthenticated, segments, loading]);
 
