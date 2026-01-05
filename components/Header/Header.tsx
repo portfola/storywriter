@@ -16,7 +16,7 @@ const Header = () => {
     <View style={s.container}>
       <Text style={s.title}>StoryWriter</Text>
       <View style={s.navLinks}>
-        <Link href="/home" asChild>
+        <Link href="/" asChild>
           <TouchableOpacity>
             <Text style={s.link}>Home</Text>
           </TouchableOpacity>

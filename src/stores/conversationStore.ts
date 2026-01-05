@@ -444,7 +444,7 @@ const useConversationStore = create<ConversationState>()(
             // Map to Store Structure
             const storyContent = result.story.pages.map(page => ({
               text: page.content,
-              imageUrl: null
+              imageUrl: page.imageUrl ?? null
             }));
 
             // 3. Handle Minimum Display Time (UX Pacing)
