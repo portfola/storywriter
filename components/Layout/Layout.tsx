@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { s } from './Layout.style';
 import Header from '../Header/Header';
 import Footer from '../Footer/Footer';
+import BackgroundImage from '../BackgroundImage/BackgroundImage';
 
 type Props = {
   children: React.ReactNode;
@@ -19,11 +20,13 @@ type Props = {
  * @returns Structured layout component for screens.
  */
 const Layout = ({ children }: Props) => (
-  <View style={s.container}>
-    <Header />
-    <View style={s.content}>{children}</View>
-    <Footer />
-  </View>
+  <BackgroundImage opacity={0.4}>
+    <View style={s.container}>
+      <Header />
+      <View style={s.content}>{children}</View>
+      <Footer />
+    </View>
+  </BackgroundImage>
 );
 
 export default Layout;
