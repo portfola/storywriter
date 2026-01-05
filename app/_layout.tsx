@@ -52,6 +52,15 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const { isAuthenticated, loading } = useAuth();
 
+  // Custom theme with transparent backgrounds
+  const customTheme = {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: 'transparent',
+    },
+  };
+
   // 2. SETUP THE TRAFFIC COP HOOKS
   const segments = useSegments();
   const router = useRouter();
@@ -89,7 +98,7 @@ function RootLayoutNav() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={customTheme}>
       {/* 4. CLEANER STACK
          Don't conditionally render the screens here. 
          Let the useEffect above handle the security. 
