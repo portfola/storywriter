@@ -1,5 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router'; // <--- 1. Import useRouter, useSegments
 import * as SplashScreen from 'expo-splash-screen';
@@ -8,7 +8,6 @@ import { useEffect } from 'react';
 import { Platform, View, ActivityIndicator } from 'react-native';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/useColorScheme';
 import BackendConnectivityService from '@/src/utils/backendConnectivity';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
@@ -49,7 +48,6 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
   const { isAuthenticated, loading } = useAuth();
 
   // Custom theme with transparent backgrounds
