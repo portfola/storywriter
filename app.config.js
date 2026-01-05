@@ -66,7 +66,7 @@ export default ({ config }) => ({
     android: {
       package: "com.portfola.StoryWriter",
       adaptiveIcon: {
-        foregroundImage: "./assets/images/adaptive-icon.png",
+        foregroundImage: "./assets/images/icon.png",
         backgroundColor: "#ffffff"
       },
       orientation: "landscape"  // Changed from screenOrientation
