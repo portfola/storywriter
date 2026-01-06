@@ -1,8 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
 import { s } from './Layout.style';
-import Header from '../Header/Header';
-import Footer from '../Footer/Footer';
 import BackgroundImage from '../BackgroundImage/BackgroundImage';
 
 type Props = {
@@ -12,19 +10,17 @@ type Props = {
 /**
  * Layout Component
  *
- * Wraps screen content with a shared Header and Footer.
+ * Wraps screen content with a background image.
  * Provides consistent structure across pages.
  *
- * @param {React.ReactNode} children - The main content to render between Header and Footer.
+ * @param {React.ReactNode} children - The main content to render.
  *
  * @returns Structured layout component for screens.
  */
 const Layout = ({ children }: Props) => (
   <BackgroundImage opacity={0.4}>
     <View style={s.container}>
-      <Header />
       <View style={s.content}>{children}</View>
-      <Footer />
     </View>
   </BackgroundImage>
 );
