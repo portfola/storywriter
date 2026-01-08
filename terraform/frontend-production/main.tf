@@ -96,7 +96,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   comment             = "${var.environment} StoryWriter Frontend Distribution"
   default_root_object = "index.html"
 
-  aliases = [var.domain_name]
+  aliases = [var.domain_name, "www.${var.domain_name}"]
 
   default_cache_behavior {
     allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
