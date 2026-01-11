@@ -73,7 +73,7 @@ Both should point to their respective CloudFront distributions.
 ## Environment Configuration
 
 ### Staging Environment
-- API Base URL: `https://api-staging.storywriter.net`
+- API Base URL: `https://staging-api.storywriter.net`
 - S3 Bucket: `storywriter-staging-frontend`
 - Domain: `staging.storywriter.net`
 

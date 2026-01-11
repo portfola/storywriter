@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 
-const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || 'https://api.storywriter.net';
+const API_BASE_URL = Constants.expoConfig?.extra?.apiBaseUrl || 'http://127.0.0.1:8000';
 
 /**
  * Backend Connectivity Service
@@ -52,7 +52,7 @@ export class BackendConnectivityService {
   static getConfig(): { baseUrl: string; configured: boolean } {
     return {
       baseUrl: API_BASE_URL,
-      configured: !!API_BASE_URL && API_BASE_URL !== 'https://api.storywriter.net'
+      configured: !!API_BASE_URL && API_BASE_URL !== 'http://127.0.0.1:8000'
     };
   }
 }
