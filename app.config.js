@@ -18,7 +18,7 @@ const getApiBaseUrl = () => {
     case 'production':
       return 'https://api.storywriter.net';
     case 'staging':
-      return 'https://api.storywriter.net';
+      return 'https://staging-api.storywriter.net';
     case 'development':
     default:
       // return 'http://localhost';

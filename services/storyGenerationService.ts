@@ -3,10 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { Story, StoryPage, StoryGenerationResult } from '../types/story';
 
-// 1. Dynamic Base URL
-const API_BASE_URL = __DEV__
-    ? 'http://127.0.0.1:8000'              // Used during development
-    : 'https://api.storywriter.net';       // Used in production build
+// Get API base URL from centralized configuration
+const API_BASE_URL = Constants.expoConfig?.extra?.apiBaseUrl || 'http://127.0.0.1:8000';
 
 
 interface ApiResponse<T = any> {
