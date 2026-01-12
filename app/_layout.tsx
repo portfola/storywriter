@@ -9,7 +9,6 @@ import { Platform, View, ActivityIndicator } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
-import BackendConnectivityService from '@/src/utils/backendConnectivity';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
 export {
@@ -60,7 +59,6 @@ function RootLayoutNav() {
     if (Platform.OS !== 'web') {
       void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     }
-    void BackendConnectivityService.testConnection();
   }, []);
 
   // 3. THE REDIRECT LOGIC (The "Integration" you asked for)

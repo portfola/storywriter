@@ -164,8 +164,8 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
           // Handle audio messages from ElevenLabs
           if (message.type === 'audio' && (message.audio || message.data)) {
             try {
-              let audioArray: Uint8Array;
-              
+              let audioArray: Uint8Array<ArrayBuffer>;
+
               if (message.audio) {
                 // Base64 encoded audio data
                 const audioData = atob(message.audio);
