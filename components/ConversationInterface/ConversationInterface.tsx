@@ -187,7 +187,7 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
                 throw new Error('Unsupported audio data format');
               }
               
-              const audioBlob = new Blob([audioArray], { type: 'audio/mpeg' });
+              const audioBlob = new Blob([audioArray.buffer as ArrayBuffer], { type: 'audio/mpeg' });
               const audioUrl = URL.createObjectURL(audioBlob);
               
               const audio = new Audio(audioUrl);
@@ -384,68 +384,68 @@ Agent: That's such a wonderful and heartwarming idea! I think we have everything
 
   return (
     <View style={styles.container}>
+      <View style={styles.card}>
+        {!hideButtons && (
+          <>
+            {/* Main Conversation Button */}
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                (disabled || isConnecting || isConversationActive) && styles.disabledButton
+              ]}
+              onPress={startConversation}
+              disabled={disabled || isConnecting || isConversationActive}
+            >
+              <Text style={[
+                styles.primaryButtonText,
+                (disabled || isConnecting || isConversationActive) && styles.disabledButtonText
+              ]}>
+                {isConnecting ? '🔄 Connecting...' :
+                 isConversationActive ? '🎤 Conversation Active' :
+                 '🤖 Talk with StoryWriter Agent'}
+              </Text>
+            </TouchableOpacity>
 
-      {!hideButtons && (
-        <>
-          {/* Main Conversation Button */}
-          <TouchableOpacity
-            style={[
-              styles.primaryButton,
-              (disabled || isConnecting || isConversationActive) && styles.disabledButton
-            ]}
-            onPress={startConversation}
-            disabled={disabled || isConnecting || isConversationActive}
-          >
-            <Text style={[
-              styles.primaryButtonText,
-              (disabled || isConnecting || isConversationActive) && styles.disabledButtonText
-            ]}>
-              {isConnecting ? '🔄 Connecting...' :
-               isConversationActive ? '🎤 Conversation Active' :
-               '🤖 Talk with StoryWriter Agent'}
+            {/* Test Button */}
+            <TouchableOpacity
+              style={[styles.testButton, disabled && styles.disabledButton]}
+              onPress={handleTestMode}
+              disabled={disabled}
+            >
+              <Text style={[styles.testButtonText, disabled && styles.disabledButtonText]}>
+                🧪 Skip to Story Generation (Test)
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {/* Active Conversation Controls */}
+        {isConversationActive && (
+          <View style={styles.statusContainer}>
+            <Text style={styles.statusText}>
+              🎙️ Having a conversation with the StoryWriter Agent!
             </Text>
-          </TouchableOpacity>
-
-          {/* Test Button */}
-          <TouchableOpacity
-            style={[styles.testButton, disabled && styles.disabledButton]}
-            onPress={handleTestMode}
-            disabled={disabled}
-          >
-            <Text style={[styles.testButtonText, disabled && styles.disabledButtonText]}>
-              🧪 Skip to Story Generation (Test)
+            <Text style={styles.helpText}>
+              The agent will automatically end the conversation when ready to create your story.
             </Text>
-          </TouchableOpacity>
-        </>
-      )}
+            <TouchableOpacity
+              style={styles.endButton}
+              onPress={handleManualEnd}
+            >
+              <Text style={styles.endButtonText}>End Conversation</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-      {/* Active Conversation Controls */}
-      {isConversationActive && (
-        <View style={styles.statusContainer}>
-          <Text style={styles.statusText}>
-            🎙️ Having a conversation with the StoryWriter Agent!
-          </Text>
-          <Text style={styles.helpText}>
-            The agent will automatically end the conversation when ready to create your story.
-          </Text>
-          <TouchableOpacity
-            style={styles.endButton}
-            onPress={handleManualEnd}
-          >
-            <Text style={styles.endButtonText}>End Conversation</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Status Display */}
-      {phase === 'GENERATING' && (
-        <View style={styles.processingContainer}>
-          <Text style={styles.processingText}>
-            ✨ Creating your story from the conversation...
-          </Text>
-        </View>
-      )}
-
+        {/* Status Display */}
+        {phase === 'GENERATING' && (
+          <View style={styles.processingContainer}>
+            <Text style={styles.processingText}>
+              ✨ Creating your story from the conversation...
+            </Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 });
@@ -459,13 +459,30 @@ const styles = {
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
+  card: {
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    borderRadius: 32,
+    padding: 40,
+    maxWidth: 600,
+    width: '100%' as const,
+    alignItems: 'center' as const,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 12,
+    borderWidth: 4,
+    borderColor: '#FFD93D',
+  },
   primaryButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#4ECDC4',
     paddingHorizontal: 30,
     paddingVertical: 15,
-    borderRadius: 10,
+    borderRadius: 16,
     marginBottom: 15,
     minWidth: 250,
+    borderWidth: 2,
+    borderColor: '#45B8B0',
   },
   primaryButtonText: {
     color: 'white',
@@ -480,30 +497,35 @@ const styles = {
     color: '#666',
   },
   statusContainer: {
-    backgroundColor: '#f0f8ff',
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+    padding: 20,
+    borderRadius: 16,
     marginBottom: 15,
     alignItems: 'center' as const,
+    borderWidth: 2,
+    borderColor: '#4ECDC4',
   },
   statusText: {
-    fontSize: 16,
-    color: '#007AFF',
+    fontSize: 18,
+    color: '#4ECDC4',
     marginBottom: 10,
     textAlign: 'center' as const,
+    fontWeight: '600' as const,
   },
   helpText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#666',
     textAlign: 'center' as const,
     fontStyle: 'italic' as const,
-    marginBottom: 10,
+    marginBottom: 15,
   },
   endButton: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: '#FF6B6B',
     paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 5,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E55B5B',
   },
   endButtonText: {
     color: 'white',
@@ -511,30 +533,32 @@ const styles = {
     fontWeight: 'bold' as const,
   },
   processingContainer: {
-    backgroundColor: '#fff3cd',
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: 'rgba(255, 217, 61, 0.2)',
+    padding: 20,
+    borderRadius: 16,
     marginBottom: 15,
     alignItems: 'center' as const,
-    borderWidth: 1,
-    borderColor: '#ffeaa7',
+    borderWidth: 2,
+    borderColor: '#FFD93D',
   },
   processingText: {
-    fontSize: 14,
-    color: '#856404',
+    fontSize: 16,
+    color: '#E5C035',
     textAlign: 'center' as const,
-    fontWeight: '500' as const,
+    fontWeight: '600' as const,
   },
   testButton: {
-    backgroundColor: '#34C759',
+    backgroundColor: '#FFD93D',
     paddingHorizontal: 30,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 16,
     marginBottom: 10,
     minWidth: 250,
+    borderWidth: 2,
+    borderColor: '#E5C035',
   },
   testButtonText: {
-    color: 'white',
+    color: '#333',
     fontSize: 14,
     fontWeight: 'bold' as const,
     textAlign: 'center' as const,

@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { View } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import Layout from '../../components/Layout/Layout';
 import { useConversationStore, ConversationPhase } from '@/src/stores/conversationStore';
 import StoryContent from '@/components/StoryContent/StoryContent';
@@ -11,6 +12,7 @@ import WelcomeOverlay from '@/components/WelcomeOverlay/WelcomeOverlay';
 import { s } from './StoryScreen.style';
 
 const StoryScreen = () => {
+  const isFocused = useIsFocused();
   const {
     story,
     phase,
@@ -20,8 +22,8 @@ const StoryScreen = () => {
   const conversationRef = useRef<ConversationInterfaceRef>(null);
   const currentPhase: ConversationPhase = phase;
 
-  // Show welcome overlay when IDLE and user hasn't started the conversation yet
-  const showWelcome = currentPhase === 'IDLE' && !story.content;
+  // Show welcome overlay when IDLE, user hasn't started, AND screen is focused
+  const showWelcome = isFocused && currentPhase === 'IDLE' && !story.content;
 
   const handleStart = () => {
     // Start the conversation when the welcome button is clicked
@@ -47,7 +49,7 @@ const StoryScreen = () => {
           {currentPhase === 'GENERATING' ? (
             <ErrorBoundary>
               <StoryGenerationSplash
-                isVisible={true}
+                isVisible={isFocused}
               />
             </ErrorBoundary>
           ) : (
