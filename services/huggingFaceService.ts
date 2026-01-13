@@ -7,7 +7,7 @@ const TEXT_API_URL = 'https://api-inference.huggingface.co/models/meta-llama/Lla
 const IMAGE_API_URL = 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0';
 
 // Dynamic backend URL for Laravel integration
-const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL ?? 'http://127.0.0.1:8001';
+const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL ?? 'http://127.0.0.1:8000';
 
 /**
  * HuggingFace Service (Optional - Not Currently Used)

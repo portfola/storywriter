@@ -1,13 +1,11 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-// Use localhost for iOS simulator, specific IP for Android emulator, or your domain
-const baseURL = __DEV__
-    ? 'http://127.0.0.1:8000/api' // Or http://10.0.2.2:8000/api for Android
-    : 'https://api.storywriter.net/api';
-
-//const baseURL = 'http://127.0.0.1:8000/api';
+// Get API base URL from centralized configuration
+const API_BASE_URL = Constants.expoConfig?.extra?.apiBaseUrl || 'http://127.0.0.1:8000';
+const baseURL = `${API_BASE_URL}/api`;
 
 const client = axios.create({ baseURL });
 

@@ -15,7 +15,7 @@ type BackgroundImageProps = {
 const BackgroundImage = ({ children, opacity = 1 }: BackgroundImageProps) => {
   return (
     <ImageBackground
-      source={require('@/assets/images/storywriter-background.png')}
+      source={require('../../assets/images/storywriter-background.png')}
       style={styles.background}
       imageStyle={[styles.image, { opacity }]}
       resizeMode="cover"

@@ -6,7 +6,6 @@ const s = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingBottom: 60, // Leave space for footer
   },
 });
 

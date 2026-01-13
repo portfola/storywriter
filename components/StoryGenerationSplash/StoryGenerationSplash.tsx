@@ -20,7 +20,7 @@ const ErrorView = ({ onRetry }: { onRetry: () => void }) => {
   const randomMsg = ERROR_MESSAGES[Math.floor(Math.random() * ERROR_MESSAGES.length)];
 
   return (
-    <View style={styles.centerContent}>
+    <View style={styles.card}>
       <Text style={styles.emojiLarge}>😊</Text>
       <Text style={styles.messageText}>{randomMsg}</Text>
       <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
@@ -57,7 +57,7 @@ const LoadingView = () => {
   const current = LOADING_MESSAGES[index];
 
   return (
-    <View style={styles.centerContent}>
+    <View style={styles.card}>
       {/* Bouncing Character */}
       <Animated.View style={{ transform: [{ translateY: bounceAnim }] }}>
         <Text style={styles.emojiLarge}>{current.emoji}</Text>
@@ -106,33 +106,44 @@ const StoryGenerationSplash: React.FC<Props> = ({ isVisible }) => {
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject, // Covers entire screen
-    backgroundColor: '#f8f9ff',
+    backgroundColor: 'transparent', // Let background image show through
     zIndex: 999,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  centerContent: {
-    alignItems: 'center',
     padding: 20,
-    maxWidth: 320,
+  },
+  card: {
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    borderRadius: 32,
+    padding: 40,
+    maxWidth: 600,
+    width: '100%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 12,
+    borderWidth: 4,
+    borderColor: '#FFD93D',
   },
   emojiLarge: {
     fontSize: 80,
     marginBottom: 20,
   },
   messageText: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '600',
-    color: '#4a5568',
+    color: '#FF6B6B',
     textAlign: 'center',
     marginBottom: 20,
     minHeight: 60, // Prevents layout jump when text changes
   },
   subText: {
-    fontSize: 16,
-    color: '#6b46c1',
+    fontSize: 18,
+    color: '#4ECDC4',
     marginTop: 20,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   dotContainer: {
     flexDirection: 'row',
@@ -142,19 +153,21 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#cbd5e0',
+    backgroundColor: '#E5E5E5',
   },
   dotActive: {
-    backgroundColor: '#4299e1',
-    transform: [{ scale: 1.2 }],
+    backgroundColor: '#4ECDC4',
+    transform: [{ scale: 1.3 }],
   },
   retryButton: {
-    backgroundColor: '#48bb78',
+    backgroundColor: '#4ECDC4',
     paddingHorizontal: 30,
     paddingVertical: 15,
-    borderRadius: 25,
+    borderRadius: 16,
     marginTop: 20,
     elevation: 5,
+    borderWidth: 2,
+    borderColor: '#45B8B0',
   },
   retryText: {
     color: 'white',
