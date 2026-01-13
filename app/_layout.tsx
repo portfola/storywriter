@@ -8,7 +8,7 @@ import { useEffect } from 'react';
 import { Platform, View, ActivityIndicator } from 'react-native';
 import 'react-native-reanimated';
 
-import BackendConnectivityService from '@/src/utils/backendConnectivity';
+// import BackendConnectivityService from '@/src/utils/backendConnectivity';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 
 export {
