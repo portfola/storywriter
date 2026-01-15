@@ -79,6 +79,7 @@ class StoryGenerationService {
         try {
             // A. PREPARE PROMPT
             // We wrap the user's transcript in your template before sending it
+            console.log('TRANSCRIPT: ' + transcript);
             const promptTemplate = `
                 ${transcript}
             `;
