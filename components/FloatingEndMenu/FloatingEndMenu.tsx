@@ -19,12 +19,12 @@ const FloatingEndMenu: React.FC<StoryReaderProps> = ({ story, currentPage, setCu
 
   const handleNewStory = () => {
     setShowMenu(false);
-    navigation.navigate('StoryGenerator'); // or whatever your route is
+    navigation.goBack()
   };
 
   const handleExit = () => {
     setShowMenu(false);
-    navigation.navigate('Home'); // or use navigation.goBack()
+    navigation.goBack()
   };
 
   return (
@@ -175,4 +175,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default StoryReader;
+export default FloatingEndMenu;

@@ -42,41 +42,6 @@ const EndOfStoryMenu: React.FC<EndOfStoryMenuProps> = ({
     );
 };
 
-// In your main StoryReader component:
-const StoryReader: React.FC<StoryReaderProps> = ({ story, currentPage, setCurrentPage }) => {
-    const navigation = useNavigation();
-    const isLastPage = currentPage === story.length - 1;
-
-    const handleRestartStory = () => {
-        setCurrentPage(0);
-    };
-
-    const handleNewStory = () => {
-        navigation.navigate('StoryGenerator');
-    };
-
-    const handleExit = () => {
-        navigation.navigate('Home');
-    };
-
-    return (
-        <View style={styles.container}>
-            {!isLastPage ? (
-                // Show normal story content
-                <View style={styles.storyContent}>
-                    <Text style={styles.storyText}>{story[currentPage]}</Text>
-                </View>
-            ) : (
-                // Show end menu on last page
-                <EndOfStoryMenu
-                    onRestartStory={handleRestartStory}
-                    onNewStory={handleNewStory}
-                    onExit={handleExit}
-                />
-            )}
-        </View>
-    );
-};
 
 const styles = StyleSheet.create({
     container: {
@@ -145,4 +110,4 @@ const styles = StyleSheet.create({
     },
 });
 
-export default StoryReader;
+export default EndOfStoryMenu;
