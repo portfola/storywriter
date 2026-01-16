@@ -252,17 +252,11 @@ jobs:
           
       - name: Install dependencies
         run: npm ci
-        
-      - name: Create environment-specific .env
-        run: |
-          echo "API_BASE_URL=${{ needs.setup.outputs.api_base_url }}" > .env
-          echo "ENVIRONMENT=${{ needs.setup.outputs.environment }}" >> .env
-          echo "HUGGING_FACE_API_KEY=" >> .env
-          echo "AWS_ACCESS_KEY_ID=" >> .env
-          echo "AWS_SECRET_ACCESS_KEY=" >> .env
-          echo "AWS_REGION=" >> .env
-          
+
       - name: Build Expo web application
+        env:
+          API_BASE_URL: ${{ needs.setup.outputs.api_base_url }}
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
         run: |
           npx expo export --platform web --output-dir dist
           

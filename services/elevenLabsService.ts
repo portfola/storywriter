@@ -311,29 +311,21 @@ export class ElevenLabsService {
     serviceLogger.elevenlabs.call('Starting conversation with StoryWriter Agent', { agentId: this.agentId });
 
     try {
-      const response = await this.makeApiRequest<{
-        sessionId: string,
-        apiKey: string,
-        agentId: string,
-        expiresAt: string
-      }>('/api/conversation/sdk-credentials', {
-        method: 'POST',
-        body: JSON.stringify({ agentId: this.agentId }),
-      });
+      const response = await client.post<{
+        signed_url: string
+      }>('/conversation/sdk-credentials', { agentId: this.agentId });
 
-      if (!response.success || !response.data?.sessionId || !response.data?.apiKey) {
-        throw new Error(response.error || 'Missing sessionId or apiKey in credentials response');
+      if (!response.data?.signed_url) {
+        throw new Error('Missing signed_url in credentials response');
       }
 
-      const { sessionId, apiKey } = response.data;
-      this.sessionId = sessionId;
-      this.client = new ElevenLabsClient({ apiKey });
+      const { signed_url } = response.data;
 
-      serviceLogger.elevenlabs.call('Got SDK credentials for conversation', { sessionId, expiresAt: response.data.expiresAt });
+      serviceLogger.elevenlabs.call('Got signed URL for conversation', { agentId: this.agentId });
 
-      // Start conversation using ElevenLabs SDK
+      // Start conversation using ElevenLabs SDK with signed URL
       const conversation = await Conversation.startSession({
-        agentId: this.agentId,
+        signedUrl: signed_url,
 
         onConnect: () => {
           this.connectionState = ConnectionState.CONNECTED;

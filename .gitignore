@@ -17,6 +17,7 @@ web-build/
 repomix*
 CLAUDE.md
 .claude
+plan.md
 
 # Logs
 *.log
