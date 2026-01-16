@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'; // <--- Added useRef
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -7,7 +7,8 @@ import {
     TouchableOpacity,
     Platform,
     ScrollView,
-    PanResponder // <--- Added PanResponder
+    PanResponder,
+    Animated
 } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
 
@@ -18,13 +19,17 @@ const THEME = {
 };
 
 const BookReader = () => {
-    const { story } = useConversationStore();
+    const { story, resetConversation } = useConversationStore(); // Add resetConversation
 
     const pages = story.sections && story.sections.length > 0
         ? story.sections
         : [{ text: "Loading story...", imageUrl: null }];
 
     const [currentIndex, setCurrentIndex] = useState(0);
+    const [showEndMenu, setShowEndMenu] = useState(false);
+
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const isLastPage = currentIndex === pages.length - 1;
 
     // --- ACTIONS ---
     const goNext = () => {
@@ -36,30 +41,70 @@ const BookReader = () => {
     const goPrev = () => {
         if (currentIndex > 0) {
             setCurrentIndex(prev => prev - 1);
+            setShowEndMenu(false);
         }
     };
 
-    // --- 1. SWIPE DETECTOR (PanResponder) ---
+    const handleRestartStory = () => {
+        setCurrentIndex(0);
+        setShowEndMenu(false);
+        fadeAnim.setValue(0);
+    };
+
+    const handleNewStory = () => {
+        // Reset the entire conversation store to start fresh
+        resetConversation();
+        // This will trigger the app to go back to the voice assistant/story input
+    };
+
+    const handleExit = () => {
+        // For Expo, you can use expo-app-loading or just reset
+        // If you want to truly exit the app (mobile only):
+        if (Platform.OS !== 'web') {
+            // Option 1: Reset to beginning
+            resetConversation();
+
+            // Option 2: Or if you have BackHandler for Android
+            // BackHandler.exitApp();
+        } else {
+            // On web, just reset to beginning
+            resetConversation();
+        }
+    };
+
+    // Trigger fade-in animation when reaching last page
+    useEffect(() => {
+        if (isLastPage && !showEndMenu) {
+            const timer = setTimeout(() => {
+                setShowEndMenu(true);
+                Animated.timing(fadeAnim, {
+                    toValue: 1,
+                    duration: 800,
+                    useNativeDriver: true,
+                }).start();
+            }, 500);
+
+            return () => clearTimeout(timer);
+        }
+    }, [isLastPage]);
+
+    // --- SWIPE DETECTOR ---
     const panResponder = useRef(
         PanResponder.create({
-            // Only active if the user moves their finger horizontally > 20 pixels
             onMoveShouldSetPanResponder: (_, gestureState) => {
                 return Math.abs(gestureState.dx) > 20;
             },
             onPanResponderRelease: (_, gestureState) => {
-                // If swiped LEFT (dragged finger left) -> Go Next
                 if (gestureState.dx < -50) {
                     goNext();
-                }
-                // If swiped RIGHT (dragged finger right) -> Go Prev
-                else if (gestureState.dx > 50) {
+                } else if (gestureState.dx > 50) {
                     goPrev();
                 }
             }
         })
     ).current;
 
-    // --- 2. KEYBOARD SUPPORT (Web) ---
+    // --- KEYBOARD SUPPORT ---
     useEffect(() => {
         if (Platform.OS === 'web') {
             const handleKeyDown = (e: KeyboardEvent) => {
@@ -73,13 +118,8 @@ const BookReader = () => {
 
     const currentPage = pages[currentIndex];
 
-    // 1. Debug Log: Add this right before the return statement
-    console.log("BookReader Current Page:", currentPage);
-
     return (
-        // --- 3. ATTACH GESTURE HANDLERS TO CONTAINER ---
         <View style={styles.container} {...panResponder.panHandlers}>
-
             <View style={styles.pageWrapper}>
                 <Text style={styles.pageNumber}>
                     Page {currentIndex + 1} of {pages.length}
@@ -88,7 +128,6 @@ const BookReader = () => {
                 <ScrollView
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
-                    // Important: On web, we want the mouse interaction to still work for scrolling
                     scrollEnabled={true}
                 >
                     {currentPage.imageUrl && (
@@ -105,39 +144,77 @@ const BookReader = () => {
                 </ScrollView>
             </View>
 
-            <View style={styles.controlsOverlay}>
-                <TouchableOpacity
-                    onPress={goPrev}
-                    style={[styles.navButton, currentIndex === 0 && styles.disabledBtn]}
-                    disabled={currentIndex === 0}
+            {/* END OF STORY MENU */}
+            {showEndMenu && isLastPage && (
+                <Animated.View
+                    style={[
+                        styles.endMenuOverlay,
+                        { opacity: fadeAnim }
+                    ]}
                 >
-                    <Text style={styles.navArrow}>‹</Text>
-                </TouchableOpacity>
+                    <View style={styles.endMenuContainer}>
+                        <Text style={styles.endTitle}>The End! 🎉</Text>
+                        <Text style={styles.endSubtitle}>What would you like to do?</Text>
 
-                <View style={styles.dotsContainer}>
-                    {pages.map((_, i) => (
-                        <View
-                            key={i}
-                            style={[styles.dot, i === currentIndex && styles.dotActive]}
-                        />
-                    ))}
+                        <TouchableOpacity
+                            style={[styles.endButton, styles.primaryButton]}
+                            onPress={handleNewStory}
+                        >
+                            <Text style={styles.primaryButtonText}>✨ Create New Story</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.endButton, styles.secondaryButton]}
+                            onPress={handleRestartStory}
+                        >
+                            <Text style={styles.secondaryButtonText}>🔄 Read Again</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.endButton, styles.tertiaryButton]}
+                            onPress={handleExit}
+                        >
+                            <Text style={styles.tertiaryButtonText}>🏠 Exit</Text>
+                        </TouchableOpacity>
+                    </View>
+                </Animated.View>
+            )}
+
+            {/* NAVIGATION CONTROLS */}
+            {!showEndMenu && (
+                <View style={styles.controlsOverlay}>
+                    <TouchableOpacity
+                        onPress={goPrev}
+                        style={[styles.navButton, currentIndex === 0 && styles.disabledBtn]}
+                        disabled={currentIndex === 0}
+                    >
+                        <Text style={styles.navArrow}>‹</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.dotsContainer}>
+                        {pages.map((_, i) => (
+                            <View
+                                key={i}
+                                style={[styles.dot, i === currentIndex && styles.dotActive]}
+                            />
+                        ))}
+                    </View>
+
+                    <TouchableOpacity
+                        onPress={goNext}
+                        style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
+                        disabled={currentIndex === pages.length - 1}
+                    >
+                        <Text style={styles.navArrow}>›</Text>
+                    </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity
-                    onPress={goNext}
-                    style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
-                    disabled={currentIndex === pages.length - 1}
-                >
-                    <Text style={styles.navArrow}>›</Text>
-                </TouchableOpacity>
-            </View>
-
+            )}
         </View>
     );
 };
 
+
 const styles = StyleSheet.create({
-    // ... (Keep your existing styles exactly the same) ...
     container: {
         flex: 1,
         backgroundColor: THEME.paper,
@@ -150,7 +227,7 @@ const styles = StyleSheet.create({
         width: '100%',
         maxWidth: 800,
         height: '100%',
-        paddingBottom: 100, // <--- INCREASE THIS (Make room for the taller footer)
+        paddingBottom: 100,
         paddingTop: 20,
         paddingHorizontal: 20,
     },
@@ -188,7 +265,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        height: 90, // Increased height slightly
+        height: 90,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -197,7 +274,6 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: 'rgba(0,0,0,0.05)',
         zIndex: 9999,
-        // iOS FIX: Add padding at the bottom to push buttons up above the address bar
         paddingBottom: Platform.OS === 'ios' ? 20 : 0,
     },
     navButton: {
@@ -214,7 +290,6 @@ const styles = StyleSheet.create({
         elevation: 4,
         borderWidth: 1,
         borderColor: '#eee',
-        cursor: 'pointer',
     },
     disabledBtn: {
         opacity: 0.3,
@@ -239,7 +314,75 @@ const styles = StyleSheet.create({
     dotActive: {
         backgroundColor: THEME.accent,
         width: 12,
-    }
+    },
+    // END MENU STYLES
+    endMenuOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(250, 249, 246, 0.98)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10000,
+    },
+    endMenuContainer: {
+        width: '90%',
+        maxWidth: 400,
+        padding: 30,
+        alignItems: 'center',
+    },
+    endTitle: {
+        fontSize: 36,
+        fontWeight: 'bold',
+        color: THEME.text,
+        marginBottom: 10,
+        textAlign: 'center',
+    },
+    endSubtitle: {
+        fontSize: 18,
+        color: '#666',
+        marginBottom: 40,
+        textAlign: 'center',
+    },
+    endButton: {
+        width: '100%',
+        padding: 18,
+        borderRadius: 12,
+        marginBottom: 16,
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    primaryButton: {
+        backgroundColor: THEME.accent,
+    },
+    primaryButtonText: {
+        fontSize: 20,
+        fontWeight: '600',
+        color: 'white',
+    },
+    secondaryButton: {
+        backgroundColor: '#fff',
+        borderWidth: 2,
+        borderColor: THEME.accent,
+    },
+    secondaryButtonText: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: THEME.accent,
+    },
+    tertiaryButton: {
+        backgroundColor: 'transparent',
+    },
+    tertiaryButtonText: {
+        fontSize: 16,
+        color: '#666',
+    },
 });
 
 export default BookReader;

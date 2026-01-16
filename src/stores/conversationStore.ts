@@ -55,6 +55,7 @@ export interface StoryState {
   storyPages: StoryPage[];
   storyElements: StoryElements;
   savedStories: SavedStory[];
+  resetConversation: () => void;
 }
 
 // Simplified conversation state - trust ElevenLabs to handle conversation flow
