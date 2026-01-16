@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 
 interface EndOfStoryMenuProps {
     onRestartStory: () => void;
