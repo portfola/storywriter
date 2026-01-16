@@ -311,18 +311,15 @@ export class ElevenLabsService {
     serviceLogger.elevenlabs.call('Starting conversation with StoryWriter Agent', { agentId: this.agentId });
 
     try {
-      const response = await this.makeApiRequest<{
+      const response = await client.post<{
         sessionId: string,
         apiKey: string,
         agentId: string,
         expiresAt: string
-      }>('/api/conversation/sdk-credentials', {
-        method: 'POST',
-        body: JSON.stringify({ agentId: this.agentId }),
-      });
+      }>('/conversation/sdk-credentials', { agentId: this.agentId });
 
-      if (!response.success || !response.data?.sessionId || !response.data?.apiKey) {
-        throw new Error(response.error || 'Missing sessionId or apiKey in credentials response');
+      if (!response.data?.sessionId || !response.data?.apiKey) {
+        throw new Error('Missing sessionId or apiKey in credentials response');
       }
 
       const { sessionId, apiKey } = response.data;
