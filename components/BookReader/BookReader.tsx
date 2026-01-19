@@ -11,6 +11,7 @@ import {
     Animated
 } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
+import Markdown from 'react-native-markdown-display';
 
 const THEME = {
     paper: '#FAF9F6',
@@ -120,6 +121,7 @@ const BookReader = () => {
 
     return (
         <View style={styles.container} {...panResponder.panHandlers}>
+
             <View style={styles.pageWrapper}>
                 <Text style={styles.pageNumber}>
                     Page {currentIndex + 1} of {pages.length}

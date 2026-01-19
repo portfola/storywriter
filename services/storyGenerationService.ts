@@ -119,10 +119,17 @@ class StoryGenerationService {
 
         let body = text.replace(/^Title[:.]?.+$/im, '').trim();
 
+        // ADD THIS: Remove all page break markers from display
+        body = body.replace(/---PAGE BREAK---/gi, '');
+        body = body.replace(/Page \d+/gi, ''); // Also remove "Page 1", "Page 2", etc.
+
         // ---------------------------------------------------------
         // 2. EXTRACT COVER IMAGE (The New Part)
         // ---------------------------------------------------------
         let coverImageUrl: string | null = null;
+
+        // ADD THIS: Prepend title with markdown bold and heading
+        body = `# **${title}**\n\n${body}`;
 
         // Regex explanation:
         // !\[.*?\]  -> Matches ![alt text]
