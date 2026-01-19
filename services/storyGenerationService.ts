@@ -129,7 +129,7 @@ class StoryGenerationService {
         let coverImageUrl: string | null = null;
 
         // ADD THIS: Prepend title with markdown bold and heading
-        body = `# **${title}**\n\n${body}`;
+        // body = `# **${title}**\n\n${body}`;
 
         // Regex explanation:
         // !\[.*?\]  -> Matches ![alt text]
