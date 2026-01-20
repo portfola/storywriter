@@ -30,7 +30,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
-      api_base_url: ${{ steps.set-env.outputs.api_base_url }}
       terraform_dir: ${{ steps.set-env.outputs.terraform_dir }}
     steps:
       - name: Set environment variables
@@ -43,15 +42,9 @@ jobs:
           else
             ENV="staging"
           fi
-          
+
           echo "environment=$ENV" >> $GITHUB_OUTPUT
           echo "terraform_dir=terraform/frontend-${ENV}" >> $GITHUB_OUTPUT
-          
-          if [ "$ENV" = "production" ]; then
-            echo "api_base_url=https://api.storywriter.net" >> $GITHUB_OUTPUT
-          else
-            echo "api_base_url=https://staging-api.storywriter.net" >> $GITHUB_OUTPUT
-          fi
 
   # Infrastructure management phase (creates/validates infrastructure)
   infrastructure:
@@ -255,9 +248,18 @@ jobs:
 
       - name: Build Expo web application
         env:
-          API_BASE_URL: ${{ needs.setup.outputs.api_base_url }}
+          API_BASE_URL: ${{ vars.API_BASE_URL || (needs.setup.outputs.environment == 'production' && 'https://api.storywriter.net' || 'https://staging-api.storywriter.net') }}
           ENVIRONMENT: ${{ needs.setup.outputs.environment }}
         run: |
+          if [ -z "$API_BASE_URL" ] || [ "$API_BASE_URL" = "null" ]; then
+            echo "⚠️  API_BASE_URL environment variable not set, using default"
+            if [ "$ENVIRONMENT" = "production" ]; then
+              export API_BASE_URL="https://api.storywriter.net"
+            else
+              export API_BASE_URL="https://staging-api.storywriter.net"
+            fi
+          fi
+          echo "Building with API_BASE_URL: $API_BASE_URL"
           npx expo export --platform web --output-dir dist
           
       - name: Validate build output
@@ -288,11 +290,24 @@ jobs:
     environment: ${{ needs.setup.outputs.environment }}
     steps:
       - name: Test backend connectivity
+        env:
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
         run: |
-          echo "Testing connectivity to ${{ needs.setup.outputs.api_base_url }}"
-          
+          # Use environment variable or fall back to defaults
+          API_URL="${{ vars.API_BASE_URL }}"
+          if [ -z "$API_URL" ] || [ "$API_URL" = "null" ]; then
+            echo "⚠️  API_BASE_URL environment variable not set, using default"
+            if [ "$ENVIRONMENT" = "production" ]; then
+              API_URL="https://api.storywriter.net"
+            else
+              API_URL="https://staging-api.storywriter.net"
+            fi
+          fi
+
+          echo "Testing connectivity to $API_URL"
+
           # Test health endpoint with timeout
-          if curl -f -m 10 "${{ needs.setup.outputs.api_base_url }}/api/health"; then
+          if curl -f -m 10 "$API_URL/api/health"; then
             echo "✅ Backend connectivity test passed"
           else
             echo "⚠️ Backend connectivity test failed - continuing with deployment"
@@ -359,6 +374,7 @@ jobs:
   verify-deployment:
     needs: [setup, infrastructure, deploy]
     runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.environment }}
     steps:
       - name: Verify deployment
         run: |
@@ -393,11 +409,24 @@ jobs:
           echo "- Domain: ${{ needs.infrastructure.outputs.domain }}"
           
       - name: Test backend connectivity from deployed frontend
+        env:
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
         run: |
+          # Use environment variable or fall back to defaults
+          API_URL="${{ vars.API_BASE_URL }}"
+          if [ -z "$API_URL" ] || [ "$API_URL" = "null" ]; then
+            echo "⚠️  API_BASE_URL environment variable not set, using default"
+            if [ "$ENVIRONMENT" = "production" ]; then
+              API_URL="https://api.storywriter.net"
+            else
+              API_URL="https://staging-api.storywriter.net"
+            fi
+          fi
+
           echo "Testing API connectivity from deployed frontend"
           # This would typically involve running browser tests
           # For now, we'll just test the API endpoint directly
-          if curl -f -m 10 "${{ needs.setup.outputs.api_base_url }}/api/health"; then
+          if curl -f -m 10 "$API_URL/api/health"; then
             echo "✅ Backend API is accessible from deployment environment"
           else
             echo "⚠️ Backend API test failed - may need manual verification"
