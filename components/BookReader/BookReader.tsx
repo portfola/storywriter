@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
 import Markdown from 'react-native-markdown-display';
-console.log(Markdown);
 
 const THEME = {
     paper: '#FAF9F6',
