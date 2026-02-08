@@ -43,7 +43,7 @@ export default function StoryDetailScreen() {
         return (
             <View style={styles.center}>
                 <Text style={styles.errorText}>{error || 'No content found.'}</Text>
-                <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+                <TouchableOpacity style={styles.backButton} onPress={() => router.push('/bookshelf')}>
                     <Text style={styles.backButtonText}>Back to Bookshelf</Text>
                 </TouchableOpacity>
             </View>
@@ -52,7 +52,7 @@ export default function StoryDetailScreen() {
 
     return (
         <View style={styles.fullScreen}>
-            <BookReader sections={sections} onBack={() => router.back()} />
+            <BookReader sections={sections} onBack={() => router.push('/bookshelf')} />
         </View>
     );
 }

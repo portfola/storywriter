@@ -17,15 +17,13 @@ const WelcomeOverlay: React.FC<WelcomeOverlayProps> = ({ onStart, visible }) => 
 
   return (
     <View style={styles.overlay}>
-      <View style={styles.container}>
-        <TouchableOpacity
-          style={styles.startButton}
-          onPress={onStart}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.buttonText}>Create a Story</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        style={styles.startButton}
+        onPress={onStart}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.buttonText}>Create a Story</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -33,42 +31,34 @@ const WelcomeOverlay: React.FC<WelcomeOverlayProps> = ({ onStart, visible }) => 
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     padding: 20,
-  },
-  container: {
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
-    borderRadius: 24,
-    padding: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 8,
-    borderWidth: 3,
-    borderColor: '#FFD93D',
+    paddingTop: 175,
   },
   startButton: {
-    backgroundColor: '#4ECDC4',
-    paddingVertical: 20,
-    paddingHorizontal: 48,
-    borderRadius: 24,
-    shadowColor: '#4ECDC4',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 3,
-    borderColor: '#45B8B0',
+    backgroundColor: '#FF6B6B',
+    paddingVertical: 24,
+    paddingHorizontal: 56,
+    borderRadius: 32,
+    borderWidth: 5,
+    borderColor: '#2D2D2D',
+    shadowColor: '#000',
+    shadowOffset: { width: 6, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 12,
+    transform: [{ rotate: '-1deg' }],
   },
   buttonText: {
-    color: '#FFF',
-    fontSize: 28,
-    fontWeight: 'bold',
+    color: '#FFFEF7',
+    fontSize: 32,
+    fontWeight: '900',
     textAlign: 'center',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
+    textShadowColor: '#2D2D2D',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 0,
   },
 });
 

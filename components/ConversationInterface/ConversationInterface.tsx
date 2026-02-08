@@ -7,6 +7,7 @@ import { useErrorHandler } from '@/src/hooks/useErrorHandler';
 import { ErrorType, ErrorSeverity } from '@/src/utils/errorHandler';
 import { conversationLogger, logger, LogCategory } from '@/src/utils/logger';
 import { TranscriptNormalizer, DialogueTurn } from '@/src/utils/transcriptNormalizer';
+import AudioVisualizer from '@/components/AudioVisualizer/AudioVisualizer';
 
 interface Props {
   disabled?: boolean;
@@ -20,9 +21,11 @@ export interface ConversationInterfaceRef {
 const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ disabled = false, hideButtons = false }, ref) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [conversationSession, setConversationSession] = useState<ConversationSession | null>(null);
+  const [currentSpeaker, setCurrentSpeaker] = useState<'user' | 'agent' | 'none'>('none');
   const rawMessages = useRef<{role: 'user'|'agent', content: string, timestamp: number}[]>([]);
   const flushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingFlushRef = useRef<boolean>(false);
+  const speakerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Simplified store usage - trust ElevenLabs for conversation management
   const {
@@ -99,6 +102,9 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
         conversationLogger.cleanup({ sessionId: conversationSession.conversation?.conversationId });
         ElevenLabsService.forceCleanup();
       }
+      if (speakerTimeoutRef.current) {
+        clearTimeout(speakerTimeoutRef.current);
+      }
     };
   }, [conversationSession]);
   
@@ -106,9 +112,14 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
   useEffect(() => {
     if (isConnecting) {
       rawMessages.current = [];
+      setCurrentSpeaker('none');
       if (flushTimeoutRef.current) {
         clearTimeout(flushTimeoutRef.current);
         flushTimeoutRef.current = null;
+      }
+      if (speakerTimeoutRef.current) {
+        clearTimeout(speakerTimeoutRef.current);
+        speakerTimeoutRef.current = null;
       }
       pendingFlushRef.current = false;
     }
@@ -216,18 +227,31 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
             const role = message.source === 'user' ? 'user' : 'agent';
             const timestamp = Date.now();
             const content = message.message!.trim();
-            
-            rawMessages.current = [...rawMessages.current, { 
-              role, 
-              content, 
-              timestamp 
+
+            rawMessages.current = [...rawMessages.current, {
+              role,
+              content,
+              timestamp
             }];
-            
-            logger.debug(LogCategory.CONVERSATION, `${role} message captured`, { 
+
+            logger.debug(LogCategory.CONVERSATION, `${role} message captured`, {
               fullContent: content,
               messageCount: rawMessages.current.length
             });
-            
+
+            // Update current speaker for audio visualization
+            setCurrentSpeaker(role);
+
+            // Clear any existing speaker timeout
+            if (speakerTimeoutRef.current) {
+              clearTimeout(speakerTimeoutRef.current);
+            }
+
+            // Reset speaker to 'none' after 1.5 seconds of no messages
+            speakerTimeoutRef.current = setTimeout(() => {
+              setCurrentSpeaker('none');
+            }, 1500);
+
             // Schedule message processing check (does not end conversation)
             pendingFlushRef.current = true;
             scheduleMessageProcessing();
@@ -382,6 +406,11 @@ User: Yeah! Kids who are scared to read out loud but the dragon makes them feel 
 Agent: That's such a wonderful and heartwarming idea! I think we have everything we need to create your story about a brave, helpful dragon in a magical library. Let me create that story for you now!`;
   };
 
+  // Don't render the card at all when buttons are hidden and no active conversation
+  if (hideButtons && !isConversationActive && phase !== 'GENERATING') {
+    return null;
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.card}>
@@ -421,13 +450,35 @@ Agent: That's such a wonderful and heartwarming idea! I think we have everything
 
         {/* Active Conversation Controls */}
         {isConversationActive && (
-          <View style={styles.statusContainer}>
-            <Text style={styles.statusText}>
-              🎙️ Having a conversation with the StoryWriter Agent!
+          <View style={styles.audioContainer}>
+            {/* Microphone Icon */}
+            <View style={[
+              styles.microphoneIcon,
+              currentSpeaker === 'user' && styles.microphoneIconUser,
+              currentSpeaker === 'agent' && styles.microphoneIconAgent,
+            ]}>
+              <Text style={styles.microphoneEmoji}>🎙️</Text>
+            </View>
+
+            {/* Speaker Label */}
+            <Text style={styles.speakerLabel}>
+              {currentSpeaker === 'user' && '🗣️ You are speaking'}
+              {currentSpeaker === 'agent' && '🤖 Agent is speaking'}
+              {currentSpeaker === 'none' && '👂 Listening...'}
             </Text>
+
+            {/* Audio Visualizer */}
+            <AudioVisualizer
+              isActive={isConversationActive}
+              speaker={currentSpeaker}
+            />
+
+            {/* Helper Text */}
             <Text style={styles.helpText}>
               The agent will automatically end the conversation when ready to create your story.
             </Text>
+
+            {/* End Conversation Button */}
             <TouchableOpacity
               style={styles.endButton}
               onPress={handleManualEnd}
@@ -496,19 +547,45 @@ const styles = {
   disabledButtonText: {
     color: '#666',
   },
-  statusContainer: {
-    backgroundColor: 'rgba(78, 205, 196, 0.1)',
-    padding: 20,
-    borderRadius: 16,
+  audioContainer: {
+    backgroundColor: 'rgba(78, 205, 196, 0.05)',
+    padding: 30,
+    borderRadius: 24,
     marginBottom: 15,
     alignItems: 'center' as const,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#4ECDC4',
+    width: '100%' as const,
   },
-  statusText: {
+  microphoneIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(224, 224, 224, 0.3)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: 20,
+    borderWidth: 4,
+    borderColor: '#E0E0E0',
+    transition: 'all 0.3s ease' as any,
+  },
+  microphoneIconUser: {
+    backgroundColor: 'rgba(78, 205, 196, 0.2)',
+    borderColor: '#4ECDC4',
+    transform: [{ scale: 1.1 }],
+  },
+  microphoneIconAgent: {
+    backgroundColor: 'rgba(255, 217, 61, 0.2)',
+    borderColor: '#FFD93D',
+    transform: [{ scale: 1.1 }],
+  },
+  microphoneEmoji: {
+    fontSize: 40,
+  },
+  speakerLabel: {
     fontSize: 18,
     color: '#4ECDC4',
-    marginBottom: 10,
+    marginBottom: 20,
     textAlign: 'center' as const,
     fontWeight: '600' as const,
   },
