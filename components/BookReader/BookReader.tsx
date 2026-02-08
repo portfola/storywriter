@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -41,18 +41,18 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
     const isLastPage = currentIndex === pages.length - 1;
 
     // --- ACTIONS ---
-    const goNext = () => {
+    const goNext = useCallback(() => {
         if (currentIndex < pages.length - 1) {
             setCurrentIndex(prev => prev + 1);
         }
-    };
+    }, [currentIndex, pages.length]);
 
-    const goPrev = () => {
+    const goPrev = useCallback(() => {
         if (currentIndex > 0) {
             setCurrentIndex(prev => prev - 1);
             setShowEndMenu(false);
         }
-    };
+    }, [currentIndex]);
 
     const handleRestartStory = () => {
         setCurrentIndex(0);
@@ -95,7 +95,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
 
             return () => clearTimeout(timer);
         }
-    }, [isLastPage]);
+    }, [isLastPage, fadeAnim, showEndMenu]);
 
     // --- SWIPE DETECTOR ---
     const panResponder = useRef(
@@ -123,7 +123,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             window.addEventListener('keydown', handleKeyDown);
             return () => window.removeEventListener('keydown', handleKeyDown);
         }
-    }, [currentIndex, pages.length]);
+    }, [currentIndex, pages.length, goNext, goPrev]);
 
     const currentPage = pages[currentIndex];
 

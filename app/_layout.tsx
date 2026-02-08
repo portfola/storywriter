@@ -5,7 +5,7 @@ import { Stack, useRouter, useSegments } from 'expo-router'; // <--- 1. Import u
 import * as SplashScreen from 'expo-splash-screen';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect } from 'react';
-import { Platform, View, ActivityIndicator } from 'react-native';
+import { Platform, View, ActivityIndicator, StyleSheet } from 'react-native';
 import 'react-native-reanimated';
 
 // import BackendConnectivityService from '@/src/utils/backendConnectivity';
@@ -84,11 +84,11 @@ function RootLayoutNav() {
       // Redirect them to the tabs
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, segments, loading]);
+  }, [isAuthenticated, segments, loading, router]);
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" />
       </View>
     );
@@ -97,8 +97,8 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={customTheme}>
       {/* 4. CLEANER STACK
-         Don't conditionally render the screens here. 
-         Let the useEffect above handle the security. 
+         Don't conditionally render the screens here.
+         Let the useEffect above handle the security.
          This prevents "Route not found" errors during the transition.
       */}
       <Stack screenOptions={{ headerShown: false }}>
@@ -108,3 +108,11 @@ function RootLayoutNav() {
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

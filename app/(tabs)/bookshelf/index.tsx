@@ -88,7 +88,7 @@ export default function BookshelfScreen() {
     // Refetch whenever the tab comes into focus so newly generated stories appear
     useEffect(() => {
         if (isFocused) {
-            fetchStories();
+            void fetchStories();
         }
     }, [isFocused, fetchStories]);
 
@@ -154,17 +154,16 @@ export default function BookshelfScreen() {
                     </View>
 
                     <View style={styles.cardsContainer}>
-                        {cards.map(({ story, coverImageUrl, preview }) => (
+                        {cards.map(({ story, coverImageUrl, preview }) => {
+                            const cardWidth: '100%' | `${number}%` = numColumns === 1
+                                ? '100%'
+                                : `${100 / numColumns - 2}%` as `${number}%`;
+                            return (
                             <TouchableOpacity
                                 key={story.id}
                                 style={[
                                     styles.card,
-                                    {
-                                        width:
-                                            numColumns === 1
-                                                ? '100%'
-                                                : `${100 / numColumns - 2}%`,
-                                    },
+                                    { width: cardWidth },
                                 ]}
                                 onPress={() => router.push(`/bookshelf/${story.slug}`)}
                                 activeOpacity={0.85}
@@ -195,7 +194,8 @@ export default function BookshelfScreen() {
                             </Text>
                         </View>
                             </TouchableOpacity>
-                        ))}
+                            );
+                        })}
                     </View>
                 </ScrollView>
             </ImageBackground>

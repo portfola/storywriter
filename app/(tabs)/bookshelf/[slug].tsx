@@ -27,7 +27,7 @@ export default function StoryDetailScreen() {
         };
 
         if (slug) {
-            fetchStory();
+            void fetchStory();
         }
     }, [slug]);
 
