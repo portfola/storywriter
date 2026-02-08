@@ -2,9 +2,20 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
+
+// The root layout sets background: 'transparent' so the auth screens can use
+// BackgroundImage freely.  That bleeds into tab screens on web — each inactive
+// tab stays rendered and shows through the active one.  Override the background
+// to an opaque colour scoped to this navigator only.
+const tabTheme = {
+    ...DefaultTheme,
+    colors: { ...DefaultTheme.colors, background: '#FAF9F6' },
+};
 
 export default function TabLayout() {
     return (
+        <ThemeProvider value={tabTheme}>
         <Tabs
             screenOptions={{
                 headerShown: false,
@@ -28,7 +39,16 @@ export default function TabLayout() {
             <Tabs.Screen
                 name="index"
                 options={{
-                    title: 'Home',
+                    title: 'The Lab',
+                    tabBarIcon: ({ color, size }) => (
+                        <FontAwesome name="flask" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="bookshelf"
+                options={{
+                    title: 'Bookshelf',
                     tabBarIcon: ({ color, size }) => (
                         <FontAwesome name="book" size={size} color={color} />
                     ),
@@ -44,5 +64,6 @@ export default function TabLayout() {
                 }}
             />
         </Tabs>
+        </ThemeProvider>
     );
 }

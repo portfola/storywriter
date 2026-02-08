@@ -10,7 +10,14 @@ import {
     PanResponder,
     Animated
 } from 'react-native';
-import { useConversationStore } from '@/src/stores/conversationStore';
+import { useConversationStore, StorySection } from '@/src/stores/conversationStore';
+
+interface BookReaderProps {
+    /** If provided, read these sections instead of pulling from the conversation store. */
+    sections?: StorySection[];
+    /** If provided, the end-of-story menu switches to "Read Again / Back to Bookshelf" mode. */
+    onBack?: () => void;
+}
 
 const THEME = {
     paper: '#FAF9F6',
@@ -18,12 +25,14 @@ const THEME = {
     accent: '#D35400',
 };
 
-const BookReader = () => {
-    const { story, resetConversation } = useConversationStore(); // Add resetConversation
+const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) => {
+    const { story, resetConversation } = useConversationStore();
 
-    const pages = story.sections && story.sections.length > 0
-        ? story.sections
-        : [{ text: "Loading story...", imageUrl: null }];
+    const pages = (sectionsProp && sectionsProp.length > 0)
+        ? sectionsProp
+        : (story.sections && story.sections.length > 0
+            ? story.sections
+            : [{ text: "Loading story...", imageUrl: null }]);
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [showEndMenu, setShowEndMenu] = useState(false);
@@ -156,26 +165,46 @@ const BookReader = () => {
                         <Text style={styles.endTitle}>The End! 🎉</Text>
                         <Text style={styles.endSubtitle}>What would you like to do?</Text>
 
-                        <TouchableOpacity
-                            style={[styles.endButton, styles.primaryButton]}
-                            onPress={handleNewStory}
-                        >
-                            <Text style={styles.primaryButtonText}>✨ Create New Story</Text>
-                        </TouchableOpacity>
+                        {onBack ? (
+                            <>
+                                <TouchableOpacity
+                                    style={[styles.endButton, styles.primaryButton]}
+                                    onPress={handleRestartStory}
+                                >
+                                    <Text style={styles.primaryButtonText}>🔄 Read Again</Text>
+                                </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={[styles.endButton, styles.secondaryButton]}
-                            onPress={handleRestartStory}
-                        >
-                            <Text style={styles.secondaryButtonText}>🔄 Read Again</Text>
-                        </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.endButton, styles.secondaryButton]}
+                                    onPress={onBack}
+                                >
+                                    <Text style={styles.secondaryButtonText}>📚 Back to Bookshelf</Text>
+                                </TouchableOpacity>
+                            </>
+                        ) : (
+                            <>
+                                <TouchableOpacity
+                                    style={[styles.endButton, styles.primaryButton]}
+                                    onPress={handleNewStory}
+                                >
+                                    <Text style={styles.primaryButtonText}>✨ Create New Story</Text>
+                                </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={[styles.endButton, styles.tertiaryButton]}
-                            onPress={handleExit}
-                        >
-                            <Text style={styles.tertiaryButtonText}>🏠 Exit</Text>
-                        </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.endButton, styles.secondaryButton]}
+                                    onPress={handleRestartStory}
+                                >
+                                    <Text style={styles.secondaryButtonText}>🔄 Read Again</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[styles.endButton, styles.tertiaryButton]}
+                                    onPress={handleExit}
+                                >
+                                    <Text style={styles.tertiaryButtonText}>🏠 Exit</Text>
+                                </TouchableOpacity>
+                            </>
+                        )}
                     </View>
                 </Animated.View>
             )}
@@ -208,6 +237,16 @@ const BookReader = () => {
                         <Text style={styles.navArrow}>›</Text>
                     </TouchableOpacity>
                 </View>
+            )}
+
+            {/* BACK TO BOOKSHELF */}
+            {onBack && !showEndMenu && (
+                <TouchableOpacity
+                    style={styles.backToBookshelfBtn}
+                    onPress={onBack}
+                >
+                    <Text style={styles.backToBookshelfBtnText}>‹ Bookshelf</Text>
+                </TouchableOpacity>
             )}
         </View>
     );
@@ -382,6 +421,29 @@ const styles = StyleSheet.create({
     tertiaryButtonText: {
         fontSize: 16,
         color: '#666',
+    },
+    // BACK TO BOOKSHELF BUTTON
+    backToBookshelfBtn: {
+        position: 'absolute',
+        bottom: 100,
+        left: 20,
+        backgroundColor: 'rgba(250, 249, 246, 0.92)',
+        borderRadius: 20,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        zIndex: 9998,
+    },
+    backToBookshelfBtnText: {
+        fontSize: 15,
+        color: THEME.accent,
+        fontWeight: '600',
     },
 });
 
