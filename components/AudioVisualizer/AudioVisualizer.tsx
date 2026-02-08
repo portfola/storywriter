@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 
 interface AudioVisualizerProps {
@@ -16,7 +16,7 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isActive, speaker }) 
   const bar6 = useRef(new Animated.Value(0.2)).current;
   const bar7 = useRef(new Animated.Value(0.2)).current;
 
-  const bars = [bar1, bar2, bar3, bar4, bar5, bar6, bar7];
+  const bars = useMemo(() => [bar1, bar2, bar3, bar4, bar5, bar6, bar7], [bar1, bar2, bar3, bar4, bar5, bar6, bar7]);
 
   useEffect(() => {
     if (!isActive || speaker === 'none') {
@@ -77,7 +77,7 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isActive, speaker }) 
     return () => {
       animations.forEach(animation => animation.stop());
     };
-  }, [isActive, speaker]);
+  }, [isActive, speaker, bars]);
 
   // Determine color based on speaker
   const getBarColor = () => {

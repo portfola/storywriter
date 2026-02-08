@@ -567,7 +567,6 @@ const styles = {
     marginBottom: 20,
     borderWidth: 4,
     borderColor: '#E0E0E0',
-    transition: 'all 0.3s ease' as any,
   },
   microphoneIconUser: {
     backgroundColor: 'rgba(78, 205, 196, 0.2)',
