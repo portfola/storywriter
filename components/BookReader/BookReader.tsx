@@ -123,13 +123,29 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         } catch (error) {
             console.error('Error generating audio:', error);
 
-            // Type guard for error with status
-            const errorWithStatus = error as { status?: number; message?: string };
+            // Type guard for error with status and name
+            const errorWithStatus = error as {
+                status?: number;
+                message?: string;
+                name?: string;
+            };
+
+            // Check for timeout/abort errors (DOMException with name 'AbortError')
+            const isTimeoutError = errorWithStatus.name === 'AbortError'
+                || errorWithStatus.message?.toLowerCase().includes('timeout')
+                || errorWithStatus.message?.toLowerCase().includes('aborted');
+
+            // Check for network errors
+            const isNetworkError = errorWithStatus.message?.toLowerCase().includes('network')
+                || errorWithStatus.message?.toLowerCase().includes('fetch')
+                || errorWithStatus.message?.toLowerCase().includes('connection');
 
             if (errorWithStatus.status === 429) {
                 setAudioError('Rate limit exceeded. Please try again later.');
-            } else if (errorWithStatus.message?.includes('timeout') || errorWithStatus.message?.includes('network')) {
-                setAudioError('Network error. Please check your connection.');
+            } else if (isTimeoutError) {
+                setAudioError('Request timed out. Please check your connection and try again.');
+            } else if (isNetworkError) {
+                setAudioError('Network error. Please check your connection and try again.');
             } else {
                 setAudioError('Failed to generate audio. Please try again.');
             }
