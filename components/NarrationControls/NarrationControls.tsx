@@ -10,9 +10,11 @@ interface NarrationControlsProps {
     onPause: () => void;
     /** Optional error message to display */
     errorMessage?: string | null;
+    /** Optional retry callback (only shown when error can be retried) */
+    onRetry?: () => void;
 }
 
-export function NarrationControls({ onPlay, onPause, errorMessage }: NarrationControlsProps) {
+export function NarrationControls({ onPlay, onPause, errorMessage, onRetry }: NarrationControlsProps) {
     const {
         isNarrationEnabled,
         isNarrationPlaying,
@@ -88,6 +90,17 @@ export function NarrationControls({ onPlay, onPause, errorMessage }: NarrationCo
             {errorMessage && (
                 <View style={styles.errorContainer}>
                     <Text style={styles.errorText}>{errorMessage}</Text>
+                    {onRetry && (
+                        <TouchableOpacity
+                            onPress={onRetry}
+                            style={styles.retryButton}
+                            accessible={true}
+                            accessibilityLabel="Retry loading audio"
+                            accessibilityRole="button"
+                        >
+                            <Text style={styles.retryButtonText}>🔄 Retry</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             )}
         </View>

@@ -79,6 +79,18 @@ export class AudioCache {
   has(key: string): boolean {
     return this.cache.has(key);
   }
+
+  /**
+   * Deletes a specific cache entry
+   * Useful for forcing regeneration of audio for a specific page
+   * @param key - Cache key to delete
+   */
+  delete(key: string): void {
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+      this.insertionOrder = this.insertionOrder.filter(k => k !== key);
+    }
+  }
 }
 
 // Export singleton instance

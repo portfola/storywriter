@@ -53,6 +53,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
     const [currentIndex, setCurrentIndex] = useState(0);
     const [showEndMenu, setShowEndMenu] = useState(false);
     const [audioError, setAudioError] = useState<string | null>(null);
+    const [canRetry, setCanRetry] = useState(false);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const isLastPage = currentIndex === pages.length - 1;
@@ -82,6 +83,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         try {
             setLoadingAudio(true);
             setAudioError(null);
+            setCanRetry(false);
 
             // Check cache first
             const cachedAudio = audioCache.get(cacheKey);
@@ -106,9 +108,19 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
                 }
             );
 
-            // Ensure we have Uint8Array
+            // Validate audio format
             if (!(result.audio instanceof Uint8Array)) {
-                throw new Error('Invalid audio format received from service');
+                throw new Error('INVALID_AUDIO_FORMAT');
+            }
+
+            // Validate audio data (check if it's not empty and has reasonable size)
+            if (result.audio.length === 0) {
+                throw new Error('INVALID_AUDIO_EMPTY');
+            }
+
+            // Check for minimum valid MP3 size (at least a few hundred bytes)
+            if (result.audio.length < 100) {
+                throw new Error('INVALID_AUDIO_TOO_SMALL');
             }
 
             // Store in cache
@@ -132,6 +144,14 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
                 name?: string;
             };
 
+            // Check for audio validation errors
+            const isInvalidAudioError = errorWithStatus.message === 'INVALID_AUDIO_FORMAT'
+                || errorWithStatus.message === 'INVALID_AUDIO_EMPTY'
+                || errorWithStatus.message === 'INVALID_AUDIO_TOO_SMALL'
+                || errorWithStatus.message?.toLowerCase().includes('failed to load audio')
+                || errorWithStatus.message?.toLowerCase().includes('invalid audio')
+                || errorWithStatus.message?.toLowerCase().includes('audio format');
+
             // Check for timeout/abort errors (DOMException with name 'AbortError')
             const isTimeoutError = errorWithStatus.name === 'AbortError'
                 || errorWithStatus.message?.toLowerCase().includes('timeout')
@@ -147,18 +167,25 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
                 const resetTime = Date.now() + 60000;
                 setRateLimited(true, resetTime);
                 setAudioError('Rate limit exceeded. Narration will be automatically re-enabled in 60 seconds.');
+                setCanRetry(false);
 
                 // Auto-reset after timeout
                 setTimeout(() => {
                     setRateLimited(false);
                     setAudioError(null);
                 }, 60000);
+            } else if (isInvalidAudioError) {
+                setAudioError('Invalid audio data received. This may be a temporary issue.');
+                setCanRetry(true);
             } else if (isTimeoutError) {
                 setAudioError('Request timed out. Please check your connection and try again.');
+                setCanRetry(true);
             } else if (isNetworkError) {
                 setAudioError('Network error. Please check your connection and try again.');
+                setCanRetry(true);
             } else {
                 setAudioError('Failed to generate audio. Please try again.');
+                setCanRetry(true);
             }
 
             setLoadingAudio(false);
@@ -193,6 +220,19 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             console.error('Error pausing audio:', error);
         }
     }, [setNarrationPlaying]);
+
+    const handleRetry = useCallback(() => {
+        // Clear error state and retry loading audio for current page
+        const currentPage = pages[currentIndex];
+        if (currentPage && currentPage.text) {
+            // Clear any cached data for this page to force regeneration
+            const cacheKey = `${storyIdRef.current}-${currentIndex}`;
+            audioCache.delete(cacheKey);
+
+            // Regenerate audio
+            void generateAndLoadAudio(currentIndex, currentPage.text);
+        }
+    }, [currentIndex, pages, generateAndLoadAudio]);
 
     // --- ACTIONS ---
     const goNext = useCallback(() => {
@@ -401,6 +441,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
                         onPlay={handlePlay}
                         onPause={handlePause}
                         errorMessage={audioError}
+                        onRetry={canRetry ? handleRetry : undefined}
                     />
 
                     {/* Page Navigation */}
