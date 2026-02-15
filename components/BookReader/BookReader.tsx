@@ -8,14 +8,14 @@ import {
     Platform,
     ScrollView,
     PanResponder,
-    Animated,
-    ActivityIndicator
+    Animated
 } from 'react-native';
 import { useConversationStore, StorySection } from '@/src/stores/conversationStore';
 import { createNarrationPlayer } from '@/services/narration';
 import type { NarrationPlayer } from '@/services/narration';
 import audioCache from '@/services/narration/audioCache';
 import elevenLabsService from '@/services/elevenLabsService';
+import { NarrationControls } from '@/components/NarrationControls/NarrationControls';
 
 interface BookReaderProps {
     /** If provided, read these sections instead of pulling from the conversation store. */
@@ -369,27 +369,12 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             {/* NAVIGATION CONTROLS */}
             {!showEndMenu && (
                 <View style={styles.controlsOverlay}>
-                    {/* Narration Controls */}
-                    {isNarrationEnabled && (
-                        <View style={styles.narrationControls}>
-                            {isLoadingAudio ? (
-                                <ActivityIndicator size="small" color={THEME.accent} />
-                            ) : (
-                                <TouchableOpacity
-                                    onPress={isNarrationPlaying ? handlePause : handlePlay}
-                                    style={styles.playPauseButton}
-                                    disabled={isLoadingAudio}
-                                >
-                                    <Text style={styles.playPauseIcon}>
-                                        {isNarrationPlaying ? '⏸' : '▶️'}
-                                    </Text>
-                                </TouchableOpacity>
-                            )}
-                            {audioError && (
-                                <Text style={styles.errorText}>{audioError}</Text>
-                            )}
-                        </View>
-                    )}
+                    {/* Narration Controls Component */}
+                    <NarrationControls
+                        onPlay={handlePlay}
+                        onPause={handlePause}
+                        errorMessage={audioError}
+                    />
 
                     {/* Page Navigation */}
                     <View style={styles.navigationRow}>
@@ -497,36 +482,6 @@ const styles = StyleSheet.create({
         zIndex: 9999,
         paddingBottom: Platform.OS === 'ios' ? 20 : 0,
         paddingTop: 10,
-    },
-    narrationControls: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 10,
-        gap: 10,
-    },
-    playPauseButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: THEME.accent,
-        alignItems: 'center',
-        justifyContent: 'center',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-        elevation: 4,
-    },
-    playPauseIcon: {
-        fontSize: 20,
-        color: 'white',
-    },
-    errorText: {
-        fontSize: 12,
-        color: '#d32f2f',
-        maxWidth: 200,
-        textAlign: 'center',
     },
     navigationRow: {
         flexDirection: 'row',

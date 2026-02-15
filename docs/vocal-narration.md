@@ -101,20 +101,20 @@ Add page-by-page text-to-speech narration to BookReader. Users can play/pause au
 
 ### 5. Narration Controls UI
 
-- [ ] Create `components/NarrationControls/NarrationControls.tsx`
-- [ ] Create `components/NarrationControls/NarrationControls.style.ts`
-- [ ] Define component props interface
-- [ ] Implement minimal MVP controls:
-  - [ ] Narration on/off toggle (Switch)
-  - [ ] Play/Pause button (TouchableOpacity with icon)
-  - [ ] Auto-advance toggle (Switch)
-  - [ ] Loading spinner (ActivityIndicator)
-  - [ ] Error message display (Text)
-- [ ] Style for tablet:
-  - [ ] Minimum 44x44px touch targets
-  - [ ] Bottom overlay or fixed bar layout
-  - [ ] Hide controls when narration disabled
-- [ ] Integrate into BookReader component
+- [x] Create `components/NarrationControls/NarrationControls.tsx` (2026-02-15)
+- [x] Create `components/NarrationControls/NarrationControls.style.ts` (2026-02-15)
+- [x] Define component props interface (2026-02-15)
+- [x] Implement minimal MVP controls: (2026-02-15)
+  - [x] Narration on/off toggle (Switch) (2026-02-15)
+  - [x] Play/Pause button (TouchableOpacity with icon) (2026-02-15)
+  - [x] Auto-advance toggle (Switch) (2026-02-15)
+  - [x] Loading spinner (ActivityIndicator) (2026-02-15)
+  - [x] Error message display (Text) (2026-02-15)
+- [x] Style for tablet: (2026-02-15)
+  - [x] Minimum 44x44px touch targets (2026-02-15)
+  - [x] Bottom overlay or fixed bar layout (2026-02-15)
+  - [x] Hide controls when narration disabled (2026-02-15)
+- [x] Integrate into BookReader component (2026-02-15)
 
 ### 6. Error Handling
 
