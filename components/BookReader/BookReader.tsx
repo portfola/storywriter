@@ -8,9 +8,14 @@ import {
     Platform,
     ScrollView,
     PanResponder,
-    Animated
+    Animated,
+    ActivityIndicator
 } from 'react-native';
 import { useConversationStore, StorySection } from '@/src/stores/conversationStore';
+import { createNarrationPlayer } from '@/services/narration';
+import type { NarrationPlayer } from '@/services/narration';
+import audioCache from '@/services/narration/audioCache';
+import elevenLabsService from '@/services/elevenLabsService';
 
 interface BookReaderProps {
     /** If provided, read these sections instead of pulling from the conversation store. */
@@ -26,7 +31,16 @@ const THEME = {
 };
 
 const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) => {
-    const { story, resetConversation } = useConversationStore();
+    const {
+        story,
+        resetConversation,
+        isNarrationEnabled,
+        isNarrationPlaying,
+        isLoadingAudio,
+        autoAdvancePages,
+        setNarrationPlaying,
+        setLoadingAudio
+    } = useConversationStore();
 
     const pages = (sectionsProp && sectionsProp.length > 0)
         ? sectionsProp
@@ -36,23 +50,146 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [showEndMenu, setShowEndMenu] = useState(false);
+    const [audioError, setAudioError] = useState<string | null>(null);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const isLastPage = currentIndex === pages.length - 1;
+    const playerRef = useRef<NarrationPlayer | null>(null);
+    const storyIdRef = useRef<string>(`story-${Date.now()}`);
+
+    // --- PLAYBACK HANDLERS ---
+    const handlePlaybackComplete = useCallback(() => {
+        setNarrationPlaying(false);
+
+        // Auto-advance to next page if enabled
+        if (autoAdvancePages && currentIndex < pages.length - 1) {
+            setTimeout(() => {
+                setCurrentIndex(prev => prev + 1);
+            }, 1500);
+        }
+    }, [autoAdvancePages, currentIndex, pages.length, setNarrationPlaying]);
+
+    // --- AUDIO GENERATION ---
+    const generateAndLoadAudio = useCallback(async (pageIndex: number, pageText: string) => {
+        if (!isNarrationEnabled || !pageText || pageText === "Loading story...") {
+            return;
+        }
+
+        const cacheKey = `${storyIdRef.current}-${pageIndex}`;
+
+        try {
+            setLoadingAudio(true);
+            setAudioError(null);
+
+            // Check cache first
+            const cachedAudio = audioCache.get(cacheKey);
+            if (cachedAudio) {
+                // Load from cache
+                if (!playerRef.current) {
+                    playerRef.current = createNarrationPlayer({
+                        onPlaybackComplete: handlePlaybackComplete
+                    });
+                }
+                await playerRef.current.load(cachedAudio);
+                setLoadingAudio(false);
+                return;
+            }
+
+            // Generate new audio
+            const result = await elevenLabsService.generateSpeech(
+                pageText,
+                undefined, // Use default voice
+                {
+                    model_id: "eleven_flash_v2_5"
+                }
+            );
+
+            // Ensure we have Uint8Array
+            if (!(result.audio instanceof Uint8Array)) {
+                throw new Error('Invalid audio format received from service');
+            }
+
+            // Store in cache
+            audioCache.set(cacheKey, result.audio);
+
+            // Load into player
+            if (!playerRef.current) {
+                playerRef.current = createNarrationPlayer({
+                    onPlaybackComplete: handlePlaybackComplete
+                });
+            }
+            await playerRef.current.load(result.audio);
+            setLoadingAudio(false);
+        } catch (error) {
+            console.error('Error generating audio:', error);
+
+            // Type guard for error with status
+            const errorWithStatus = error as { status?: number; message?: string };
+
+            if (errorWithStatus.status === 429) {
+                setAudioError('Rate limit exceeded. Please try again later.');
+            } else if (errorWithStatus.message?.includes('timeout') || errorWithStatus.message?.includes('network')) {
+                setAudioError('Network error. Please check your connection.');
+            } else {
+                setAudioError('Failed to generate audio. Please try again.');
+            }
+
+            setLoadingAudio(false);
+        }
+    }, [isNarrationEnabled, setLoadingAudio, handlePlaybackComplete]);
+
+    const handlePlay = useCallback(async () => {
+        if (!playerRef.current || isLoadingAudio) {
+            return;
+        }
+
+        try {
+            await playerRef.current.play();
+            setNarrationPlaying(true);
+            setAudioError(null);
+        } catch (error) {
+            console.error('Error playing audio:', error);
+            setAudioError('Playback failed. Please try again.');
+            setNarrationPlaying(false);
+        }
+    }, [isLoadingAudio, setNarrationPlaying]);
+
+    const handlePause = useCallback(async () => {
+        if (!playerRef.current) {
+            return;
+        }
+
+        try {
+            await playerRef.current.pause();
+            setNarrationPlaying(false);
+        } catch (error) {
+            console.error('Error pausing audio:', error);
+        }
+    }, [setNarrationPlaying]);
 
     // --- ACTIONS ---
     const goNext = useCallback(() => {
+        // Pause audio when navigating
+        if (playerRef.current && isNarrationPlaying) {
+            void handlePause();
+        }
+
         if (currentIndex < pages.length - 1) {
             setCurrentIndex(prev => prev + 1);
         }
-    }, [currentIndex, pages.length]);
+    }, [currentIndex, pages.length, isNarrationPlaying, handlePause]);
 
     const goPrev = useCallback(() => {
+        // Pause audio when navigating
+        if (playerRef.current && isNarrationPlaying) {
+            void handlePause();
+        }
+
         if (currentIndex > 0) {
             setCurrentIndex(prev => prev - 1);
             setShowEndMenu(false);
         }
-    }, [currentIndex]);
+    }, [currentIndex, isNarrationPlaying, handlePause]);
 
     const handleRestartStory = () => {
         setCurrentIndex(0);
@@ -80,6 +217,26 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             resetConversation();
         }
     };
+
+    // Generate audio on page change
+    useEffect(() => {
+        const currentPage = pages[currentIndex];
+        if (currentPage && currentPage.text) {
+            void generateAndLoadAudio(currentIndex, currentPage.text);
+        }
+    }, [currentIndex, pages, generateAndLoadAudio]);
+
+    // Cleanup player on unmount
+    useEffect(() => {
+        return () => {
+            if (playerRef.current) {
+                playerRef.current.cleanup();
+                playerRef.current = null;
+            }
+            // Clear cache when leaving BookReader
+            audioCache.clear();
+        };
+    }, []);
 
     // Trigger fade-in animation when reaching last page
     useEffect(() => {
@@ -212,30 +369,55 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             {/* NAVIGATION CONTROLS */}
             {!showEndMenu && (
                 <View style={styles.controlsOverlay}>
-                    <TouchableOpacity
-                        onPress={goPrev}
-                        style={[styles.navButton, currentIndex === 0 && styles.disabledBtn]}
-                        disabled={currentIndex === 0}
-                    >
-                        <Text style={styles.navArrow}>‹</Text>
-                    </TouchableOpacity>
+                    {/* Narration Controls */}
+                    {isNarrationEnabled && (
+                        <View style={styles.narrationControls}>
+                            {isLoadingAudio ? (
+                                <ActivityIndicator size="small" color={THEME.accent} />
+                            ) : (
+                                <TouchableOpacity
+                                    onPress={isNarrationPlaying ? handlePause : handlePlay}
+                                    style={styles.playPauseButton}
+                                    disabled={isLoadingAudio}
+                                >
+                                    <Text style={styles.playPauseIcon}>
+                                        {isNarrationPlaying ? '⏸' : '▶️'}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                            {audioError && (
+                                <Text style={styles.errorText}>{audioError}</Text>
+                            )}
+                        </View>
+                    )}
 
-                    <View style={styles.dotsContainer}>
-                        {pages.map((_, i) => (
-                            <View
-                                key={i}
-                                style={[styles.dot, i === currentIndex && styles.dotActive]}
-                            />
-                        ))}
+                    {/* Page Navigation */}
+                    <View style={styles.navigationRow}>
+                        <TouchableOpacity
+                            onPress={goPrev}
+                            style={[styles.navButton, currentIndex === 0 && styles.disabledBtn]}
+                            disabled={currentIndex === 0}
+                        >
+                            <Text style={styles.navArrow}>‹</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.dotsContainer}>
+                            {pages.map((_, i) => (
+                                <View
+                                    key={i}
+                                    style={[styles.dot, i === currentIndex && styles.dotActive]}
+                                />
+                            ))}
+                        </View>
+
+                        <TouchableOpacity
+                            onPress={goNext}
+                            style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
+                            disabled={currentIndex === pages.length - 1}
+                        >
+                            <Text style={styles.navArrow}>›</Text>
+                        </TouchableOpacity>
                     </View>
-
-                    <TouchableOpacity
-                        onPress={goNext}
-                        style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
-                        disabled={currentIndex === pages.length - 1}
-                    >
-                        <Text style={styles.navArrow}>›</Text>
-                    </TouchableOpacity>
                 </View>
             )}
 
@@ -304,16 +486,53 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        height: 90,
-        flexDirection: 'row',
+        minHeight: 90,
+        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
         paddingHorizontal: 20,
         backgroundColor: 'rgba(250, 249, 246, 0.95)',
         borderTopWidth: 1,
         borderTopColor: 'rgba(0,0,0,0.05)',
         zIndex: 9999,
         paddingBottom: Platform.OS === 'ios' ? 20 : 0,
+        paddingTop: 10,
+    },
+    narrationControls: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 10,
+        gap: 10,
+    },
+    playPauseButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: THEME.accent,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    playPauseIcon: {
+        fontSize: 20,
+        color: 'white',
+    },
+    errorText: {
+        fontSize: 12,
+        color: '#d32f2f',
+        maxWidth: 200,
+        textAlign: 'center',
+    },
+    navigationRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
     },
     navButton: {
         width: 50,

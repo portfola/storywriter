@@ -83,21 +83,21 @@ Add page-by-page text-to-speech narration to BookReader. Users can play/pause au
 
 ### 4. BookReader Integration
 
-- [ ] Open `components/BookReader/BookReader.tsx`
-- [ ] Import narration service, audio cache, elevenlabs service, store
-- [ ] Add local state for player instance and audio error
-- [ ] Generate audio on page change:
-  - [ ] Check if narration enabled
-  - [ ] Check cache first (key: `storyId-pageIndex`)
-  - [ ] If cache miss, call `elevenLabsService.generateSpeech()` with flash model
-  - [ ] Store result in cache
-  - [ ] Load audio into player
-  - [ ] Handle errors and set loading states
-- [ ] Implement playback controls:
-  - [ ] `handlePlay()` - calls player.play() and updates state
-  - [ ] `handlePause()` - calls player.pause() and updates state
-  - [ ] Register completion callback for auto-advance (1.5s delay)
-- [ ] Add cleanup on unmount - call player.cleanup()
+- [x] Open `components/BookReader/BookReader.tsx` (2026-02-15)
+- [x] Import narration service, audio cache, elevenlabs service, store (2026-02-15)
+- [x] Add local state for player instance and audio error (2026-02-15)
+- [x] Generate audio on page change: (2026-02-15)
+  - [x] Check if narration enabled (2026-02-15)
+  - [x] Check cache first (key: `storyId-pageIndex`) (2026-02-15)
+  - [x] If cache miss, call `elevenLabsService.generateSpeech()` with flash model (2026-02-15)
+  - [x] Store result in cache (2026-02-15)
+  - [x] Load audio into player (2026-02-15)
+  - [x] Handle errors and set loading states (2026-02-15)
+- [x] Implement playback controls: (2026-02-15)
+  - [x] `handlePlay()` - calls player.play() and updates state (2026-02-15)
+  - [x] `handlePause()` - calls player.pause() and updates state (2026-02-15)
+  - [x] Register completion callback for auto-advance (1.5s delay) (2026-02-15)
+- [x] Add cleanup on unmount - call player.cleanup() (2026-02-15)
 
 ### 5. Narration Controls UI
 
