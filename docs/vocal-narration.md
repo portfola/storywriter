@@ -33,7 +33,7 @@ Add page-by-page text-to-speech narration to BookReader. Users can play/pause au
 ### 1. Audio Player Service
 
 **Dependencies**
-- [ ] Install expo-av: `npx expo install expo-av`
+- [x] Install expo-av: `npx expo install expo-av` (2026-02-15)
 - [ ] Verify audio permissions in app.config.js
 
 **Create Service Files**
