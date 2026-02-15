@@ -2,13 +2,9 @@ import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Conversation } from '@elevenlabs/client';
 import Constants from 'expo-constants';
 import {
-  ElevenLabsVoice,
-  ElevenLabsModel,
   TextToSpeechOptions,
   ElevenLabsError,
   AudioGenerationResult,
-  VoiceListResponse,
-  ModelListResponse,
   ConversationCallbacks,
   ConversationSession
 } from '../types/elevenlabs';
@@ -33,7 +29,7 @@ enum ConnectionState {
   ERROR = 'error'
 }
 
-interface ApiResponse<T = any> {
+interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
@@ -60,8 +56,8 @@ export class ElevenLabsService {
   private sessionId: string | null = null;
 
   constructor() {
-    this.defaultVoiceId = "EXAVITQu4vr4xnSDxMaL"; // Bella voice (good for storytelling)
-    this.defaultModelId = "eleven_multilingual_v2"; // Recommended model
+    this.defaultVoiceId = "56AoDkrOh6qfVPDXZ7Pt"; // Cassidy voice (good for storytelling)
+    this.defaultModelId = "eleven_flash_v2_5"; // Fast, low-latency model for narration
     this.agentId = "agent_01jxvakybhfmnr3yqvwxwye3sj"; // Your StoryWriter Agent
   }
 
@@ -249,7 +245,7 @@ export class ElevenLabsService {
 
     return this.generateSpeech(prompt, undefined, {
       voice_settings: storyVoiceSettings,
-      model_id: "eleven_multilingual_v2"
+      model_id: this.defaultModelId // Use default Flash model for lower latency
     });
   }
 
@@ -258,8 +254,8 @@ export class ElevenLabsService {
   /**
    * Get available voices from Laravel backend
    */
-  async getVoices(): Promise<any[]> {
-    const response = await this.makeApiRequest<{ voices: any[] }>('/api/voice/voices');
+  async getVoices(): Promise<unknown[]> {
+    const response = await this.makeApiRequest<{ voices: unknown[] }>('/api/voice/voices');
 
     if (!response.success || !response.data) {
       throw this.handleError(response.error, 'Failed to fetch voices');
@@ -282,10 +278,15 @@ export class ElevenLabsService {
   /**
    * Get a specific voice by ID
    */
-  async getVoice(voiceId: string): Promise<any> {
+  async getVoice(voiceId: string): Promise<unknown> {
     try {
       const voices = await this.getVoices();
-      const voice = voices.find((v: any) => v.voice_id === voiceId);
+      const voice = voices.find((v) => {
+        if (typeof v === 'object' && v !== null && 'voice_id' in v) {
+          return v.voice_id === voiceId;
+        }
+        return false;
+      });
 
       if (!voice) {
         throw new Error(`Voice with ID ${voiceId} not found`);
@@ -337,7 +338,7 @@ export class ElevenLabsService {
 
         onMessage: (message) => callbacks.onMessage?.(message), // Simplified message handling
 
-        onError: (error: any) => this.handleErrorEvent(error, callbacks.onError),
+        onError: (error: unknown) => this.handleErrorEvent(error, callbacks.onError),
 
         onStatusChange: (status) => callbacks.onStatusChange?.(status.toString()),
         onModeChange: (mode) => callbacks.onModeChange?.(mode.toString())
@@ -349,7 +350,8 @@ export class ElevenLabsService {
         getId: () => conversation.getId(),
         setVolume: async (options) => {
           if (this.canSendMessages()) {
-            await conversation.setVolume(options);
+            conversation.setVolume(options);
+            return Promise.resolve();
           } else {
             throw new Error('Cannot set volume - WebSocket not connected');
           }
@@ -381,7 +383,7 @@ export class ElevenLabsService {
   /**
    * Internal handler for conversation errors.
    */
-  private handleErrorEvent(error: any, onErrorCallback?: (error: any) => void): void {
+  private handleErrorEvent(error: unknown, onErrorCallback?: (error: unknown) => void): void {
     this.connectionState = ConnectionState.ERROR;
     this.currentConversation = null;
     serviceLogger.elevenlabs.error(error, { action: 'websocket_error' });
@@ -510,21 +512,31 @@ export class ElevenLabsService {
     serviceLogger.elevenlabs.error(error, { context });
 
     const elevenlabsError: ElevenLabsError = new Error(`${context}: Unknown error occurred`);
-    const errorObj = error as any;
 
-    elevenlabsError.message = errorObj?.message || elevenlabsError.message;
+    // Type guard for error objects
+    if (error && typeof error === 'object') {
+      const errorObj = error as { message?: string; status?: number; code?: string; details?: unknown };
 
-    // Simplified status code mapping
-    const status = errorObj?.status || 0;
-    elevenlabsError.status = status;
+      if (errorObj.message && typeof errorObj.message === 'string') {
+        elevenlabsError.message = errorObj.message;
+      }
 
-    if (status === 401) elevenlabsError.message = `${context}: Invalid API key or unauthorized access`;
-    else if (status === 400) elevenlabsError.message = `${context}: Invalid request parameters - ${elevenlabsError.message}`;
-    else if (status === 429) elevenlabsError.message = `${context}: Rate limit exceeded. Please try again later.`;
-    else if (status >= 500) elevenlabsError.message = `${context}: Backend server error or service unavailable.`;
+      // Simplified status code mapping
+      const status = typeof errorObj.status === 'number' ? errorObj.status : 0;
+      elevenlabsError.status = status;
 
-    if (errorObj?.code) elevenlabsError.code = errorObj.code;
-    if (errorObj?.details) elevenlabsError.details = errorObj.details;
+      if (status === 401) elevenlabsError.message = `${context}: Invalid API key or unauthorized access`;
+      else if (status === 400) elevenlabsError.message = `${context}: Invalid request parameters - ${elevenlabsError.message}`;
+      else if (status === 429) elevenlabsError.message = `${context}: Rate limit exceeded. Please try again later.`;
+      else if (status >= 500) elevenlabsError.message = `${context}: Backend server error or service unavailable.`;
+
+      if (errorObj.code && typeof errorObj.code === 'string') {
+        elevenlabsError.code = errorObj.code;
+      }
+      if (errorObj.details !== undefined) {
+        elevenlabsError.details = errorObj.details;
+      }
+    }
 
     return elevenlabsError;
   }
