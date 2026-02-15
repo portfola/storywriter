@@ -39,7 +39,7 @@ Add page-by-page text-to-speech narration to BookReader. Users can play/pause au
 **Create Service Files**
 - [x] Create `services/narration/types.ts` - Define NarrationPlayer interface (2026-02-15)
 - [x] Create `services/narration/web.ts` - HTML5 Audio implementation (2026-02-15)
-- [ ] Create `services/narration/native.ts` - expo-av implementation
+- [x] Create `services/narration/native.ts` - expo-av implementation (2026-02-15)
 - [ ] Create `services/narration/index.ts` - Platform-appropriate export
 
 **Web Player (`web.ts`)**
@@ -50,11 +50,11 @@ Add page-by-page text-to-speech narration to BookReader. Users can play/pause au
 - [x] Implement cleanup to revoke Blob URLs (2026-02-15)
 
 **Native Player (`native.ts`)**
-- [ ] Implement NarrationPlayer interface
-- [ ] Load audio from Uint8Array using expo-av
-- [ ] Configure audio session for playback
-- [ ] Handle playback status updates
-- [ ] Implement cleanup to unload sound
+- [x] Implement NarrationPlayer interface (2026-02-15)
+- [x] Load audio from Uint8Array using expo-av (2026-02-15)
+- [x] Configure audio session for playback (2026-02-15)
+- [x] Handle playback status updates (2026-02-15)
+- [x] Implement cleanup to unload sound (2026-02-15)
 
 ### 2. Audio Cache
 
