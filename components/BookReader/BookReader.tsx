@@ -16,6 +16,7 @@ import type { NarrationPlayer } from '@/services/narration';
 import audioCache from '@/services/narration/audioCache';
 import elevenLabsService from '@/services/elevenLabsService';
 import { NarrationControls } from '@/components/NarrationControls/NarrationControls';
+import { logger, LogCategory } from '@/src/utils/logger';
 
 interface BookReaderProps {
     /** If provided, read these sections instead of pulling from the conversation store. */
@@ -202,11 +203,41 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             setNarrationPlaying(true);
             setAudioError(null);
         } catch (error) {
-            console.error('Error playing audio:', error);
-            setAudioError('Playback failed. Please try again.');
+            // Log playback failure with context
+            logger.error(
+                LogCategory.AUDIO,
+                'Audio playback failed',
+                {
+                    storyId: storyIdRef.current,
+                    pageIndex: currentIndex,
+                    error: error instanceof Error ? {
+                        name: error.name,
+                        message: error.message,
+                        stack: error.stack
+                    } : String(error)
+                }
+            );
+
+            // Reset player state
             setNarrationPlaying(false);
+            setAudioError('Playback failed. Please try again.');
+            setCanRetry(true);
+
+            // Attempt to cleanup and reset the player
+            if (playerRef.current) {
+                try {
+                    playerRef.current.cleanup();
+                } catch (cleanupError) {
+                    logger.error(
+                        LogCategory.AUDIO,
+                        'Failed to cleanup player after playback error',
+                        { error: cleanupError }
+                    );
+                }
+                playerRef.current = null;
+            }
         }
-    }, [isLoadingAudio, setNarrationPlaying]);
+    }, [isLoadingAudio, setNarrationPlaying, currentIndex]);
 
     const handlePause = useCallback(async () => {
         if (!playerRef.current) {
@@ -217,9 +248,39 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             await playerRef.current.pause();
             setNarrationPlaying(false);
         } catch (error) {
-            console.error('Error pausing audio:', error);
+            // Log pause failure with context
+            logger.error(
+                LogCategory.AUDIO,
+                'Audio pause failed',
+                {
+                    storyId: storyIdRef.current,
+                    pageIndex: currentIndex,
+                    error: error instanceof Error ? {
+                        name: error.name,
+                        message: error.message,
+                        stack: error.stack
+                    } : String(error)
+                }
+            );
+
+            // Reset player state to stopped
+            setNarrationPlaying(false);
+
+            // Cleanup the player as it may be in an invalid state
+            if (playerRef.current) {
+                try {
+                    playerRef.current.cleanup();
+                } catch (cleanupError) {
+                    logger.error(
+                        LogCategory.AUDIO,
+                        'Failed to cleanup player after pause error',
+                        { error: cleanupError }
+                    );
+                }
+                playerRef.current = null;
+            }
         }
-    }, [setNarrationPlaying]);
+    }, [setNarrationPlaying, currentIndex]);
 
     const handleRetry = useCallback(() => {
         // Clear error state and retry loading audio for current page

@@ -121,7 +121,7 @@ Add page-by-page text-to-speech narration to BookReader. Users can play/pause au
 - [x] Display network timeout errors with message (2026-02-15)
 - [x] Show rate limit (429) error and disable narration temporarily (2026-02-15)
 - [x] Show invalid audio errors with retry option (2026-02-15)
-- [ ] Log playback failures and reset player state
+- [x] Log playback failures and reset player state (2026-02-15)
 - [ ] No exponential backoff for MVP - manual retry only
 
 ### 7. Testing
