@@ -69,17 +69,17 @@ Add page-by-page text-to-speech narration to BookReader. Users can play/pause au
 
 ### 3. Store State
 
-- [ ] Open `src/stores/conversationStore.ts`
-- [ ] Add narration state to interface:
-  - [ ] `isNarrationEnabled: boolean`
-  - [ ] `isNarrationPlaying: boolean`
-  - [ ] `isLoadingAudio: boolean`
-  - [ ] `autoAdvancePages: boolean`
-- [ ] Add state mutation actions:
-  - [ ] `setNarrationEnabled(enabled: boolean)`
-  - [ ] `setNarrationPlaying(playing: boolean)`
-  - [ ] `setLoadingAudio(loading: boolean)`
-  - [ ] `setAutoAdvancePages(auto: boolean)`
+- [x] Open `src/stores/conversationStore.ts` (2026-02-15)
+- [x] Add narration state to interface: (2026-02-15)
+  - [x] `isNarrationEnabled: boolean` (2026-02-15)
+  - [x] `isNarrationPlaying: boolean` (2026-02-15)
+  - [x] `isLoadingAudio: boolean` (2026-02-15)
+  - [x] `autoAdvancePages: boolean` (2026-02-15)
+- [x] Add state mutation actions: (2026-02-15)
+  - [x] `setNarrationEnabled(enabled: boolean)` (2026-02-15)
+  - [x] `setNarrationPlaying(playing: boolean)` (2026-02-15)
+  - [x] `setLoadingAudio(loading: boolean)` (2026-02-15)
+  - [x] `setAutoAdvancePages(auto: boolean)` (2026-02-15)
 
 ### 4. BookReader Integration
 

@@ -79,6 +79,12 @@ export interface ConversationState extends SpeechState, StoryState {
   // Timing state for minimum display time
   minDisplayStartTime: number | null;
 
+  // Narration state
+  isNarrationEnabled: boolean;
+  isNarrationPlaying: boolean;
+  isLoadingAudio: boolean;
+  autoAdvancePages: boolean;
+
   // Story management actions
   setStoryPages: (pages: StoryPage[]) => void;
   setCurrentPage: (index: number) => void;
@@ -110,6 +116,12 @@ export interface ConversationState extends SpeechState, StoryState {
   // Story generation
   generateStoryAutomatically: () => Promise<void>;
   retryStoryGeneration: () => Promise<void>;
+
+  // Narration actions
+  setNarrationEnabled: (enabled: boolean) => void;
+  setNarrationPlaying: (playing: boolean) => void;
+  setLoadingAudio: (loading: boolean) => void;
+  setAutoAdvancePages: (auto: boolean) => void;
 }
 
 const useConversationStore = create<ConversationState>()(
@@ -138,6 +150,12 @@ const useConversationStore = create<ConversationState>()(
       },
       storyGenerationProgress: null,
       minDisplayStartTime: null,
+
+      // Narration state
+      isNarrationEnabled: false,
+      isNarrationPlaying: false,
+      isLoadingAudio: false,
+      autoAdvancePages: false,
 
       // Simplified conversation actions
       startConversation: () => {
@@ -202,6 +220,10 @@ const useConversationStore = create<ConversationState>()(
           },
           storyGenerationProgress: null,
           minDisplayStartTime: null,
+          isNarrationEnabled: false,
+          isNarrationPlaying: false,
+          isLoadingAudio: false,
+          autoAdvancePages: false,
         });
       },
 
@@ -497,6 +519,23 @@ const useConversationStore = create<ConversationState>()(
       retryStoryGeneration: async () => {
         get().removeError('story_generation');
         await get().generateStoryAutomatically();
+      },
+
+      // Narration actions
+      setNarrationEnabled: (enabled: boolean) => {
+        set({ isNarrationEnabled: enabled });
+      },
+
+      setNarrationPlaying: (playing: boolean) => {
+        set({ isNarrationPlaying: playing });
+      },
+
+      setLoadingAudio: (loading: boolean) => {
+        set({ isLoadingAudio: loading });
+      },
+
+      setAutoAdvancePages: (auto: boolean) => {
+        set({ autoAdvancePages: auto });
       }
     })
   )
