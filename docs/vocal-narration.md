@@ -58,12 +58,12 @@ Add page-by-page text-to-speech narration to BookReader. Users can play/pause au
 
 ### 2. Audio Cache
 
-- [ ] Create `services/narration/audioCache.ts`
-- [ ] Implement Map-based cache with max 20 entries
-- [ ] Add get(key) method - returns Uint8Array or null
-- [ ] Add set(key, audio) method - stores with FIFO eviction
-- [ ] Add clear() method - wipes entire cache
-- [ ] Export singleton instance
+- [x] Create `services/narration/audioCache.ts` (2026-02-15)
+- [x] Implement Map-based cache with max 20 entries (2026-02-15)
+- [x] Add get(key) method - returns Uint8Array or null (2026-02-15)
+- [x] Add set(key, audio) method - stores with FIFO eviction (2026-02-15)
+- [x] Add clear() method - wipes entire cache (2026-02-15)
+- [x] Export singleton instance (2026-02-15)
 
 **Cache Key Format**: `storyId-pageIndex`
 
