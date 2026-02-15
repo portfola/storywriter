@@ -74,4 +74,18 @@ export const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 20,
     },
+    rateLimitContainer: {
+        backgroundColor: '#fff3e0',
+        padding: 12,
+        borderRadius: 8,
+        borderLeftWidth: 4,
+        borderLeftColor: '#ff9800',
+    },
+    rateLimitText: {
+        fontSize: 14,
+        color: '#e65100',
+        textAlign: 'center',
+        lineHeight: 20,
+        fontWeight: '500',
+    },
 });

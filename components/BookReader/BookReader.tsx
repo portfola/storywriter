@@ -38,8 +38,10 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         isNarrationPlaying,
         isLoadingAudio,
         autoAdvancePages,
+        isRateLimited,
         setNarrationPlaying,
-        setLoadingAudio
+        setLoadingAudio,
+        setRateLimited
     } = useConversationStore();
 
     const pages = (sectionsProp && sectionsProp.length > 0)
@@ -71,7 +73,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
 
     // --- AUDIO GENERATION ---
     const generateAndLoadAudio = useCallback(async (pageIndex: number, pageText: string) => {
-        if (!isNarrationEnabled || !pageText || pageText === "Loading story...") {
+        if (!isNarrationEnabled || !pageText || pageText === "Loading story..." || isRateLimited) {
             return;
         }
 
@@ -141,7 +143,16 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
                 || errorWithStatus.message?.toLowerCase().includes('connection');
 
             if (errorWithStatus.status === 429) {
-                setAudioError('Rate limit exceeded. Please try again later.');
+                // Set rate limit state - disable narration for 60 seconds
+                const resetTime = Date.now() + 60000;
+                setRateLimited(true, resetTime);
+                setAudioError('Rate limit exceeded. Narration will be automatically re-enabled in 60 seconds.');
+
+                // Auto-reset after timeout
+                setTimeout(() => {
+                    setRateLimited(false);
+                    setAudioError(null);
+                }, 60000);
             } else if (isTimeoutError) {
                 setAudioError('Request timed out. Please check your connection and try again.');
             } else if (isNetworkError) {
@@ -152,7 +163,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
 
             setLoadingAudio(false);
         }
-    }, [isNarrationEnabled, setLoadingAudio, handlePlaybackComplete]);
+    }, [isNarrationEnabled, isRateLimited, setLoadingAudio, setRateLimited, handlePlaybackComplete]);
 
     const handlePlay = useCallback(async () => {
         if (!playerRef.current || isLoadingAudio) {

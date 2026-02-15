@@ -18,6 +18,7 @@ export function NarrationControls({ onPlay, onPause, errorMessage }: NarrationCo
         isNarrationPlaying,
         isLoadingAudio,
         autoAdvancePages,
+        isRateLimited,
         setNarrationEnabled,
         setAutoAdvancePages
     } = useConversationStore();
@@ -29,6 +30,13 @@ export function NarrationControls({ onPlay, onPause, errorMessage }: NarrationCo
 
     return (
         <View style={styles.container}>
+            {/* Rate Limit Warning */}
+            {isRateLimited && (
+                <View style={styles.rateLimitContainer}>
+                    <Text style={styles.rateLimitText}>⏱️ Rate limit reached. Narration temporarily disabled.</Text>
+                </View>
+            )}
+
             {/* Narration Toggle */}
             <View style={styles.toggleRow}>
                 <Text style={styles.toggleLabel}>Narration</Text>
@@ -37,6 +45,7 @@ export function NarrationControls({ onPlay, onPause, errorMessage }: NarrationCo
                     onValueChange={setNarrationEnabled}
                     trackColor={{ false: '#ccc', true: THEME.accent }}
                     thumbColor="#fff"
+                    disabled={isRateLimited}
                 />
             </View>
 
@@ -51,7 +60,7 @@ export function NarrationControls({ onPlay, onPause, errorMessage }: NarrationCo
                     <TouchableOpacity
                         onPress={isNarrationPlaying ? onPause : onPlay}
                         style={styles.playPauseButton}
-                        disabled={isLoadingAudio}
+                        disabled={isLoadingAudio || isRateLimited}
                         accessible={true}
                         accessibilityLabel={isNarrationPlaying ? "Pause narration" : "Play narration"}
                         accessibilityRole="button"
@@ -71,7 +80,7 @@ export function NarrationControls({ onPlay, onPause, errorMessage }: NarrationCo
                     onValueChange={setAutoAdvancePages}
                     trackColor={{ false: '#ccc', true: THEME.accent }}
                     thumbColor="#fff"
-                    disabled={isLoadingAudio}
+                    disabled={isLoadingAudio || isRateLimited}
                 />
             </View>
 

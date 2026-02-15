@@ -84,6 +84,8 @@ export interface ConversationState extends SpeechState, StoryState {
   isNarrationPlaying: boolean;
   isLoadingAudio: boolean;
   autoAdvancePages: boolean;
+  isRateLimited: boolean;
+  rateLimitResetTime: number | null;
 
   // Story management actions
   setStoryPages: (pages: StoryPage[]) => void;
@@ -122,6 +124,7 @@ export interface ConversationState extends SpeechState, StoryState {
   setNarrationPlaying: (playing: boolean) => void;
   setLoadingAudio: (loading: boolean) => void;
   setAutoAdvancePages: (auto: boolean) => void;
+  setRateLimited: (limited: boolean, resetTime?: number) => void;
 }
 
 const useConversationStore = create<ConversationState>()(
@@ -156,6 +159,8 @@ const useConversationStore = create<ConversationState>()(
       isNarrationPlaying: false,
       isLoadingAudio: false,
       autoAdvancePages: false,
+      isRateLimited: false,
+      rateLimitResetTime: null,
 
       // Simplified conversation actions
       startConversation: () => {
@@ -224,6 +229,8 @@ const useConversationStore = create<ConversationState>()(
           isNarrationPlaying: false,
           isLoadingAudio: false,
           autoAdvancePages: false,
+          isRateLimited: false,
+          rateLimitResetTime: null,
         });
       },
 
@@ -536,6 +543,14 @@ const useConversationStore = create<ConversationState>()(
 
       setAutoAdvancePages: (auto: boolean) => {
         set({ autoAdvancePages: auto });
+      },
+
+      setRateLimited: (limited: boolean, resetTime?: number) => {
+        set({
+          isRateLimited: limited,
+          rateLimitResetTime: resetTime ?? null,
+          isNarrationEnabled: limited ? false : get().isNarrationEnabled
+        });
       }
     })
   )
