@@ -40,7 +40,7 @@ Add page-by-page text-to-speech narration to BookReader. Users can play/pause au
 - [x] Create `services/narration/types.ts` - Define NarrationPlayer interface (2026-02-15)
 - [x] Create `services/narration/web.ts` - HTML5 Audio implementation (2026-02-15)
 - [x] Create `services/narration/native.ts` - expo-av implementation (2026-02-15)
-- [ ] Create `services/narration/index.ts` - Platform-appropriate export
+- [x] Create `services/narration/index.ts` - Platform-appropriate export (2026-02-15)
 
 **Web Player (`web.ts`)**
 - [x] Implement NarrationPlayer interface (2026-02-15)
