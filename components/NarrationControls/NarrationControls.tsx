@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
-import { styles, THEME } from './NarrationControls.style';
+import { styles } from './NarrationControls.style';
 
 interface NarrationControlsProps {
     /** Callback to handle play button press */
@@ -16,76 +16,13 @@ interface NarrationControlsProps {
 
 export function NarrationControls({ onPlay, onPause, errorMessage, onRetry }: NarrationControlsProps) {
     const {
-        isNarrationEnabled,
         isNarrationPlaying,
         isLoadingAudio,
-        autoAdvancePages,
-        isRateLimited,
-        setNarrationEnabled,
-        setAutoAdvancePages
+        isRateLimited
     } = useConversationStore();
-
-    // Don't render anything if narration is disabled
-    if (!isNarrationEnabled) {
-        return null;
-    }
 
     return (
         <View style={styles.container}>
-            {/* Rate Limit Warning */}
-            {isRateLimited && (
-                <View style={styles.rateLimitContainer}>
-                    <Text style={styles.rateLimitText}>⏱️ Rate limit reached. Narration temporarily disabled.</Text>
-                </View>
-            )}
-
-            {/* Narration Toggle */}
-            <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>Narration</Text>
-                <Switch
-                    value={isNarrationEnabled}
-                    onValueChange={setNarrationEnabled}
-                    trackColor={{ false: '#ccc', true: THEME.accent }}
-                    thumbColor="#fff"
-                    disabled={isRateLimited}
-                />
-            </View>
-
-            {/* Play/Pause Controls */}
-            <View style={styles.controlsRow}>
-                {isLoadingAudio ? (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="small" color={THEME.accent} />
-                        <Text style={styles.loadingText}>Loading audio...</Text>
-                    </View>
-                ) : (
-                    <TouchableOpacity
-                        onPress={isNarrationPlaying ? onPause : onPlay}
-                        style={styles.playPauseButton}
-                        disabled={isLoadingAudio || isRateLimited}
-                        accessible={true}
-                        accessibilityLabel={isNarrationPlaying ? "Pause narration" : "Play narration"}
-                        accessibilityRole="button"
-                    >
-                        <Text style={styles.playPauseIcon}>
-                            {isNarrationPlaying ? '⏸' : '▶️'}
-                        </Text>
-                    </TouchableOpacity>
-                )}
-            </View>
-
-            {/* Auto-advance Toggle */}
-            <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>Auto-advance pages</Text>
-                <Switch
-                    value={autoAdvancePages}
-                    onValueChange={setAutoAdvancePages}
-                    trackColor={{ false: '#ccc', true: THEME.accent }}
-                    thumbColor="#fff"
-                    disabled={isLoadingAudio || isRateLimited}
-                />
-            </View>
-
             {/* Error Message Display */}
             {errorMessage && (
                 <View style={styles.errorContainer}>
@@ -102,6 +39,24 @@ export function NarrationControls({ onPlay, onPause, errorMessage, onRetry }: Na
                         </TouchableOpacity>
                     )}
                 </View>
+            )}
+
+            {/* Play/Pause Button */}
+            {isLoadingAudio ? (
+                <ActivityIndicator size="small" color="#D35400" />
+            ) : (
+                <TouchableOpacity
+                    onPress={isNarrationPlaying ? onPause : onPlay}
+                    style={styles.playPauseButton}
+                    disabled={isLoadingAudio || isRateLimited}
+                    accessible={true}
+                    accessibilityLabel={isNarrationPlaying ? "Pause narration" : "Play narration"}
+                    accessibilityRole="button"
+                >
+                    <Text style={styles.playPauseIcon}>
+                        {isNarrationPlaying ? '⏸' : '▶️'}
+                    </Text>
+                </TouchableOpacity>
             )}
         </View>
     );

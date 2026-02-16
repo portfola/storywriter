@@ -494,44 +494,45 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
                 </Animated.View>
             )}
 
-            {/* NAVIGATION CONTROLS */}
+            {/* PAGE NAVIGATION CONTROLS */}
             {!showEndMenu && (
-                <View style={styles.controlsOverlay}>
-                    {/* Narration Controls Component */}
+                <View style={styles.navigationRow}>
+                    <TouchableOpacity
+                        onPress={goPrev}
+                        style={[styles.navButton, currentIndex === 0 && styles.disabledBtn]}
+                        disabled={currentIndex === 0}
+                    >
+                        <Text style={styles.navArrow}>‹</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.dotsContainer}>
+                        {pages.map((_, i) => (
+                            <View
+                                key={i}
+                                style={[styles.dot, i === currentIndex && styles.dotActive]}
+                            />
+                        ))}
+                    </View>
+
+                    <TouchableOpacity
+                        onPress={goNext}
+                        style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
+                        disabled={currentIndex === pages.length - 1}
+                    >
+                        <Text style={styles.navArrow}>›</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* NARRATION CONTROLS */}
+            {!showEndMenu && (
+                <View style={styles.narrationControlsContainer}>
                     <NarrationControls
                         onPlay={handlePlay}
                         onPause={handlePause}
                         errorMessage={audioError}
                         onRetry={canRetry ? handleRetry : undefined}
                     />
-
-                    {/* Page Navigation */}
-                    <View style={styles.navigationRow}>
-                        <TouchableOpacity
-                            onPress={goPrev}
-                            style={[styles.navButton, currentIndex === 0 && styles.disabledBtn]}
-                            disabled={currentIndex === 0}
-                        >
-                            <Text style={styles.navArrow}>‹</Text>
-                        </TouchableOpacity>
-
-                        <View style={styles.dotsContainer}>
-                            {pages.map((_, i) => (
-                                <View
-                                    key={i}
-                                    style={[styles.dot, i === currentIndex && styles.dotActive]}
-                                />
-                            ))}
-                        </View>
-
-                        <TouchableOpacity
-                            onPress={goNext}
-                            style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
-                            disabled={currentIndex === pages.length - 1}
-                        >
-                            <Text style={styles.navArrow}>›</Text>
-                        </TouchableOpacity>
-                    </View>
                 </View>
             )}
 
@@ -595,28 +596,23 @@ const styles = StyleSheet.create({
         textAlign: 'left',
         width: '100%',
     },
-    controlsOverlay: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        minHeight: 90,
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 20,
-        backgroundColor: 'rgba(250, 249, 246, 0.95)',
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(0,0,0,0.05)',
-        zIndex: 9999,
-        paddingBottom: Platform.OS === 'ios' ? 20 : 0,
-        paddingTop: 10,
-    },
     navigationRow: {
+        position: 'absolute',
+        bottom: 20,
+        left: 20,
+        right: 20,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        width: '100%',
+        zIndex: 9998,
+    },
+    narrationControlsContainer: {
+        position: 'absolute',
+        bottom: 100,
+        right: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9998,
     },
     navButton: {
         width: 50,

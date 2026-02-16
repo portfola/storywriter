@@ -155,7 +155,7 @@ const useConversationStore = create<ConversationState>()(
       minDisplayStartTime: null,
 
       // Narration state
-      isNarrationEnabled: false,
+      isNarrationEnabled: true,
       isNarrationPlaying: false,
       isLoadingAudio: false,
       autoAdvancePages: false,
@@ -225,7 +225,7 @@ const useConversationStore = create<ConversationState>()(
           },
           storyGenerationProgress: null,
           minDisplayStartTime: null,
-          isNarrationEnabled: false,
+          isNarrationEnabled: true,
           isNarrationPlaying: false,
           isLoadingAudio: false,
           autoAdvancePages: false,
