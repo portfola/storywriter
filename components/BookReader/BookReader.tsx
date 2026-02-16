@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -10,18 +10,29 @@ import {
     Animated,
     useWindowDimensions,
 } from 'react-native';
-import { useConversationStore } from '@/src/stores/conversationStore';
-import { styles } from './BookReader.style';
-import RenderHtml from 'react-native-render-html';
+import { useConversationStore, StorySection } from '@/src/stores/conversationStore';
 
-const BookReader = () => {
+interface BookReaderProps {
+    /** If provided, read these sections instead of pulling from the conversation store. */
+    sections?: StorySection[];
+    /** If provided, the end-of-story menu switches to "Read Again / Back to Bookshelf" mode. */
+    onBack?: () => void;
+}
+
+const THEME = {
+    paper: '#FAF9F6',
+    text: '#2D2D2D',
+    accent: '#D35400',
+};
+
+const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) => {
     const { story, resetConversation } = useConversationStore();
-    const { width } = useWindowDimensions();
 
-    // story.pages is an array of HTML strings, one per page
-    const pages = story.pages.length > 0
-        ? story.pages
-        : ['<p>Loading story...</p>'];
+    const pages = (sectionsProp && sectionsProp.length > 0)
+        ? sectionsProp
+        : (story.sections && story.sections.length > 0
+            ? story.sections
+            : [{ text: "Loading story...", imageUrl: null }]);
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [showEndMenu, setShowEndMenu] = useState(false);
@@ -29,17 +40,19 @@ const BookReader = () => {
 
     const isLastPage = currentIndex === pages.length - 1;
 
-    // --- NAVIGATION ---
-    const goNext = () => {
-        if (currentIndex < pages.length - 1) setCurrentIndex(prev => prev + 1);
-    };
+    // --- ACTIONS ---
+    const goNext = useCallback(() => {
+        if (currentIndex < pages.length - 1) {
+            setCurrentIndex(prev => prev + 1);
+        }
+    }, [currentIndex, pages.length]);
 
-    const goPrev = () => {
+    const goPrev = useCallback(() => {
         if (currentIndex > 0) {
             setCurrentIndex(prev => prev - 1);
             setShowEndMenu(false);
         }
-    };
+    }, [currentIndex]);
 
     const handleRestartStory = () => {
         setCurrentIndex(0);
@@ -63,7 +76,7 @@ const BookReader = () => {
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [isLastPage]);
+    }, [isLastPage, fadeAnim, showEndMenu]);
 
     // --- KEYBOARD (web only) ---
     useEffect(() => {
@@ -75,7 +88,7 @@ const BookReader = () => {
             window.addEventListener('keydown', handleKeyDown);
             return () => window.removeEventListener('keydown', handleKeyDown);
         }
-    }, [currentIndex, pages.length]);
+    }, [currentIndex, pages.length, goNext, goPrev]);
 
     // --- SWIPE ---
     const panResponder = useRef(
@@ -164,8 +177,213 @@ const BookReader = () => {
                     </TouchableOpacity>
                 </View>
             )}
+
+            {/* BACK TO BOOKSHELF */}
+            {onBack && !showEndMenu && (
+                <TouchableOpacity
+                    style={styles.backToBookshelfBtn}
+                    onPress={onBack}
+                >
+                    <Text style={styles.backToBookshelfBtnText}>‹ Bookshelf</Text>
+                </TouchableOpacity>
+            )}
         </View>
     );
 };
+
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: THEME.paper,
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        height: '100%',
+    },
+    pageWrapper: {
+        width: '100%',
+        maxWidth: 800,
+        height: '100%',
+        paddingBottom: 100,
+        paddingTop: 20,
+        paddingHorizontal: 20,
+    },
+    scrollContent: {
+        flexGrow: 1,
+        alignItems: 'center',
+        paddingBottom: 40,
+    },
+    pageNumber: {
+        textAlign: 'center',
+        color: '#999',
+        fontSize: 12,
+        marginBottom: 10,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    illustration: {
+        width: '100%',
+        height: 300,
+        borderRadius: 8,
+        marginBottom: 20,
+        backgroundColor: '#eee',
+        resizeMode: 'contain',
+    },
+    storyText: {
+        fontSize: 22,
+        lineHeight: 34,
+        color: THEME.text,
+        fontFamily: Platform.OS === 'web' ? 'Georgia, serif' : 'serif',
+        textAlign: 'left',
+        width: '100%',
+    },
+    controlsOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 90,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        backgroundColor: 'rgba(250, 249, 246, 0.95)',
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(0,0,0,0.05)',
+        zIndex: 9999,
+        paddingBottom: Platform.OS === 'ios' ? 20 : 0,
+    },
+    navButton: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#fff',
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 4,
+        borderWidth: 1,
+        borderColor: '#eee',
+    },
+    disabledBtn: {
+        opacity: 0.3,
+        backgroundColor: '#f5f5f5',
+    },
+    navArrow: {
+        fontSize: 32,
+        color: THEME.accent,
+        marginTop: -4,
+        fontWeight: '300',
+    },
+    dotsContainer: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    dot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#ddd',
+    },
+    dotActive: {
+        backgroundColor: THEME.accent,
+        width: 12,
+    },
+    // END MENU STYLES
+    endMenuOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(250, 249, 246, 0.98)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10000,
+    },
+    endMenuContainer: {
+        width: '90%',
+        maxWidth: 400,
+        padding: 30,
+        alignItems: 'center',
+    },
+    endTitle: {
+        fontSize: 36,
+        fontWeight: 'bold',
+        color: THEME.text,
+        marginBottom: 10,
+        textAlign: 'center',
+    },
+    endSubtitle: {
+        fontSize: 18,
+        color: '#666',
+        marginBottom: 40,
+        textAlign: 'center',
+    },
+    endButton: {
+        width: '100%',
+        padding: 18,
+        borderRadius: 12,
+        marginBottom: 16,
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    primaryButton: {
+        backgroundColor: THEME.accent,
+    },
+    primaryButtonText: {
+        fontSize: 20,
+        fontWeight: '600',
+        color: 'white',
+    },
+    secondaryButton: {
+        backgroundColor: '#fff',
+        borderWidth: 2,
+        borderColor: THEME.accent,
+    },
+    secondaryButtonText: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: THEME.accent,
+    },
+    tertiaryButton: {
+        backgroundColor: 'transparent',
+    },
+    tertiaryButtonText: {
+        fontSize: 16,
+        color: '#666',
+    },
+    // BACK TO BOOKSHELF BUTTON
+    backToBookshelfBtn: {
+        position: 'absolute',
+        bottom: 100,
+        left: 20,
+        backgroundColor: 'rgba(250, 249, 246, 0.92)',
+        borderRadius: 20,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        zIndex: 9998,
+    },
+    backToBookshelfBtnText: {
+        fontSize: 15,
+        color: THEME.accent,
+        fontWeight: '600',
+    },
+});
 
 export default BookReader;

@@ -5,8 +5,14 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 // Define the shape of the context for TypeScript (Optional but good)
+interface User {
+    id: number;
+    name: string;
+    email: string;
+}
+
 interface AuthContextType {
-    user: any;
+    user: User | null;
     isAuthenticated: boolean; // <--- This was missing!
     loading: boolean;
     login: (email: string, name: string, deviceName: string) => Promise<void>;

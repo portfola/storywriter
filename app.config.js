@@ -6,19 +6,21 @@ const IS_DEVELOPMENT = !IS_PRODUCTION && !IS_STAGING;
 
 
 const getApiBaseUrl = () => {
-  // Explicit override from environment variable
+  // Explicit override from environment variable (highest priority)
   if (process.env.API_BASE_URL) {
     return process.env.API_BASE_URL;
   }
 
-  // Environment-based defaults
+  // Environment-based fallbacks (only if API_BASE_URL not set)
   const env = process.env.NODE_ENV || process.env.EXPO_ENV || 'development';
 
   switch (env) {
     case 'production':
-      return 'https://prod.storywriter.net';
+      console.warn('⚠️  API_BASE_URL not set, using default production URL');
+      return 'https://api.storywriter.net';  // Fallback only
     case 'staging':
-      return 'https://staging-api.storywriter.net';
+      console.warn('⚠️  API_BASE_URL not set, using default staging URL');
+      return 'https://staging-api.storywriter.net';  // Fallback only
     case 'development':
     default:
       return 'http://localhost:8000';
@@ -76,7 +78,7 @@ export default ({ config }) => ({
     ],
     extra: {
       // Backend Integration
-      API_BASE_URL: process.env.API_BASE_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:8000' : 'https://prod.storywriter.net'),
+      API_BASE_URL: getApiBaseUrl(),
       apiBaseUrl: getApiBaseUrl(),
       environment: IS_PRODUCTION ? 'production' : IS_STAGING ? 'staging' : 'development',
 

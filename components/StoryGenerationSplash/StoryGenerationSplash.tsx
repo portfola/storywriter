@@ -52,7 +52,7 @@ const LoadingView = () => {
         Animated.timing(bounceAnim, { toValue: 0, duration: 800, useNativeDriver: true })
       ])
     ).start();
-  }, []);
+  }, [bounceAnim]);
 
   const current = LOADING_MESSAGES[index];
 

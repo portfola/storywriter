@@ -11,7 +11,10 @@ export default function AboutScreen() {
             <Text style={styles.title}>About StoryWriter</Text>
             <View style={styles.decorativeLine} />
           </View>
-          <Text style={styles.text}>Coming soon...</Text>
+          <Text style={styles.text}>Create your own digital storybooks with the help of a cyber assistant!</Text>
+          <Text style={styles.text}>This app is designed for kids to use on a tablet. They can speak with an AI assistant to generate text and images in a storybook display, and the machine will read out the story.</Text>
+          <Text style={styles.text}>This is for entertainment purposes and to encourage a love of books and storytelling in young technologists!</Text>
+          <Text style={styles.text}>Created by <a href="https://rindyportfolio.com">Rindy Portfolio</a> and <a href="http://tim-beckett.com/">Tim Beckett</a>.</Text>
         </View>
       </View>
     </Layout>
@@ -63,7 +66,8 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 22,
     color: '#666',
-    textAlign: 'center',
+    textAlign: 'left',
     fontWeight: '500',
+    marginBottom: 20,
   },
 });

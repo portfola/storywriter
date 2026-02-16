@@ -47,11 +47,19 @@ export default function LoginScreen() {
         try {
             await login(email, name, deviceName);
             Alert.alert('Welcome to StoryWriter! 🎉');
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Login Error:", error);
 
-            if (error.response && error.response.status === 422) {
-                setErrors(error.response.data.errors);
+            if (error && typeof error === 'object' && 'response' in error) {
+                const axiosError = error as { response?: { status: number; data: { errors: { [key: string]: string[] } } } };
+                if (axiosError.response?.status === 422) {
+                    setErrors(axiosError.response.data.errors);
+                } else {
+                    Alert.alert(
+                        'Oops! Something went wrong',
+                        'Please check your connection and try again.'
+                    );
+                }
             } else {
                 Alert.alert(
                     'Oops! Something went wrong',
