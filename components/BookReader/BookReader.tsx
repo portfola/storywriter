@@ -9,6 +9,7 @@ import {
     PanResponder,
     Animated,
     useWindowDimensions,
+    StyleSheet,
 } from 'react-native';
 import { useConversationStore, StorySection } from '@/src/stores/conversationStore';
 
