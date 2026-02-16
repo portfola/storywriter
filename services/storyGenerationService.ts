@@ -59,7 +59,8 @@ class StoryGenerationService {
 
             // Laravel usually returns { data: { story: "..." } }
             // We normalize it here so the rest of the app gets clean data
-            console.log('The returned output: ' + json.data.story);
+            console.log('The returned output: ' + JSON.stringify(json));
+            console.log('Plain json: ' + json);
             return json.data || json;
 
         } catch (error: any) {
@@ -77,29 +78,23 @@ class StoryGenerationService {
         }
 
         try {
-            // A. PREPARE PROMPT
-            // We wrap the user's transcript in your template before sending it
-            console.log('TRANSCRIPT: ' + transcript);
-            const promptTemplate = `
-                ${transcript}
-            `;
-
-            // B. CALL LARAVEL API
             const response = await this.postToApi<any>('/api/stories/generate', {
-                transcript: promptTemplate,
-                options: { maxTokens: 1000, temperature: 0.7 }
+                transcript: transcript.trim(),
+                options: { maxTokens: 2000, temperature: 0.7 }
             });
 
-            // C. EXTRACT TEXT
-            // Handle different JSON shapes (just in case)
-            const rawText = response.story || response?.data?.story || response;
+            // Backend returns everything ready to use — no parsing needed
+            const story = {
+                title: response.title ?? '<h1>My Story</h1>',
+                pages: response.pages ?? [],
+                coverImage: response.cover_image ?? null,
+                storyId: response.story_id ?? null,
+                pageCount: response.page_count ?? 0,
+            };
 
-            if (typeof rawText !== 'string') {
-                throw new Error("Invalid response format from AI");
+            if (story.pages.length === 0) {
+                throw new Error("No pages returned from story generator");
             }
-
-            // D. PARSE INTO OBJECT
-            const story = this.parseStoryText(rawText, transcript);
 
             return { success: true, story };
 

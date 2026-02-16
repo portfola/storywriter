@@ -29,7 +29,12 @@ export interface StorySection {
 // Story content structure
 export interface StoryContent {
   content: string | null;
-  sections: StorySection[];
+  sections: StorySection[];  // keep for backward compat
+  pages: string[];           // raw HTML page strings from backend
+  title: string | null;
+  coverImage: string | null;
+  storyId: number | null;
+  pageCount: number;
 }
 
 // Saved story structure
@@ -184,7 +189,15 @@ const useConversationStore = create<ConversationState>()(
           ...speechState
         }));
       },
-
+      story: {
+        content: null,
+        sections: [],
+        pages: [],
+        title: null,
+        coverImage: null,
+        storyId: null,
+        pageCount: 0,
+      },
       resetConversation: () => {
         set({
           phase: 'IDLE',
@@ -196,10 +209,6 @@ const useConversationStore = create<ConversationState>()(
           storyContent: [],
           generatedStory: null,
           isGeneratingAudio: false,
-          story: {
-            content: null,
-            sections: [],
-          },
           storyGenerationProgress: null,
           minDisplayStartTime: null,
         });
@@ -442,13 +451,7 @@ const useConversationStore = create<ConversationState>()(
               );
             }
 
-            // Map to Store Structure
-            const storyContent = result.story.pages.map(page => ({
-              text: page.content,
-              imageUrl: page.imageUrl ?? null
-            }));
-
-            // 3. Handle Minimum Display Time (UX Pacing)
+            // Pages are plain HTML strings now — no mapping needed
             const elapsedTime = minDisplayStartTime ? Date.now() - minDisplayStartTime : 0;
             const minDisplayTime = 3000;
             const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
@@ -456,15 +459,19 @@ const useConversationStore = create<ConversationState>()(
             const completeStoryGeneration = () => {
               set({
                 story: {
-                  content: result.story.pages.map(p => p.content).join('\n\n'),
-                  sections: storyContent
+                  content: result.story.pages.join('\n\n'),
+                  sections: [],                          // no longer used
+                  pages: result.story.pages,             // HTML strings, one per page
+                  title: result.story.title ?? null,
+                  coverImage: result.story.coverImage ?? null,
+                  storyId: result.story.storyId ?? null,
+                  pageCount: result.story.pageCount ?? result.story.pages.length,
                 },
-                storyContent,
-                generatedStory: result.story.pages.map(p => p.content).join('\n\n'),
+                generatedStory: result.story.pages.join('\n\n'),
                 phase: 'COMPLETE',
                 storyGenerationProgress: null,
                 isGenerating: false,
-                minDisplayStartTime: null
+                minDisplayStartTime: null,
               });
             };
 
