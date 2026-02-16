@@ -1,44 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
-
 import {
     View,
     Text,
-    StyleSheet,
     Image,
     TouchableOpacity,
     Platform,
     ScrollView,
     PanResponder,
     Animated,
-    useWindowDimensions
+    useWindowDimensions,
 } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
-import { Ionicons } from '@expo/vector-icons';
 import { styles } from './BookReader.style';
-import Markdown from 'react-native-markdown-display';
 import RenderHtml from 'react-native-render-html';
 
-
 const BookReader = () => {
-    const { story, resetConversation } = useConversationStore(); // Add resetConversation
+    const { story, resetConversation } = useConversationStore();
+    const { width } = useWindowDimensions();
 
-    const pages = story.sections && story.sections.length > 0
-        ? story.sections
-        : [{ text: "Loading story...", imageUrl: null }];
+    // story.pages is an array of HTML strings, one per page
+    const pages = story.pages.length > 0
+        ? story.pages
+        : ['<p>Loading story...</p>'];
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [showEndMenu, setShowEndMenu] = useState(false);
-
     const fadeAnim = useRef(new Animated.Value(0)).current;
+
     const isLastPage = currentIndex === pages.length - 1;
 
-    const { width } = useWindowDimensions();
-
-    // --- ACTIONS ---
+    // --- NAVIGATION ---
     const goNext = () => {
-        if (currentIndex < pages.length - 1) {
-            setCurrentIndex(prev => prev + 1);
-        }
+        if (currentIndex < pages.length - 1) setCurrentIndex(prev => prev + 1);
     };
 
     const goPrev = () => {
@@ -54,28 +47,10 @@ const BookReader = () => {
         fadeAnim.setValue(0);
     };
 
-    const handleNewStory = () => {
-        // Reset the entire conversation store to start fresh
-        resetConversation();
-        // This will trigger the app to go back to the voice assistant/story input
-    };
+    const handleNewStory = () => resetConversation();
+    const handleExit = () => resetConversation();
 
-    const handleExit = () => {
-        // For Expo, you can use expo-app-loading or just reset
-        // If you want to truly exit the app (mobile only):
-        if (Platform.OS !== 'web') {
-            // Option 1: Reset to beginning
-            resetConversation();
-
-            // Option 2: Or if you have BackHandler for Android
-            // BackHandler.exitApp();
-        } else {
-            // On web, just reset to beginning
-            resetConversation();
-        }
-    };
-
-    // Trigger fade-in animation when reaching last page
+    // --- FADE IN END MENU ON LAST PAGE ---
     useEffect(() => {
         if (isLastPage && !showEndMenu) {
             const timer = setTimeout(() => {
@@ -86,28 +61,11 @@ const BookReader = () => {
                     useNativeDriver: true,
                 }).start();
             }, 500);
-
             return () => clearTimeout(timer);
         }
     }, [isLastPage]);
 
-    // --- SWIPE DETECTOR ---
-    const panResponder = useRef(
-        PanResponder.create({
-            onMoveShouldSetPanResponder: (_, gestureState) => {
-                return Math.abs(gestureState.dx) > 20;
-            },
-            onPanResponderRelease: (_, gestureState) => {
-                if (gestureState.dx < -50) {
-                    goNext();
-                } else if (gestureState.dx > 50) {
-                    goPrev();
-                }
-            }
-        })
-    ).current;
-
-    // --- KEYBOARD SUPPORT ---
+    // --- KEYBOARD (web only) ---
     useEffect(() => {
         if (Platform.OS === 'web') {
             const handleKeyDown = (e: KeyboardEvent) => {
@@ -119,16 +77,30 @@ const BookReader = () => {
         }
     }, [currentIndex, pages.length]);
 
-    const currentPage = pages[currentIndex];
+    // --- SWIPE ---
+    const panResponder = useRef(
+        PanResponder.create({
+            onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 20,
+            onPanResponderRelease: (_, g) => {
+                if (g.dx < -50) goNext();
+                else if (g.dx > 50) goPrev();
+            },
+        })
+    ).current;
 
-    // Check if content is HTML or plain text
-    const isHtmlContent = currentPage.text.includes('<');
+    const currentPageHtml = pages[currentIndex] ?? '<p></p>';
+
+    // Build the full HTML for this page, injecting title and cover on page 1
+    const firstPageExtras = currentIndex === 0
+        ? `${story.title ?? ''}${story.coverImage ? `<img src="${story.coverImage}" style="width:100%;border-radius:8px;margin-bottom:16px;" />` : ''}`
+        : '';
+
+    const htmlToRender = `${firstPageExtras}${currentPageHtml}`;
 
     return (
         <View style={styles.container} {...panResponder.panHandlers}>
-
-
             <View style={styles.pageWrapper}>
+
                 <Text style={styles.pageNumber}>
                     Page {currentIndex + 1} of {pages.length}
                 </Text>
@@ -136,62 +108,30 @@ const BookReader = () => {
                 <ScrollView
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
-                    scrollEnabled={true}
                 >
-                    {currentPage.imageUrl && (
-                        <Image
-                            source={{ uri: currentPage.imageUrl }}
-                            style={styles.illustration}
-                            resizeMode="contain"
-                        />
-                    )}
-
-                    {/* <Text style={styles.storyText}>
-                        {currentPage.text || currentPage.text}
-                    </Text> */}
-
-                    {/* Page Text - Render as HTML or plain text */}
-                    {isHtmlContent ? (
-                        <RenderHtml
-                            contentWidth={width - 80}
-                            source={{ html: currentPage.text }}
-                        />
-                    ) : (
-                        <Text>{currentPage.text}</Text>
-                    )}
+                    <RenderHtml
+                        contentWidth={width - 80}
+                        source={{ html: htmlToRender }}
+                    />
                 </ScrollView>
             </View>
 
             {/* END OF STORY MENU */}
             {showEndMenu && isLastPage && (
-                <Animated.View
-                    style={[
-                        styles.endMenuOverlay,
-                        { opacity: fadeAnim }
-                    ]}
-                >
+                <Animated.View style={[styles.endMenuOverlay, { opacity: fadeAnim }]}>
                     <View style={styles.endMenuContainer}>
                         <Text style={styles.endTitle}>The End! 🎉</Text>
                         <Text style={styles.endSubtitle}>What would you like to do?</Text>
 
-                        <TouchableOpacity
-                            style={[styles.endButton, styles.primaryButton]}
-                            onPress={handleNewStory}
-                        >
+                        <TouchableOpacity style={[styles.endButton, styles.primaryButton]} onPress={handleNewStory}>
                             <Text style={styles.primaryButtonText}>✨ Create New Story</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={[styles.endButton, styles.secondaryButton]}
-                            onPress={handleRestartStory}
-                        >
+                        <TouchableOpacity style={[styles.endButton, styles.secondaryButton]} onPress={handleRestartStory}>
                             <Text style={styles.secondaryButtonText}>🔄 Read Again</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={[styles.endButton, styles.tertiaryButton]}
-                            onPress={handleExit}
-                        >
+                        <TouchableOpacity style={[styles.endButton, styles.tertiaryButton]} onPress={handleExit}>
                             <Text style={styles.tertiaryButtonText}>🏠 Exit</Text>
                         </TouchableOpacity>
                     </View>
@@ -211,17 +151,14 @@ const BookReader = () => {
 
                     <View style={styles.dotsContainer}>
                         {pages.map((_, i) => (
-                            <View
-                                key={i}
-                                style={[styles.dot, i === currentIndex && styles.dotActive]}
-                            />
+                            <View key={i} style={[styles.dot, i === currentIndex && styles.dotActive]} />
                         ))}
                     </View>
 
                     <TouchableOpacity
                         onPress={goNext}
-                        style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
-                        disabled={currentIndex === pages.length - 1}
+                        style={[styles.navButton, isLastPage && styles.disabledBtn]}
+                        disabled={isLastPage}
                     >
                         <Text style={styles.navArrow}>›</Text>
                     </TouchableOpacity>
@@ -231,4 +168,4 @@ const BookReader = () => {
     );
 };
 
-export default BookReader; 
+export default BookReader;

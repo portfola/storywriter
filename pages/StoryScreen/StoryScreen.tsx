@@ -23,7 +23,7 @@ const StoryScreen = () => {
   const currentPhase: ConversationPhase = phase;
 
   // Show welcome overlay when IDLE, user hasn't started, AND screen is focused
-  const showWelcome = isFocused && currentPhase === 'IDLE' && !story.content;
+  const showWelcome = isFocused && currentPhase === 'IDLE' && !story.pages.length;
 
   const handleStart = () => {
     // Start the conversation when the welcome button is clicked
@@ -31,7 +31,7 @@ const StoryScreen = () => {
   };
 
   // Show story content (without background)
-  if (story.content) {
+  if (story.pages.length) {
     return (
       <Layout>
         <View style={s.container}>

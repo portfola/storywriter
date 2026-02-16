@@ -1,23 +1,14 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
-import { Story, StoryPage, StoryGenerationResult } from '../types/story';
+import { StoryGenerationResult } from '../types/story';
 
-// Get API base URL from centralized configuration
 const API_BASE_URL = Constants.expoConfig?.extra?.apiBaseUrl || 'http://127.0.0.1:8000';
-
-
-interface ApiResponse<T = any> {
-    success: boolean;
-    data?: T;
-    error?: string;
-}
-
 
 class StoryGenerationService {
 
     // ------------------------------------------------------------
-    // 1. AUTH HELPER (Centralized)
+    // 1. AUTH HELPER
     // ------------------------------------------------------------
     private async getAuthToken(): Promise<string | null> {
         if (Platform.OS === 'web') {
@@ -27,63 +18,54 @@ class StoryGenerationService {
     }
 
     // ------------------------------------------------------------
-    // 2. API CLIENT (Handles Headers & Errors)
+    // 2. API CLIENT
     // ------------------------------------------------------------
     private async postToApi<T>(endpoint: string, body: any): Promise<T> {
         const token = await this.getAuthToken();
 
         if (!token) {
-            throw new Error("Unauthorized: Please log in to generate stories.");
+            throw new Error('Unauthorized: Please log in to generate stories.');
         }
 
-        console.log(`🚀 POST ${API_BASE_URL}${endpoint}`);
+        console.log(`POST ${API_BASE_URL}${endpoint}`);
 
-        try {
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'Authorization': `Bearer ${token}` // <--- Token attached automatically
-                },
-                body: JSON.stringify(body),
-            });
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify(body),
+        });
 
-            const json = await response.json();
+        const json = await response.json();
 
-            if (!response.ok) {
-                // Handle Laravel Validation Errors (422) or Auth Errors (401)
-                const errorMessage = json.message || json.error || `HTTP ${response.status}`;
-                throw new Error(errorMessage);
-            }
-
-            // Laravel usually returns { data: { story: "..." } }
-            // We normalize it here so the rest of the app gets clean data
-            console.log('The returned output: ' + JSON.stringify(json));
-            console.log('Plain json: ' + json);
-            return json.data || json;
-
-        } catch (error: any) {
-            console.error("❌ API Request Failed:", error);
-            throw error; // Re-throw so the UI knows it failed
+        if (!response.ok) {
+            const errorMessage = json.message || json.error || `HTTP ${response.status}`;
+            throw new Error(errorMessage);
         }
+
+        console.log('API response:', JSON.stringify(json));
+
+        // Laravel returns data at top level now (no data wrapper)
+        return json.data || json;
     }
 
     // ------------------------------------------------------------
-    // 3. MAIN FUNCTION: GENERATE STORY
+    // 3. GENERATE STORY
     // ------------------------------------------------------------
     async generateStory(transcript: string): Promise<StoryGenerationResult> {
         if (!transcript?.trim()) {
-            return this.failResponse("Transcript is empty", transcript);
+            return this.failResponse('Transcript is empty');
         }
 
         try {
             const response = await this.postToApi<any>('/api/stories/generate', {
                 transcript: transcript.trim(),
-                options: { maxTokens: 2000, temperature: 0.7 }
+                options: { maxTokens: 2000, temperature: 0.7 },
             });
 
-            // Backend returns everything ready to use — no parsing needed
             const story = {
                 title: response.title ?? '<h1>My Story</h1>',
                 pages: response.pages ?? [],
@@ -93,132 +75,34 @@ class StoryGenerationService {
             };
 
             if (story.pages.length === 0) {
-                throw new Error("No pages returned from story generator");
+                throw new Error('No pages returned from story generator');
             }
+
+            console.log('Story pages count:', story.pages.length);
+            console.log('Story object:', JSON.stringify(story));
 
             return { success: true, story };
 
         } catch (error: any) {
-            return this.failResponse(error.message, transcript);
+            console.error('Story generation failed:', error.message);
+            return this.failResponse(error.message);
         }
     }
 
-
     // ------------------------------------------------------------
-    // 4. HELPER: PARSE TEXT (Extracts Markdown Image)
+    // 4. FAIL RESPONSE
     // ------------------------------------------------------------
-    private parseStoryText(text: string, transcript: string): Story {
-        // 1. Extract Title
-        const titleMatch = text.match(/^Title[:.]?\s*(.+)$/im);
-        const title = titleMatch ? titleMatch[1].trim() : 'New Story';
-
-        let body = text.replace(/^Title[:.]?.+$/im, '').trim();
-
-        // ADD THIS: Remove all page break markers from display
-        body = body.replace(/---PAGE BREAK---/gi, '');
-        body = body.replace(/Page \d+/gi, ''); // Also remove "Page 1", "Page 2", etc.
-
-        // ---------------------------------------------------------
-        // 2. EXTRACT COVER IMAGE (The New Part)
-        // ---------------------------------------------------------
-        let coverImageUrl: string | null = null;
-
-        // ADD THIS: Prepend title with markdown bold and heading
-        // body = `# **${title}**\n\n${body}`;
-
-        // Regex explanation:
-        // !\[.*?\]  -> Matches ![alt text]
-        // \(        -> Opening parenthesis
-        // \s* -> Optional whitespace
-        // (https?://[^)]+) -> CAPTURE GROUP: The actual URL
-        // \s* -> Optional whitespace
-        // \)        -> Closing parenthesis
-        const imageRegex = /!\[.*?\]\(\s*(https?:\/\/[^)]+)\s*\)/i;
-        const imageMatch = body.match(imageRegex);
-
-        if (imageMatch && imageMatch[1]) {
-            coverImageUrl = imageMatch[1].trim(); // Save the URL
-            body = body.replace(imageRegex, '').trim(); // Remove the tag from text
-            console.log('coverImageUrl: ' + coverImageUrl);
-        }
-
-        // ---------------------------------------------------------
-        // 3. SPLIT PAGES (Standard Logic)
-        // ---------------------------------------------------------
-        // Split by "Page X" or "---PAGE BREAK---"
-        const splitRegex = /(?:---|Page)\s*(?:PAGE BREAK|Page)\s*\d+[:.]?/i;
-        const rawChunks = body.split(splitRegex);
-
-        const pages: StoryPage[] = [];
-
-        rawChunks.forEach((chunk, index) => {
-            const trimmedChunk = chunk.trim();
-            if (trimmedChunk.length < 20) return;
-
-            // Clean up content
-            const cleanContent = trimmedChunk
-                .replace(/Illustration[:.]?.+/gi, '')
-                .replace(/---PAGE BREAK---/gi, '')
-                .trim();
-
-            if (cleanContent.length > 0) {
-                const pageNum = pages.length + 1;
-
-                // LOGIC: Use the Real AI Image for Page 1, fallback to placeholder for others
-                let finalImageUrl = null;
-
-                if (pageNum === 1 && coverImageUrl) {
-                    finalImageUrl = coverImageUrl; // ✅ USE REAL AI IMAGE
-                    console.log('finalImageUrl:' + finalImageUrl);
-                } else {
-                    // (Optional) Keep using Picsum for other pages if you want
-                    // finalImageUrl = `https://picsum.photos/seed/${100 + pageNum}/800/600`;
-                    finalImageUrl = null; // Or just have text only
-                }
-
-                pages.push({
-                    pageNumber: pageNum,
-                    content: cleanContent,
-                    illustrationPrompt: "Cover Art",
-                    imageUrl: finalImageUrl
-                });
-            }
-        });
-
-        // Fallback if parsing failed
-        if (pages.length === 0) {
-            pages.push({
-                pageNumber: 1,
-                content: body,
-                illustrationPrompt: "Story",
-                imageUrl: coverImageUrl // Ensure image is attached even if pagination fails
-            });
-        }
-
-        return {
-            id: `story_${Date.now()}`,
-            title,
-            pages,
-            transcript,
-            createdAt: new Date(),
-        };
-    }
-
-
-    // ------------------------------------------------------------
-    // 5. HELPER: CREATE FAILURE OBJECT
-    // ------------------------------------------------------------
-    private failResponse(errorMsg: string, transcript: string): StoryGenerationResult {
+    private failResponse(errorMsg: string): StoryGenerationResult {
         return {
             success: false,
             error: errorMsg,
             story: {
-                id: 'error',
-                title: 'Generation Failed',
+                title: null,
                 pages: [],
-                transcript,
-                createdAt: new Date(),
-            }
+                coverImage: null,
+                storyId: null,
+                pageCount: 0,
+            },
         };
     }
 }
