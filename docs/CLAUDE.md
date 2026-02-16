@@ -16,10 +16,8 @@ StoryWriter is an interactive digital storybook creation app designed for childr
 - **React** (19.2.3)
 
 ### AI & Voice Services
-- **ElevenLabs**: TTS service
+- **ElevenLabs**: TTS and Conversational AI
 - **Together AI**: Story and image generation
-- **AWS Polly**: Text-to-speech narration **DEPRECATED**
-- **AWS Transcribe Streaming**: Speech-to-text for voice input **DEPRECATED**
 
 ### State & Storage
 - **Zustand** (^5.0.6): Global state management
@@ -48,8 +46,6 @@ components/                 # Reusable UI components
   StoryContent/             # Story rendering
   WelcomeOverlay/           # Onboarding
 services/                   # External service integrations
-  polly/                    # AWS Polly TTS (todo: remove service)
-  transcribe/               # AWS Transcribe (todo: remove service)
   elevenLabsService.ts      # ElevenLabs Agent and TTS
   storyGenerationService.ts # AI story generation
 src/

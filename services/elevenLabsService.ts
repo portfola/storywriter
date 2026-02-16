@@ -1,6 +1,4 @@
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Conversation } from '@elevenlabs/client';
-import Constants from 'expo-constants';
 import {
   TextToSpeechOptions,
   ElevenLabsError,
@@ -14,9 +12,6 @@ import client from '@/src/api/client';
 
 // --- Configuration and Types ---
 
-// Get API base URL from centralized configuration
-const API_BASE_URL = Constants.expoConfig?.extra?.apiBaseUrl || 'http://127.0.0.1:8000';
-
 
 const DEFAULT_TIMEOUT_MS = 30000; // 30 seconds
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5000; // 5 seconds
@@ -27,12 +22,6 @@ enum ConnectionState {
   CONNECTED = 'connected',
   DISCONNECTING = 'disconnecting',
   ERROR = 'error'
-}
-
-interface ApiResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: string;
 }
 
 // Default voice settings for TTS consistency
@@ -46,7 +35,6 @@ const DEFAULT_VOICE_SETTINGS = {
 // --- Service Implementation ---
 
 export class ElevenLabsService {
-  private client: ElevenLabsClient | null = null;
   private defaultVoiceId: string;
   private defaultModelId: string;
   private agentId: string;
@@ -82,58 +70,6 @@ export class ElevenLabsService {
   }
 
   /**
-   * Universal API request handler with built-in timeout and error handling.
-   */
-  private async makeApiRequest<T>(
-    endpoint: string,
-    options: RequestInit = {},
-    timeout: number = DEFAULT_TIMEOUT_MS
-  ): Promise<ApiResponse<T>> {
-    try {
-      const url = `${API_BASE_URL}${endpoint}`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-      const defaultHeaders = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      // Overwrite default headers for specific requests (like the audio/mpeg one)
-      const headers = { ...defaultHeaders, ...options.headers };
-
-      const response = await fetch(url, {
-        signal: controller.signal,
-        ...options,
-        headers,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        // Attempt to parse JSON error, fall back to statusText
-        const errorDetail = await response.text().catch(() => response.statusText);
-        throw new Error(`HTTP ${response.status}: ${errorDetail}`);
-      }
-
-      // Handle no-content responses (e.g., DELETE) or non-JSON responses
-      if (response.headers.get('content-type')?.includes('application/json')) {
-        const data = await response.json();
-        return { success: true, data };
-      }
-
-      return { success: true };
-
-    } catch (error) {
-      // Assuming serviceLogger is available
-      serviceLogger.elevenlabs.error(error, { endpoint, options });
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network request failed'
-      };
-    }
-  }
-
-  /**
    * Reusable function to enforce text length constraints.
    */
   private validateText(text: string): void {
@@ -148,7 +84,7 @@ export class ElevenLabsService {
   // --- Text-to-Speech (TTS) Methods ---
 
   /**
-   * Convert text to speech. Uses SDK if available, falls back to Laravel backend.
+   * Convert text to speech via Laravel backend proxy.
    */
   async generateSpeech(
     text: string,
@@ -161,37 +97,21 @@ export class ElevenLabsService {
       const ttsOptions = this.buildTtsOptions(text, options);
       const finalVoiceId = voiceId || this.defaultVoiceId;
 
-      // 1. SDK Client Method
-      if (this.client) {
-        const audio = await this.client.textToSpeech.convert(finalVoiceId, ttsOptions);
-        return { audio, request_id: undefined };
-      }
-
-      // 2. Laravel Backend Fallback
       const requestBody = {
         text: ttsOptions.text,
         voiceId: finalVoiceId,
         options: ttsOptions,
       };
 
-      const url = `/api/voice/tts`;
-      const response = await fetch(`${API_BASE_URL}${url}`, {
-        method: 'POST',
+      const response = await client.post('/conversation/tts', requestBody, {
+        responseType: 'arraybuffer',
         headers: {
-          'Content-Type': 'application/json',
           'Accept': 'audio/mpeg',
         },
-        body: JSON.stringify(requestBody),
         signal: this.createTimeoutSignal().signal,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const audioBuffer = await response.arrayBuffer();
-      return { audio: new Uint8Array(audioBuffer), request_id: undefined };
+      return { audio: new Uint8Array(response.data), request_id: undefined };
 
     } catch (error) {
       throw this.handleError(error, 'Failed to generate speech');
@@ -199,7 +119,7 @@ export class ElevenLabsService {
   }
 
   /**
-   * Generate speech with streaming. Uses SDK if available, falls back to buffered result.
+   * Generate speech with streaming. Falls back to buffered result wrapped in a stream.
    */
   async generateSpeechStream(
     text: string,
@@ -207,18 +127,7 @@ export class ElevenLabsService {
     options?: Partial<TextToSpeechOptions>
   ): Promise<ReadableStream> {
     try {
-      this.validateText(text);
-
-      const ttsOptions = this.buildTtsOptions(text, options);
-      const finalVoiceId = voiceId || this.defaultVoiceId;
-
-      // 1. SDK Client Method (Streaming)
-      if (this.client) {
-        return await this.client.textToSpeech.stream(finalVoiceId, ttsOptions);
-      }
-
-      // 2. Fallback to regular generation and create stream
-      const result = await this.generateSpeech(text, finalVoiceId, options);
+      const result = await this.generateSpeech(text, voiceId, options);
 
       return new ReadableStream({
         start(controller) {
@@ -255,13 +164,12 @@ export class ElevenLabsService {
    * Get available voices from Laravel backend
    */
   async getVoices(): Promise<unknown[]> {
-    const response = await this.makeApiRequest<{ voices: unknown[] }>('/api/voice/voices');
-
-    if (!response.success || !response.data) {
-      throw this.handleError(response.error, 'Failed to fetch voices');
+    try {
+      const response = await client.get<{ voices: unknown[] }>('/conversation/voices');
+      return response.data.voices;
+    } catch (error) {
+      throw this.handleError(error, 'Failed to fetch voices');
     }
-
-    return response.data.voices;
   }
 
   /**
@@ -463,10 +371,9 @@ export class ElevenLabsService {
       this.shutdownTimeout = null;
     }
 
-    // 2. Clear API client and conversation state
+    // 2. Clear conversation state
     this.currentConversation = null;
     this.sessionId = null;
-    this.client = null;
     this.connectionState = ConnectionState.DISCONNECTED;
 
     // We don't need to manually call this.currentConversation.endSession() here 

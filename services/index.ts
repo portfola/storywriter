@@ -12,8 +12,6 @@ export { default as StoryGenerationService } from './storyGenerationService';
 // === FUTURE/ALTERNATIVE SERVICES ===
 // These are available but not currently used
 export { default as HuggingFaceService } from './huggingFaceService';
-export { default as PollyService } from './polly';
-export { default as TranscribeService } from './transcribe';
 
 /**
  * Service Configuration Guide:
@@ -24,8 +22,6 @@ export { default as TranscribeService } from './transcribe';
  * 
  * AVAILABLE FOR FUTURE USE:
  * - HuggingFaceService: Alternative text + image generation
- * - PollyService: Alternative TTS (AWS Polly)
- * - TranscribeService: Speech-to-text (AWS Transcribe)
  * 
  * ENVIRONMENT VARIABLES NEEDED:
  * Backend Integration:
@@ -37,21 +33,13 @@ export { default as TranscribeService } from './transcribe';
  * 
  * Future Services:
  * - HUGGING_FACE_API_KEY (optional)
- * - AWS_ACCESS_KEY_ID (optional)
- * - AWS_SECRET_ACCESS_KEY (optional)
- * - AWS_REGION (optional)
- * - BACKEND_URL (legacy, use API_BASE_URL instead)
  * 
  * LARAVEL BACKEND ENDPOINTS:
- * - POST /api/conversation/start - Start ElevenLabs conversation
- * - POST /api/conversation/end - End ElevenLabs conversation
- * - WebSocket /ws/conversation/{sessionId} - Real-time conversation
- * - POST /api/elevenlabs/tts - Text-to-speech generation
- * - GET /api/elevenlabs/voices - Get available voices
- * - GET /api/elevenlabs/models - Get available models
+ * - POST /api/conversation/sdk-credentials - Get signed URL for conversation
+ * - POST /api/conversation/proxy - Proxy conversation requests
+ * - POST /api/conversation/tts - Text-to-speech generation
+ * - GET /api/conversation/voices - Get available voices
  * - POST /api/stories/generate - Generate story from transcript
- * - GET /api/stories/models - Get available story generation models
- * - GET /api/health - Backend health check
  * 
  * FEATURES:
  * - Automatic request timeout handling (30s for TTS, 60s for stories)

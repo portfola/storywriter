@@ -25,27 +25,24 @@ types/
 └── elevenlabs.ts           # TypeScript type definitions
 ```
 
-### Dual Implementation Strategy
+### Implementation Strategy
 
-The service supports **two execution paths**:
+The service uses **two execution paths** depending on the feature:
 
-1. **SDK Client Path** (Direct to ElevenLabs)
-   - Uses `@elevenlabs/elevenlabs-js` SDK
-   - Direct API calls to ElevenLabs
-   - Used for Conversational Agents (WebSocket)
-   - Lower latency for supported features
+1. **SDK Client Path** (Conversational Agents only)
+   - Uses `@elevenlabs/client` SDK
+   - WebSocket connection via signed URLs from backend
+   - Used exclusively for Conversational Agents
 
-2. **Laravel Backend Path** (Fallback)
-   - Routes requests through Laravel API backend
-   - Centralized API key management
-   - Additional request logging and monitoring
-   - Used for TTS when SDK client is unavailable
+2. **Laravel Backend Path** (TTS and voice listing)
+   - Routes requests through Laravel API backend (`/api/conversation/*`)
+   - Uses authenticated Axios client for automatic Bearer token injection
+   - Centralized API key management, request logging, and cost tracking
 
 ### Class Structure
 
 ```typescript
 export class ElevenLabsService {
-  private client: ElevenLabsClient | null = null;
   private defaultVoiceId: string;
   private defaultModelId: string;
   private agentId: string;
@@ -78,8 +75,8 @@ import elevenLabsService from '@/services/elevenLabsService';
 // Default voice for storytelling
 defaultVoiceId: "56AoDkrOh6qfVPDXZ7Pt" // Cassidy voice
 
-// Recommended model for multilingual support
-defaultModelId: "eleven_multilingual_v2"
+// Fast, low-latency model for narration
+defaultModelId: "eleven_flash_v2_5"
 
 // Default voice settings
 DEFAULT_VOICE_SETTINGS = {
@@ -110,7 +107,7 @@ const result = await elevenLabsService.generateSpeech(
   "Once upon a time in a magical forest...",
   undefined, // Use default voice
   {
-    model_id: "eleven_multilingual_v2",
+    model_id: "eleven_flash_v2_5",
     voice_settings: {
       stability: 0.7,
       similarity_boost: 0.8,
@@ -124,9 +121,8 @@ const result = await elevenLabsService.generateSpeech(
 **Execution Flow:**
 1. Validates text (non-empty, max 5000 characters)
 2. Builds TTS options with defaults and overrides
-3. **Path A (SDK):** Uses `client.textToSpeech.convert()` if available
-4. **Path B (Fallback):** POSTs to Laravel backend `/api/voice/tts`
-5. Returns audio as Uint8Array
+3. POSTs to Laravel backend `/api/conversation/tts` via authenticated Axios client
+4. Returns audio as Uint8Array
 
 #### 2. Streaming Speech Generation
 
@@ -192,7 +188,7 @@ const audioResult = await elevenLabsService.generateStoryPromptSpeech(
 async getVoices(): Promise<any[]>
 ```
 
-Fetches voices from Laravel backend endpoint `/api/voice/voices`.
+Fetches voices from Laravel backend endpoint `/api/conversation/voices`.
 
 **Usage:**
 ```typescript
@@ -659,8 +655,8 @@ async function generateSpeechWithFallback(text: string) {
     return await elevenLabsService.generateSpeech(text);
   } catch (error) {
     if (error.status >= 500) {
-      // Service unavailable - use alternative TTS
-      return await pollyService.generateSpeech(text);
+      // Service unavailable - show user-friendly error
+      throw new Error('Voice narration is temporarily unavailable. Please try again later.');
     }
     throw error;
   }
@@ -717,10 +713,10 @@ async generateSpeechWithPronunciation(
 }
 ```
 
-3. **Update backend route** (if using Laravel fallback):
+3. **Update backend route** (if needed):
 ```php
-// Laravel backend route to support new feature
-Route::post('/api/voice/tts', [VoiceController::class, 'textToSpeech']);
+// Add to ElevenLabs conversation route group in routes/api.php
+Route::post('/tts-with-pronunciation', [ElevenLabsController::class, 'textToSpeechWithPronunciation']);
 ```
 
 ### Adding Agent Tools
@@ -1000,33 +996,6 @@ await elevenLabsService.generateSpeech(sanitized);
 
 ---
 
-## Migration Guide
-
-### From AWS Polly to ElevenLabs
-
-**AWS Polly:**
-```typescript
-import pollyService from '@/services/polly';
-
-const audio = await pollyService.synthesizeSpeech(text, voiceId);
-```
-
-**ElevenLabs:**
-```typescript
-import elevenLabsService from '@/services/elevenLabsService';
-
-const result = await elevenLabsService.generateSpeech(text, voiceId);
-const audio = result.audio;
-```
-
-**Key Differences:**
-- ElevenLabs has better voice quality and expressiveness
-- ElevenLabs supports more languages (31 vs Polly's 24)
-- ElevenLabs has character-based pricing vs Polly's request-based
-- ElevenLabs has lower latency with Flash/Turbo models
-
----
-
 ## References
 
 ### Official Documentation
@@ -1042,8 +1011,6 @@ const audio = result.audio;
 - `components/ConversationInterface/ConversationInterface.tsx` - Agent usage example
 
 ### Related Services
-- AWS Polly (`services/polly/`) - Alternative TTS
-- AWS Transcribe (`services/transcribe/`) - Speech-to-text
 - Together AI (`services/storyGenerationService.ts`) - Story generation
 
 ---
