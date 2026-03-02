@@ -3,6 +3,7 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import client from '../api/client';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { identifyUser, resetUser } from '../utils/analytics';
 
 // Define the shape of the context for TypeScript (Optional but good)
 interface User {
@@ -40,6 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                     client.defaults.headers.common['Authorization'] = `Bearer ${token}`;
                     const { data } = await client.get('/user');
                     setUser(data);
+                    identifyUser(data, Platform.OS);
                 }
             } catch (e) {
                 console.log("Load User Failed:", e);
@@ -83,6 +85,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         // 5. Update State
         setUser(userData);
+        identifyUser(userData, Platform.OS);
         // "isAuthenticated" is derived from "user" automatically below
     };
 
@@ -95,6 +98,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
             // Clear header
             delete client.defaults.headers.common['Authorization'];
+            resetUser();
         } catch (e) {
             console.error("Logout error", e);
         } finally {

@@ -15,6 +15,7 @@ import { useIsFocused } from '@react-navigation/native';
 import client from '@/src/api/client';
 import Layout from '@/components/Layout/Layout';
 import { parseStoryBody } from '@/src/utils/parseStoryBody';
+import { trackEvent, AnalyticsEvents } from '@/src/utils/analytics';
 
 interface ApiStory {
     id: number;
@@ -78,6 +79,7 @@ export default function BookshelfScreen() {
 
             setCards(cardData);
             setError(null);
+            trackEvent(AnalyticsEvents.BOOKSHELF_VIEWED, { story_count: cardData.length });
         } catch {
             setError('Could not load your stories.');
         } finally {
@@ -165,7 +167,10 @@ export default function BookshelfScreen() {
                                     styles.card,
                                     { width: cardWidth },
                                 ]}
-                                onPress={() => router.push(`/bookshelf/${story.slug}`)}
+                                onPress={() => {
+                                    trackEvent(AnalyticsEvents.BOOKSHELF_STORY_TAPPED, { story_id: story.id });
+                                    router.push(`/bookshelf/${story.slug}`);
+                                }}
                                 activeOpacity={0.85}
                             >
                         {/* Cover image or placeholder */}

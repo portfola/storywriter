@@ -8,6 +8,7 @@ import { ErrorType, ErrorSeverity } from '@/src/utils/errorHandler';
 import { conversationLogger, logger, LogCategory } from '@/src/utils/logger';
 import { TranscriptNormalizer, DialogueTurn } from '@/src/utils/transcriptNormalizer';
 import AudioVisualizer from '@/components/AudioVisualizer/AudioVisualizer';
+import { trackEvent, AnalyticsEvents } from '@/src/utils/analytics';
 
 interface Props {
   disabled?: boolean;
@@ -26,6 +27,7 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
   const flushTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingFlushRef = useRef<boolean>(false);
   const speakerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const conversationStartTimeRef = useRef<number>(0);
   
   // Simplified store usage - trust ElevenLabs for conversation management
   const {
@@ -130,12 +132,15 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
 
     setIsConnecting(true);
     storeStartConversation();
+    conversationStartTimeRef.current = Date.now();
 
     try {
       const session = await ElevenLabsService.startConversationAgent({
         onConnect: () => {
           conversationLogger.connected();
           setIsConnecting(false);
+          const connectionTimeMs = Date.now() - conversationStartTimeRef.current;
+          trackEvent(AnalyticsEvents.CONVERSATION_CONNECTED, { connection_time_ms: connectionTimeMs });
         },
         
         onDisconnect: () => {
@@ -298,6 +303,9 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
         onError: (error) => {
           setIsConnecting(false);
           setConversationSession(null);
+          trackEvent(AnalyticsEvents.CONVERSATION_CONNECTION_FAILED, {
+            error_message: error instanceof Error ? error.message : String(error),
+          });
           handleError(error, ErrorType.CONVERSATION, ErrorSeverity.MEDIUM, {
             action: 'conversation_connection'
           });
@@ -317,6 +325,19 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
   };
 
   const handleEndConversation = async (finalTranscript: string) => {
+    const messages = rawMessages.current;
+    const userMessages = messages.filter(msg => msg.role === 'user');
+    const durationSeconds = conversationStartTimeRef.current
+      ? Math.round((Date.now() - conversationStartTimeRef.current) / 1000)
+      : 0;
+
+    trackEvent(AnalyticsEvents.CONVERSATION_ENDED, {
+      end_method: 'auto',
+      message_count: messages.length,
+      user_message_count: userMessages.length,
+      duration_seconds: durationSeconds,
+    });
+
     if (conversationSession) {
       try {
         await conversationSession.endSession();
@@ -326,7 +347,7 @@ const ConversationInterface = forwardRef<ConversationInterfaceRef, Props>(({ dis
         });
       }
     }
-    
+
     setConversationSession(null);
     // Pass the final transcript to the store for story generation
     storeEndConversation(finalTranscript);

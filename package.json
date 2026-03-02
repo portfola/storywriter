@@ -51,7 +51,12 @@
     "react-native-webview": "^13.15.0",
     "together-ai": "^0.17.0",
     "zustand": "^5.0.6",
-    "expo-av": "~15.0.2"
+    "expo-av": "~15.0.2",
+    "posthog-react-native": "^3.3.8",
+    "expo-file-system": "~18.0.4",
+    "expo-application": "~6.0.2",
+    "expo-device": "~7.0.2",
+    "expo-localization": "~16.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

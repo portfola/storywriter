@@ -4,6 +4,7 @@
  * Provides consistent error handling patterns across the application
  */
 import { logger, LogCategory } from './logger';
+import { trackEvent, AnalyticsEvents } from './analytics';
 
 export enum ErrorType {
   NETWORK = 'network',
@@ -113,7 +114,13 @@ export class ErrorHandler {
    */
   static handleError(error: AppError): void {
     this.logError(error);
-    
+
+    trackEvent(AnalyticsEvents.ERROR_OCCURRED, {
+      error_type: error.type,
+      error_severity: error.severity,
+      context: error.message,
+    });
+
     // Additional handling based on severity using logger
     switch (error.severity) {
       case ErrorSeverity.CRITICAL:
