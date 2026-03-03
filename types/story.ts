@@ -13,10 +13,18 @@ export interface Story {
   transcript?: string;
 }
 
+export interface GeneratedStory {
+  title: string | null;
+  pages: StoryPage[];
+  coverImage: string | null;
+  storyId: number | null;
+  pageCount: number;
+}
+
 export interface StoryGenerationResult {
-  story: Story;
   success: boolean;
   error?: string;
+  story: GeneratedStory;
 }
 
 export interface StoryGenerationOptions {
@@ -28,5 +36,5 @@ export interface StoryGenerationOptions {
 // This represents the shape of data your BookReader actually uses
 export interface StorySection {
   text: string;
-  imageUrl?: string | null;
+  imageUrl: string | null;
 }

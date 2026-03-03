@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import client from '@/src/api/client';
 import BookReader from '@/components/BookReader/BookReader';
 import { parseStoryBody } from '@/src/utils/parseStoryBody';
-import { StorySection } from '@/src/stores/conversationStore';
+import { StorySection } from '@/types/story';
 
 export default function StoryDetailScreen() {
     const { slug } = useLocalSearchParams<{ slug: string }>();

@@ -70,7 +70,11 @@ export default ({ config }) => ({
         foregroundImage: "./assets/images/icon.png",
         backgroundColor: "#ffffff"
       },
-      orientation: "landscape"  // Changed from screenOrientation
+      orientation: "landscape",  // Changed from screenOrientation
+      permissions: [
+        "RECORD_AUDIO",  // For voice input
+        "MODIFY_AUDIO_SETTINGS"  // For audio playback control
+      ]
     },
     plugins: [
       "expo-dev-client",

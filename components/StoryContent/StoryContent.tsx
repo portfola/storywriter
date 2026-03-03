@@ -17,8 +17,8 @@ import BookReader from '@/components/BookReader/BookReader';
  */
 const StoryContent: React.FC = () => {
   const { isGenerating, story } = useConversationStore();
-  const pages = story.pages;
-  console.log("From StoryContent.tsx, pages" + pages);
+  const sections = story.sections;
+
   // 1. LOADING STATE
   if (isGenerating) {
     return (
@@ -30,7 +30,7 @@ const StoryContent: React.FC = () => {
   }
 
   // 2. EMPTY STATE
-  if (!pages || pages.length === 0) {
+  if (!sections || sections.length === 0) {
     return (
       <View style={styles.centerContainer}>
         <Text style={styles.loadingText}>Waiting for story...</Text>

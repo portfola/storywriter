@@ -14,10 +14,10 @@ web-build/
 .env.development.local
 .env.test.local
 .env.production.local
-repomix*
-CLAUDE.md
+
+# Claude
 .claude
-plan.md
+PROMPT.md
 
 # Logs
 *.log
