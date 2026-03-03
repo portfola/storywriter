@@ -96,7 +96,7 @@ const StoryGenerationSplash: React.FC<Props> = ({ isVisible }) => {
     trackEvent(AnalyticsEvents.STORY_GENERATION_RETRIED, {
       retry_count: retryCountRef.current,
     });
-    retryStoryGeneration();
+    void retryStoryGeneration();
   };
 
   if (!isVisible) return null;

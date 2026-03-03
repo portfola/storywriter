@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -47,11 +47,14 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         setRateLimited
     } = useConversationStore();
 
-    const pages = (sectionsProp && sectionsProp.length > 0)
-        ? sectionsProp
-        : (story.sections && story.sections.length > 0
-            ? story.sections
-            : [{ text: "Loading story...", imageUrl: null }]);
+    const pages = useMemo(() =>
+        (sectionsProp && sectionsProp.length > 0)
+            ? sectionsProp
+            : (story.sections && story.sections.length > 0
+                ? story.sections
+                : [{ text: "Loading story...", imageUrl: null }]),
+        [sectionsProp, story.sections]
+    );
 
     const [currentIndex, setCurrentIndex] = useState(0);
     const [showEndMenu, setShowEndMenu] = useState(false);
