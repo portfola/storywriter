@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { useConversationStore } from '@/src/stores/conversationStore';
+import { trackEvent, AnalyticsEvents } from '@/src/utils/analytics';
 
 // --- CONFIGURATION ---
 const LOADING_MESSAGES = [
@@ -85,16 +86,25 @@ interface Props {
 
 const StoryGenerationSplash: React.FC<Props> = ({ isVisible }) => {
   const { getError, retryStoryGeneration } = useConversationStore();
+  const retryCountRef = useRef(0);
 
   // Check if we have a specific generation error
   const error = getError('story_generation')?.userMessage;
+
+  const handleRetry = () => {
+    retryCountRef.current += 1;
+    trackEvent(AnalyticsEvents.STORY_GENERATION_RETRIED, {
+      retry_count: retryCountRef.current,
+    });
+    retryStoryGeneration();
+  };
 
   if (!isVisible) return null;
 
   return (
     <View style={styles.container}>
       {error ? (
-        <ErrorView onRetry={retryStoryGeneration} />
+        <ErrorView onRetry={handleRetry} />
       ) : (
         <LoadingView />
       )}

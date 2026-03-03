@@ -249,6 +249,8 @@ jobs:
       - name: Build Expo web application
         env:
           API_BASE_URL: ${{ vars.API_BASE_URL || (needs.setup.outputs.environment == 'production' && 'https://api.storywriter.net' || 'https://staging-api.storywriter.net') }}
+          POSTHOG_API_KEY: ${{ vars.POSTHOG_API_KEY }}
+          POSTHOG_HOST: ${{ vars.POSTHOG_HOST || 'https://us.i.posthog.com' }}
           ENVIRONMENT: ${{ needs.setup.outputs.environment }}
         run: |
           if [ -z "$API_BASE_URL" ] || [ "$API_BASE_URL" = "null" ]; then

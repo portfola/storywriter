@@ -86,6 +86,10 @@ export default ({ config }) => ({
       apiBaseUrl: getApiBaseUrl(),
       environment: IS_PRODUCTION ? 'production' : IS_STAGING ? 'staging' : 'development',
 
+      // PostHog Analytics
+      POSTHOG_API_KEY: process.env.POSTHOG_API_KEY || '',
+      POSTHOG_HOST: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
+
       // Alternative AI Services (Available for Future Use)
       HUGGING_FACE_API_KEY: process.env.HUGGING_FACE_API_KEY,
       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,

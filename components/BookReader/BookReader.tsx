@@ -18,6 +18,7 @@ import audioCache from '@/services/narration/audioCache';
 import elevenLabsService from '@/services/elevenLabsService';
 import { NarrationControls } from '@/components/NarrationControls/NarrationControls';
 import { logger, LogCategory } from '@/src/utils/logger';
+import { trackEvent, AnalyticsEvents } from '@/src/utils/analytics';
 
 interface BookReaderProps {
     /** If provided, read these sections instead of pulling from the conversation store. */
@@ -61,6 +62,9 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
     const isLastPage = currentIndex === pages.length - 1;
     const playerRef = useRef<NarrationPlayer | null>(null);
     const storyIdRef = useRef<string>(`story-${Date.now()}`);
+    const readingStartTimeRef = useRef<number>(Date.now());
+    const hasTrackedOpenRef = useRef(false);
+    const hasTrackedCompleteRef = useRef(false);
 
     // --- PLAYBACK HANDLERS ---
     const handlePlaybackComplete = useCallback(() => {
@@ -138,6 +142,10 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             setLoadingAudio(false);
         } catch (error) {
             console.error('Error generating audio:', error);
+            trackEvent(AnalyticsEvents.NARRATION_FAILED, {
+                error_type: error instanceof Error ? error.message : 'unknown',
+                page_index: pageIndex,
+            });
 
             // Type guard for error with status and name
             const errorWithStatus = error as {
@@ -203,6 +211,10 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             await playerRef.current.play();
             setNarrationPlaying(true);
             setAudioError(null);
+            trackEvent(AnalyticsEvents.NARRATION_PLAYED, {
+                story_id: storyIdRef.current,
+                page_index: currentIndex,
+            });
         } catch (error) {
             // Log playback failure with context
             logger.error(
@@ -248,6 +260,10 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         try {
             await playerRef.current.pause();
             setNarrationPlaying(false);
+            trackEvent(AnalyticsEvents.NARRATION_PAUSED, {
+                story_id: storyIdRef.current,
+                page_index: currentIndex,
+            });
         } catch (error) {
             // Log pause failure with context
             logger.error(
@@ -284,6 +300,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
     }, [setNarrationPlaying, currentIndex]);
 
     const handleRetry = useCallback(() => {
+        trackEvent(AnalyticsEvents.NARRATION_RETRIED, { page_index: currentIndex });
         // Clear error state and retry loading audio for current page
         const currentPage = pages[currentIndex];
         if (currentPage && currentPage.text) {
@@ -321,18 +338,22 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
     }, [currentIndex, isNarrationPlaying, handlePause]);
 
     const handleRestartStory = () => {
+        trackEvent(AnalyticsEvents.STORY_END_ACTION, { action: 'read_again' });
+        hasTrackedCompleteRef.current = false;
         setCurrentIndex(0);
         setShowEndMenu(false);
         fadeAnim.setValue(0);
     };
 
     const handleNewStory = () => {
+        trackEvent(AnalyticsEvents.STORY_END_ACTION, { action: 'new_story' });
         // Reset the entire conversation store to start fresh
         resetConversation();
         // This will trigger the app to go back to the voice assistant/story input
     };
 
     const handleExit = () => {
+        trackEvent(AnalyticsEvents.STORY_END_ACTION, { action: 'exit' });
         // For Expo, you can use expo-app-loading or just reset
         // If you want to truly exit the app (mobile only):
         if (Platform.OS !== 'web') {
@@ -347,13 +368,31 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         }
     };
 
-    // Generate audio on page change
+    // Generate audio on page change & track page views
     useEffect(() => {
+        trackEvent(AnalyticsEvents.STORY_PAGE_VIEWED, {
+            page_index: currentIndex,
+            total_pages: pages.length,
+        });
+
         const currentPage = pages[currentIndex];
         if (currentPage && currentPage.text) {
             void generateAndLoadAudio(currentIndex, currentPage.text);
         }
     }, [currentIndex, pages, generateAndLoadAudio]);
+
+    // Track story_opened once on mount
+    useEffect(() => {
+        if (!hasTrackedOpenRef.current) {
+            hasTrackedOpenRef.current = true;
+            readingStartTimeRef.current = Date.now();
+            trackEvent(AnalyticsEvents.STORY_OPENED, {
+                source: onBack ? 'bookshelf' : 'new_generation',
+                story_id: storyIdRef.current,
+                page_count: pages.length,
+            });
+        }
+    }, [onBack, pages.length]);
 
     // Cleanup player on unmount
     useEffect(() => {
@@ -367,7 +406,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         };
     }, []);
 
-    // Trigger fade-in animation when reaching last page
+    // Trigger fade-in animation when reaching last page + track story_completed
     useEffect(() => {
         if (isLastPage && !showEndMenu) {
             const timer = setTimeout(() => {
@@ -377,11 +416,19 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
                     duration: 800,
                     useNativeDriver: true,
                 }).start();
+
+                if (!hasTrackedCompleteRef.current) {
+                    hasTrackedCompleteRef.current = true;
+                    trackEvent(AnalyticsEvents.STORY_COMPLETED, {
+                        reading_duration_seconds: Math.round((Date.now() - readingStartTimeRef.current) / 1000),
+                        page_count: pages.length,
+                    });
+                }
             }, 500);
 
             return () => clearTimeout(timer);
         }
-    }, [isLastPage, fadeAnim, showEndMenu]);
+    }, [isLastPage, fadeAnim, showEndMenu, pages.length]);
 
     // --- SWIPE DETECTOR ---
     const panResponder = useRef(
@@ -462,7 +509,10 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
 
                                 <TouchableOpacity
                                     style={[styles.endButton, styles.secondaryButton]}
-                                    onPress={onBack}
+                                    onPress={() => {
+                                        trackEvent(AnalyticsEvents.STORY_END_ACTION, { action: 'back_to_bookshelf' });
+                                        onBack?.();
+                                    }}
                                 >
                                     <Text style={styles.secondaryButtonText}>📚 Back to Bookshelf</Text>
                                 </TouchableOpacity>

@@ -44,16 +44,19 @@
     "react-native-config": "^1.5.5",
     "react-native-dotenv": "^3.4.11",
     "react-native-gesture-handler": "~2.20.2",
-    "react-native-markdown-display": "^7.0.2",
     "react-native-reanimated": "~3.17.4",
-    "react-native-render-html": "^6.3.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
     "react-native-web": "~0.20.0",
     "react-native-webview": "^13.15.0",
     "together-ai": "^0.17.0",
     "zustand": "^5.0.6",
-    "expo-av": "~15.0.2"
+    "expo-av": "~15.0.2",
+    "posthog-react-native": "^3.3.8",
+    "expo-file-system": "~18.0.4",
+    "expo-application": "~6.0.2",
+    "expo-device": "~7.0.2",
+    "expo-localization": "~16.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
