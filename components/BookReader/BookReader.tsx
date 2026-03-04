@@ -405,7 +405,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
     // Trigger fade-in animation when reaching last page + track story_completed
     useEffect(() => {
         if (isLastPage && !showEndMenu) {
-            const t = setTimeout(() => {
+            const timer = setTimeout(() => {
                 setShowEndMenu(true);
                 Animated.timing(fadeAnim, {
                     toValue: 1,
