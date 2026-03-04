@@ -1,4 +1,4 @@
-import { StorySection } from '@/src/stores/conversationStore';
+import { StorySection } from '@/types/story';
 
 const IMAGE_REGEX = /!\[.*?\]\(\s*(https?:\/\/[^)]+)\s*\)/i;
 

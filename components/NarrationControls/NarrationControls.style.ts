@@ -1,0 +1,62 @@
+import { StyleSheet } from 'react-native';
+
+export const styles = StyleSheet.create({
+    container: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+    },
+    playPauseButton: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: '#D35400',
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    playPauseIcon: {
+        fontSize: 28,
+        color: 'white',
+    },
+    errorContainer: {
+        backgroundColor: '#ffebee',
+        padding: 12,
+        borderRadius: 8,
+        borderLeftWidth: 4,
+        borderLeftColor: '#d32f2f',
+        gap: 10,
+        maxWidth: 200,
+    },
+    errorText: {
+        fontSize: 13,
+        color: '#d32f2f',
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+    retryButton: {
+        backgroundColor: '#D35400',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        alignSelf: 'center',
+        minHeight: 44,
+        minWidth: 100,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.15,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    retryButtonText: {
+        fontSize: 14,
+        color: 'white',
+        fontWeight: '600',
+    },
+});

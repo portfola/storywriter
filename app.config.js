@@ -70,7 +70,11 @@ export default ({ config }) => ({
         foregroundImage: "./assets/images/icon.png",
         backgroundColor: "#ffffff"
       },
-      orientation: "landscape"  // Changed from screenOrientation
+      orientation: "landscape",  // Changed from screenOrientation
+      permissions: [
+        "RECORD_AUDIO",  // For voice input
+        "MODIFY_AUDIO_SETTINGS"  // For audio playback control
+      ]
     },
     plugins: [
       "expo-dev-client",
@@ -81,6 +85,10 @@ export default ({ config }) => ({
       API_BASE_URL: getApiBaseUrl(),
       apiBaseUrl: getApiBaseUrl(),
       environment: IS_PRODUCTION ? 'production' : IS_STAGING ? 'staging' : 'development',
+
+      // PostHog Analytics
+      POSTHOG_API_KEY: process.env.POSTHOG_API_KEY || '',
+      POSTHOG_HOST: process.env.POSTHOG_HOST || 'https://us.i.posthog.com',
 
       // Alternative AI Services (Available for Future Use)
       HUGGING_FACE_API_KEY: process.env.HUGGING_FACE_API_KEY,

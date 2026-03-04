@@ -4,12 +4,18 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router'; // <--- 1. Import useRouter, useSegments
 import * as SplashScreen from 'expo-splash-screen';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useEffect } from 'react';
+import Constants from 'expo-constants';
+import { useEffect, useMemo, useRef } from 'react';
 import { Platform, View, ActivityIndicator, StyleSheet } from 'react-native';
 import 'react-native-reanimated';
+import PostHog, { PostHogProvider, usePostHog } from 'posthog-react-native';
 
 // import BackendConnectivityService from '@/src/utils/backendConnectivity';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { setPostHogClient, trackEvent, AnalyticsEvents } from '../src/utils/analytics';
+
+const posthogApiKey = Constants.expoConfig?.extra?.POSTHOG_API_KEY ?? '';
+const posthogHost = Constants.expoConfig?.extra?.POSTHOG_HOST ?? 'https://us.i.posthog.com';
 
 export {
   ErrorBoundary,
@@ -41,14 +47,61 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <PostHogProviderWrapper>
+      <AuthProvider>
+        <RootLayoutNav />
+      </AuthProvider>
+    </PostHogProviderWrapper>
   );
 }
 
+/**
+ * SSR-safe PostHog wrapper.
+ *
+ * posthog-react-native internally uses AsyncStorage which requires `window`.
+ * Expo Router performs an SSR pass on web where `window` is not defined.
+ * Following the official PostHog Expo example, we create the client manually
+ * behind a `typeof window` guard and pass it via the `client` prop.
+ */
+function PostHogProviderWrapper({ children }: { children: React.ReactNode }) {
+  const client = useMemo(() => {
+    if (typeof window === 'undefined' || !posthogApiKey) {
+      return null;
+    }
+
+    return new PostHog(posthogApiKey, {
+      host: posthogHost,
+      enableSessionReplay: false,
+      disableGeoip: true,
+    });
+  }, []);
+
+  if (!client) {
+    return <>{children}</>;
+  }
+
+  return (
+    <PostHogProvider client={client} autocapture={false}>
+      <PostHogClientRegistrar />
+      {children}
+    </PostHogProvider>
+  );
+}
+
+/** Registers the PostHog client instance for use outside React components. */
+function PostHogClientRegistrar() {
+  const posthog = usePostHog();
+  useEffect(() => {
+    if (posthog) {
+      setPostHogClient(posthog);
+    }
+  }, [posthog]);
+  return null;
+}
+
 function RootLayoutNav() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
+  const hasFiredAppOpened = useRef(false);
 
   // Custom theme with transparent backgrounds
   const customTheme = {
@@ -68,6 +121,16 @@ function RootLayoutNav() {
       void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     }
   }, []);
+
+  useEffect(() => {
+    if (!loading && !hasFiredAppOpened.current) {
+      hasFiredAppOpened.current = true;
+      trackEvent(AnalyticsEvents.APP_OPENED, {
+        platform: Platform.OS,
+        is_returning_user: !!user,
+      });
+    }
+  }, [loading, user]);
 
   // 3. THE REDIRECT LOGIC (The "Integration" you asked for)
   useEffect(() => {

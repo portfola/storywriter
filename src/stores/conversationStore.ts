@@ -22,12 +22,14 @@ export interface StoryElements {
   [key: string]: string;
 }
 
+export interface StorySection {
+  text: string;
+  imageUrl: string | null;
+}
+
 export interface StoryContent {
-  title: string | null;
-  pages: string[];       // Ready-to-render HTML strings, one per page
-  coverImage: string | null;
-  storyId: number | null;
-  pageCount: number;
+  content: string | null;
+  sections: StorySection[];
 }
 
 export interface SavedStory {
@@ -65,6 +67,14 @@ export interface ConversationState {
   // --- Errors ---
   errors: Record<string, AppError>;
 
+  // --- Narration ---
+  isNarrationEnabled: boolean;
+  isNarrationPlaying: boolean;
+  isLoadingAudio: boolean;
+  autoAdvancePages: boolean;
+  isRateLimited: boolean;
+  rateLimitResetTime: number | null;
+
   // --- Actions: Conversation ---
   startConversation: () => void;
   endConversation: (transcript: string) => void;
@@ -96,6 +106,13 @@ export interface ConversationState {
   clearErrors: () => void;
   hasError: (key?: string) => boolean;
   getError: (key: string) => AppError | undefined;
+
+  // --- Actions: Narration ---
+  setNarrationEnabled: (enabled: boolean) => void;
+  setNarrationPlaying: (playing: boolean) => void;
+  setLoadingAudio: (loading: boolean) => void;
+  setAutoAdvancePages: (auto: boolean) => void;
+  setRateLimited: (limited: boolean, resetTime?: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,11 +120,8 @@ export interface ConversationState {
 // ---------------------------------------------------------------------------
 
 const EMPTY_STORY: StoryContent = {
-  title: null,
-  pages: [],
-  coverImage: null,
-  storyId: null,
-  pageCount: 0,
+  content: null,
+  sections: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -135,6 +149,14 @@ const useConversationStore = create<ConversationState>()(
       storyElements: {},
       savedStories: [],
       errors: {},
+
+      // Narration state
+      isNarrationEnabled: true,
+      isNarrationPlaying: false,
+      isLoadingAudio: false,
+      autoAdvancePages: false,
+      isRateLimited: false,
+      rateLimitResetTime: null,
 
       // -----------------------------------------------------------------------
       // CONVERSATION ACTIONS
@@ -188,6 +210,12 @@ const useConversationStore = create<ConversationState>()(
           story: EMPTY_STORY,
           storyGenerationProgress: null,
           minDisplayStartTime: null,
+          isNarrationEnabled: true,
+          isNarrationPlaying: false,
+          isLoadingAudio: false,
+          autoAdvancePages: false,
+          isRateLimited: false,
+          rateLimitResetTime: null,
         });
       },
 
@@ -241,14 +269,17 @@ const useConversationStore = create<ConversationState>()(
 
           console.log('Store received story:', JSON.stringify(result.story));
 
+          // Map API pages to StorySection format
+          const sections = result.story.pages.map(page => ({
+            text: page.content,
+            imageUrl: page.imageUrl ?? null,
+          }));
+
           const completeStoryGeneration = () => {
             set({
               story: {
-                title: result.story.title ?? null,
-                pages: result.story.pages,
-                coverImage: result.story.coverImage ?? null,
-                storyId: result.story.storyId ?? null,
-                pageCount: result.story.pageCount ?? result.story.pages.length,
+                content: result.story.pages.map(p => p.content).join('\n\n'),
+                sections,
               },
               phase: 'COMPLETE',
               storyGenerationProgress: null,
@@ -418,6 +449,26 @@ const useConversationStore = create<ConversationState>()(
       },
 
       getError: (key) => get().errors[key],
+
+      // -----------------------------------------------------------------------
+      // NARRATION ACTIONS
+      // -----------------------------------------------------------------------
+
+      setNarrationEnabled: (enabled) => set({ isNarrationEnabled: enabled }),
+
+      setNarrationPlaying: (playing) => set({ isNarrationPlaying: playing }),
+
+      setLoadingAudio: (loading) => set({ isLoadingAudio: loading }),
+
+      setAutoAdvancePages: (auto) => set({ autoAdvancePages: auto }),
+
+      setRateLimited: (limited, resetTime?) => {
+        set({
+          isRateLimited: limited,
+          rateLimitResetTime: resetTime ?? null,
+          isNarrationEnabled: limited ? false : get().isNarrationEnabled,
+        });
+      },
     })
   )
 );

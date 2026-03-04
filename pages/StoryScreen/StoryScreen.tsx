@@ -9,6 +9,7 @@ import StoryGenerationSplash from '@/components/StoryGenerationSplash/StoryGener
 import ErrorBoundary from '@/components/ErrorBoundary/ErrorBoundary';
 import BackgroundImage from '@/components/BackgroundImage/BackgroundImage';
 import WelcomeOverlay from '@/components/WelcomeOverlay/WelcomeOverlay';
+import { trackEvent, AnalyticsEvents } from '@/src/utils/analytics';
 import { s } from './StoryScreen.style';
 
 const StoryScreen = () => {
@@ -23,15 +24,16 @@ const StoryScreen = () => {
   const currentPhase: ConversationPhase = phase;
 
   // Show welcome overlay when IDLE, user hasn't started, AND screen is focused
-  const showWelcome = isFocused && currentPhase === 'IDLE' && !story.pages.length;
+  const showWelcome = isFocused && currentPhase === 'IDLE' && !story.content;
 
   const handleStart = () => {
+    trackEvent(AnalyticsEvents.STORY_CREATION_STARTED, { entry_point: 'welcome_overlay' });
     // Start the conversation when the welcome button is clicked
     conversationRef.current?.startConversation();
   };
 
   // Show story content (without background)
-  if (story.pages.length) {
+  if (story.content) {
     return (
       <Layout>
         <View style={s.container}>

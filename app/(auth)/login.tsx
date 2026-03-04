@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../../src/context/AuthContext';
 import BackgroundImage from '../../components/BackgroundImage/BackgroundImage';
+import { trackEvent, AnalyticsEvents } from '../../src/utils/analytics';
 
 // Helper to display errors clearly
 const ErrorMessage = ({ messages }: { messages: string[] }) => {
@@ -41,6 +42,7 @@ export default function LoginScreen() {
     const handleLogin = async () => {
         setIsLoading(true);
         setErrors({});
+        trackEvent(AnalyticsEvents.LOGIN_STARTED, { platform: Platform.OS });
 
         const deviceName = Platform.OS === 'web' ? 'web-browser' : Platform.OS;
 
@@ -50,22 +52,27 @@ export default function LoginScreen() {
         } catch (error: unknown) {
             console.error("Login Error:", error);
 
+            let errorType = 'unknown';
             if (error && typeof error === 'object' && 'response' in error) {
                 const axiosError = error as { response?: { status: number; data: { errors: { [key: string]: string[] } } } };
                 if (axiosError.response?.status === 422) {
+                    errorType = 'validation';
                     setErrors(axiosError.response.data.errors);
                 } else {
+                    errorType = 'server';
                     Alert.alert(
                         'Oops! Something went wrong',
                         'Please check your connection and try again.'
                     );
                 }
             } else {
+                errorType = 'network';
                 Alert.alert(
                     'Oops! Something went wrong',
                     'Please check your connection and try again.'
                 );
             }
+            trackEvent(AnalyticsEvents.LOGIN_FAILED, { error_type: errorType });
         } finally {
             setIsLoading(false);
         }
