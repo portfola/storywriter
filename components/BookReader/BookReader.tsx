@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
     View,
     Text,
-    StyleSheet,
     Image,
     TouchableOpacity,
     Platform,
@@ -10,6 +9,7 @@ import {
     PanResponder,
     Animated
 } from 'react-native';
+import { styles } from './BookReader.style';
 import { useConversationStore } from '@/src/stores/conversationStore';
 import { StorySection } from '@/types/story';
 import { createNarrationPlayer } from '@/services/narration';
@@ -24,8 +24,6 @@ interface BookReaderProps {
     sections?: StorySection[];
     onBack?: () => void;
 }
-
-const THEME = { paper: '#FAF9F6', text: '#2D2D2D', accent: '#D35400' };
 
 const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) => {
     const {
@@ -589,8 +587,5 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         </View>
     );
 };
-
-const shadow = { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 };
-
 
 export default BookReader;
