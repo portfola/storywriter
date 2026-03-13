@@ -37,4 +37,5 @@ export interface StoryGenerationOptions {
 export interface StorySection {
   text: string;
   imageUrl: string | null;
+  illustrationPrompt?: string | null;
 }
