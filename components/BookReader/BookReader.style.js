@@ -44,6 +44,9 @@ export const styles = StyleSheet.create({
         backgroundColor: '#eee',
         resizeMode: 'contain',
     },
+    shimmerPlaceholder: {
+        backgroundColor: '#e0ddd8',
+    },
     storyText: {
         fontSize: 22,
         lineHeight: 34,

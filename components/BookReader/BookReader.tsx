@@ -25,6 +25,39 @@ interface BookReaderProps {
     onBack?: () => void;
 }
 
+const ShimmerPlaceholder = () => {
+    const shimmerAnim = useRef(new Animated.Value(0.3)).current;
+
+    useEffect(() => {
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.timing(shimmerAnim, {
+                    toValue: 0.7,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(shimmerAnim, {
+                    toValue: 0.3,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        pulse.start();
+        return () => pulse.stop();
+    }, [shimmerAnim]);
+
+    return (
+        <Animated.View
+            style={[
+                styles.illustration,
+                styles.shimmerPlaceholder,
+                { opacity: shimmerAnim },
+            ]}
+        />
+    );
+};
+
 const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) => {
     const {
         story,
@@ -52,6 +85,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
     const [showEndMenu, setShowEndMenu] = useState(false);
     const [audioError, setAudioError] = useState<string | null>(null);
     const [canRetry, setCanRetry] = useState(false);
+    const [isLoadingImage, setIsLoadingImage] = useState(false);
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const isLastPage = currentIndex === pages.length - 1;
@@ -369,6 +403,9 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             total_pages: pages.length,
         });
 
+        // Reset image loading state on page change
+        setIsLoadingImage(false);
+
         const currentPage = pages[currentIndex];
         if (currentPage && currentPage.text) {
             void generateAndLoadAudio(currentIndex, currentPage.text);
@@ -465,13 +502,15 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
                     showsVerticalScrollIndicator={false}
                     scrollEnabled={true}
                 >
-                    {currentPage.imageUrl && (
+                    {isLoadingImage && !currentPage.imageUrl ? (
+                        <ShimmerPlaceholder />
+                    ) : currentPage.imageUrl ? (
                         <Image
                             source={{ uri: currentPage.imageUrl }}
                             style={styles.illustration}
                             resizeMode="contain"
                         />
-                    )}
+                    ) : null}
 
                     <Text style={styles.storyText}>
                         {currentPage.text || currentPage.text}
