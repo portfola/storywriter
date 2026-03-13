@@ -19,6 +19,7 @@ import elevenLabsService from '@/services/elevenLabsService';
 import { NarrationControls } from '@/components/NarrationControls/NarrationControls';
 import { logger, LogCategory } from '@/src/utils/logger';
 import { trackEvent, AnalyticsEvents } from '@/src/utils/analytics';
+import storyGenerationService from '@/services/storyGenerationService';
 
 interface BookReaderProps {
     sections?: StorySection[];
@@ -69,7 +70,8 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         isRateLimited,
         setNarrationPlaying,
         setLoadingAudio,
-        setRateLimited
+        setRateLimited,
+        updatePageImage
     } = useConversationStore();
 
     const pages = useMemo(() =>
@@ -396,8 +398,10 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         }
     };
 
-    // Generate audio on page change & track page views
+    // Generate audio and lazy-load images on page change & track page views
     useEffect(() => {
+        let cancelled = false;
+
         trackEvent(AnalyticsEvents.STORY_PAGE_VIEWED, {
             page_index: currentIndex,
             total_pages: pages.length,
@@ -410,7 +414,35 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         if (currentPage && currentPage.text) {
             void generateAndLoadAudio(currentIndex, currentPage.text);
         }
-    }, [currentIndex, pages, generateAndLoadAudio]);
+
+        // Lazy image fetching: if page has illustrationPrompt but no imageUrl, generate on demand
+        const storyId = story.storyId;
+        if (
+            currentPage &&
+            currentPage.illustrationPrompt &&
+            !currentPage.imageUrl &&
+            storyId
+        ) {
+            setIsLoadingImage(true);
+            const pageNumber = currentIndex + 1; // API uses 1-based page numbers
+            storyGenerationService.generatePageImage(storyId, pageNumber)
+                .then((url) => {
+                    if (cancelled) return;
+                    if (url) {
+                        updatePageImage(currentIndex, url);
+                    }
+                    setIsLoadingImage(false);
+                })
+                .catch(() => {
+                    if (cancelled) return;
+                    setIsLoadingImage(false);
+                });
+        }
+
+        return () => {
+            cancelled = true;
+        };
+    }, [currentIndex, pages, generateAndLoadAudio, story.storyId, updatePageImage]);
 
     // Track story_opened once on mount
     useEffect(() => {

@@ -25,6 +25,7 @@ export interface StoryElements {
 export interface StorySection {
   text: string;
   imageUrl: string | null;
+  illustrationPrompt?: string | null;
 }
 
 export interface StoryContent {
