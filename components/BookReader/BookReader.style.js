@@ -202,26 +202,4 @@ export const styles = StyleSheet.create({
         color: THEME.accent,
         fontWeight: '600',
     },
-<<<<<<< HEAD
-    navButton: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', ...shadow, elevation: 4, borderWidth: 1, borderColor: '#eee' },
-    disabledBtn: { opacity: 0.3, backgroundColor: '#f5f5f5' },
-    navArrow: { fontSize: 32, color: THEME.accent, marginTop: -4, fontWeight: '300' },
-    dotsContainer: { flexDirection: 'row', gap: 8 },
-    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ddd' },
-    dotActive: { backgroundColor: THEME.accent, width: 12 },
-    endMenuOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(250, 249, 246, 0.98)', justifyContent: 'center', alignItems: 'center', zIndex: 10000 },
-    endMenuContainer: { width: '90%', maxWidth: 400, padding: 30, alignItems: 'center' },
-    endTitle: { fontSize: 36, fontWeight: 'bold', color: THEME.text, marginBottom: 10, textAlign: 'center' },
-    endSubtitle: { fontSize: 18, color: '#666', marginBottom: 40, textAlign: 'center' },
-    endButton: { width: '100%', padding: 18, borderRadius: 12, marginBottom: 16, alignItems: 'center', ...shadow, elevation: 3 },
-    primaryButton: { backgroundColor: THEME.accent },
-    primaryButtonText: { fontSize: 20, fontWeight: '600', color: 'white' },
-    secondaryButton: { backgroundColor: '#fff', borderWidth: 2, borderColor: THEME.accent },
-    secondaryButtonText: { fontSize: 18, fontWeight: '600', color: THEME.accent },
-    tertiaryButton: { backgroundColor: 'transparent' },
-    tertiaryButtonText: { fontSize: 16, color: '#666' },
-    backToBookshelfBtn: { position: 'absolute', bottom: 100, left: 20, backgroundColor: 'rgba(250, 249, 246, 0.92)', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: '#ddd', ...shadow, elevation: 3, zIndex: 9998 },
-    backToBookshelfBtnText: { fontSize: 15, color: THEME.accent, fontWeight: '600' },
-=======
->>>>>>> ef22af8a9671a7823077b5d2db15da54c65b091e
 });

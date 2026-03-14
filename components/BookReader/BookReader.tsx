@@ -9,7 +9,6 @@ import {
     PanResponder,
     Animated
 } from 'react-native';
-import { styles } from './BookReader.style';
 import { useConversationStore } from '@/src/stores/conversationStore';
 import { StorySection } from '@/types/story';
 import { createNarrationPlayer } from '@/services/narration';
