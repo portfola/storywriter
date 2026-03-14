@@ -220,9 +220,9 @@ export class ElevenLabsService {
     serviceLogger.elevenlabs.call('Starting conversation with StoryWriter Agent', { agentId: this.agentId });
 
     try {
-      const response = await client.post<{
+      const response = await client.get<{
         signed_url: string
-      }>('/conversation/sdk-credentials', { agentId: this.agentId });
+      }>('/conversation/sdk-credentials', { params: { agentId: this.agentId } });
 
       if (!response.data?.signed_url) {
         throw new Error('Missing signed_url in credentials response');
