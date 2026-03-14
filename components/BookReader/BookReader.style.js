@@ -202,6 +202,7 @@ export const styles = StyleSheet.create({
         color: THEME.accent,
         fontWeight: '600',
     },
+<<<<<<< HEAD
     navButton: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', ...shadow, elevation: 4, borderWidth: 1, borderColor: '#eee' },
     disabledBtn: { opacity: 0.3, backgroundColor: '#f5f5f5' },
     navArrow: { fontSize: 32, color: THEME.accent, marginTop: -4, fontWeight: '300' },
@@ -221,4 +222,6 @@ export const styles = StyleSheet.create({
     tertiaryButtonText: { fontSize: 16, color: '#666' },
     backToBookshelfBtn: { position: 'absolute', bottom: 100, left: 20, backgroundColor: 'rgba(250, 249, 246, 0.92)', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: '#ddd', ...shadow, elevation: 3, zIndex: 9998 },
     backToBookshelfBtnText: { fontSize: 15, color: THEME.accent, fontWeight: '600' },
+=======
+>>>>>>> ef22af8a9671a7823077b5d2db15da54c65b091e
 });

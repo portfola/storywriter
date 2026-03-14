@@ -9,6 +9,7 @@ import {
     PanResponder,
     Animated
 } from 'react-native';
+import { styles } from './BookReader.style';
 import { useConversationStore } from '@/src/stores/conversationStore';
 import { StorySection } from '@/types/story';
 import { createNarrationPlayer } from '@/services/narration';
@@ -24,8 +25,6 @@ interface BookReaderProps {
     sections?: StorySection[];
     onBack?: () => void;
 }
-
-const THEME = { paper: '#FAF9F6', text: '#2D2D2D', accent: '#D35400' };
 
 const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) => {
     const {
@@ -589,6 +588,5 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         </View>
     );
 };
-
 
 export default BookReader;
