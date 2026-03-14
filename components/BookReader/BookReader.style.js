@@ -44,6 +44,9 @@ export const styles = StyleSheet.create({
         backgroundColor: '#eee',
         resizeMode: 'contain',
     },
+    shimmerPlaceholder: {
+        backgroundColor: '#e0ddd8',
+    },
     storyText: {
         fontSize: 22,
         lineHeight: 34,
@@ -52,21 +55,23 @@ export const styles = StyleSheet.create({
         textAlign: 'left',
         width: '100%',
     },
-    controlsOverlay: {
+    navigationRow: {
         position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 90,
+        bottom: 20,
+        left: 20,
+        right: 20,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        backgroundColor: 'rgba(250, 249, 246, 0.95)',
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(0,0,0,0.05)',
-        zIndex: 9999,
-        paddingBottom: Platform.OS === 'ios' ? 20 : 0,
+        zIndex: 9998,
+    },
+    narrationControlsContainer: {
+        position: 'absolute',
+        bottom: 100,
+        right: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9998,
     },
     navButton: {
         width: 50,
@@ -107,23 +112,15 @@ export const styles = StyleSheet.create({
         backgroundColor: THEME.accent,
         width: 12,
     },
-    // END MENU STYLES
-    endMenuOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(250, 249, 246, 0.98)',
+    // END PAGE STYLES
+    endPageContainer: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 10000,
-    },
-    endMenuContainer: {
-        width: '90%',
+        width: '100%',
         maxWidth: 400,
+        alignSelf: 'center',
         padding: 30,
-        alignItems: 'center',
     },
     endTitle: {
         fontSize: 36,
@@ -175,25 +172,27 @@ export const styles = StyleSheet.create({
         fontSize: 16,
         color: '#666',
     },
-    h1: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginBottom: 24,
-        color: '#2c3e50',
+    // BACK TO BOOKSHELF BUTTON
+    backToBookshelfBtn: {
+        position: 'absolute',
+        bottom: 100,
+        left: 20,
+        backgroundColor: 'rgba(250, 249, 246, 0.92)',
+        borderRadius: 20,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        zIndex: 9998,
     },
-    p: {
-        fontSize: 18,
-        lineHeight: 28,
-        marginBottom: 16,
-        color: '#2c3e50',
-        textAlign: 'left',
-    },
-    div: {
-        marginBottom: 0,
-    },
-    body: {
-        color: '#2c3e50',
-        fontSize: 18,
+    backToBookshelfBtnText: {
+        fontSize: 15,
+        color: THEME.accent,
+        fontWeight: '600',
     },
 });
