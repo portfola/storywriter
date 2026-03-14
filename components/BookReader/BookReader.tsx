@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
     View,
     Text,
-    StyleSheet,
     Image,
     TouchableOpacity,
     Platform,
@@ -19,6 +18,7 @@ import elevenLabsService from '@/services/elevenLabsService';
 import { NarrationControls } from '@/components/NarrationControls/NarrationControls';
 import { logger, LogCategory } from '@/src/utils/logger';
 import { trackEvent, AnalyticsEvents } from '@/src/utils/analytics';
+import { styles } from './BookReader.style';
 
 interface BookReaderProps {
     sections?: StorySection[];
@@ -589,8 +589,6 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         </View>
     );
 };
-
-const shadow = { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 };
 
 
 export default BookReader;

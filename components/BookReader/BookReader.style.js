@@ -6,6 +6,8 @@ const THEME = {
     accent: '#D35400',
 };
 
+const shadow = { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 };
+
 export const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -219,5 +221,4 @@ export const styles = StyleSheet.create({
     tertiaryButtonText: { fontSize: 16, color: '#666' },
     backToBookshelfBtn: { position: 'absolute', bottom: 100, left: 20, backgroundColor: 'rgba(250, 249, 246, 0.92)', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, borderWidth: 1, borderColor: '#ddd', ...shadow, elevation: 3, zIndex: 9998 },
     backToBookshelfBtnText: { fontSize: 15, color: THEME.accent, fontWeight: '600' },
-});
 });
