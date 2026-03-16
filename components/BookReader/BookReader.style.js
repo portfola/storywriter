@@ -46,6 +46,9 @@ export const styles = StyleSheet.create({
         backgroundColor: '#eee',
         resizeMode: 'contain',
     },
+    shimmerPlaceholder: {
+        backgroundColor: '#e0ddd8',
+    },
     storyText: {
         fontSize: 22,
         lineHeight: 34,
@@ -111,23 +114,15 @@ export const styles = StyleSheet.create({
         backgroundColor: THEME.accent,
         width: 12,
     },
-    // END MENU STYLES
-    endMenuOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(250, 249, 246, 0.98)',
+    // END PAGE STYLES
+    endPageContainer: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 10000,
-    },
-    endMenuContainer: {
-        width: '90%',
+        width: '100%',
         maxWidth: 400,
+        alignSelf: 'center',
         padding: 30,
-        alignItems: 'center',
     },
     endTitle: {
         fontSize: 36,

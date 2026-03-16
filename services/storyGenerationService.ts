@@ -90,7 +90,23 @@ class StoryGenerationService {
     }
 
     // ------------------------------------------------------------
-    // 4. FAIL RESPONSE
+    // 4. GENERATE PAGE IMAGE (on-demand)
+    // ------------------------------------------------------------
+    async generatePageImage(storyId: number, pageNumber: number): Promise<string | null> {
+        try {
+            const response = await this.postToApi<{ imageUrl: string }>(
+                `/api/stories/${storyId}/pages/${pageNumber}/image`,
+                {}
+            );
+            return response.imageUrl ?? null;
+        } catch (error: any) {
+            console.error(`Page image generation failed (story=${storyId}, page=${pageNumber}):`, error.message);
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------------
+    // 5. FAIL RESPONSE
     // ------------------------------------------------------------
     private failResponse(errorMsg: string): StoryGenerationResult {
         return {

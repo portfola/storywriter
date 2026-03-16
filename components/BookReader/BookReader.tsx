@@ -9,6 +9,7 @@ import {
     PanResponder,
     Animated
 } from 'react-native';
+import { styles } from './BookReader.style';
 import { useConversationStore } from '@/src/stores/conversationStore';
 import { StorySection } from '@/types/story';
 import { createNarrationPlayer } from '@/services/narration';
@@ -18,12 +19,45 @@ import elevenLabsService from '@/services/elevenLabsService';
 import { NarrationControls } from '@/components/NarrationControls/NarrationControls';
 import { logger, LogCategory } from '@/src/utils/logger';
 import { trackEvent, AnalyticsEvents } from '@/src/utils/analytics';
-import { styles } from './BookReader.style';
+import storyGenerationService from '@/services/storyGenerationService';
 
 interface BookReaderProps {
     sections?: StorySection[];
     onBack?: () => void;
 }
+
+const ShimmerPlaceholder = () => {
+    const shimmerAnim = useRef(new Animated.Value(0.3)).current;
+
+    useEffect(() => {
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.timing(shimmerAnim, {
+                    toValue: 0.7,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(shimmerAnim, {
+                    toValue: 0.3,
+                    duration: 1000,
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        pulse.start();
+        return () => pulse.stop();
+    }, [shimmerAnim]);
+
+    return (
+        <Animated.View
+            style={[
+                styles.illustration,
+                styles.shimmerPlaceholder,
+                { opacity: shimmerAnim },
+            ]}
+        />
+    );
+};
 
 const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) => {
     const {
@@ -36,7 +70,8 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         isRateLimited,
         setNarrationPlaying,
         setLoadingAudio,
-        setRateLimited
+        setRateLimited,
+        updatePageImage
     } = useConversationStore();
 
     const pages = useMemo(() =>
@@ -49,12 +84,11 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
     );
 
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [showEndMenu, setShowEndMenu] = useState(false);
     const [audioError, setAudioError] = useState<string | null>(null);
     const [canRetry, setCanRetry] = useState(false);
+    const [isLoadingImage, setIsLoadingImage] = useState(false);
 
-    const fadeAnim = useRef(new Animated.Value(0)).current;
-    const isLastPage = currentIndex === pages.length - 1;
+    const isEndPage = currentIndex === pages.length;
     const playerRef = useRef<NarrationPlayer | null>(null);
     const storyIdRef = useRef<string>(`story-${Date.now()}`);
     const readingStartTimeRef = useRef<number>(Date.now());
@@ -314,7 +348,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             void handlePause();
         }
 
-        if (currentIndex < pages.length - 1) {
+        if (currentIndex < pages.length) {
             setCurrentIndex(prev => prev + 1);
         }
     }, [currentIndex, pages.length, isNarrationPlaying, handlePause]);
@@ -327,7 +361,6 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
 
         if (currentIndex > 0) {
             setCurrentIndex(prev => prev - 1);
-            setShowEndMenu(false);
         }
     }, [currentIndex, isNarrationPlaying, handlePause]);
 
@@ -335,8 +368,6 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         trackEvent(AnalyticsEvents.STORY_END_ACTION, { action: 'read_again' });
         hasTrackedCompleteRef.current = false;
         setCurrentIndex(0);
-        setShowEndMenu(false);
-        fadeAnim.setValue(0);
     };
 
     const handleNewStory = () => {
@@ -362,18 +393,54 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         }
     };
 
-    // Generate audio on page change & track page views
+    // Generate audio and lazy-load images on page change & track page views
     useEffect(() => {
+        let cancelled = false;
+
+        // Skip audio/image loading for the virtual end page
+        if (isEndPage) return;
+
         trackEvent(AnalyticsEvents.STORY_PAGE_VIEWED, {
             page_index: currentIndex,
             total_pages: pages.length,
         });
 
+        // Reset image loading state on page change
+        setIsLoadingImage(false);
+
         const currentPage = pages[currentIndex];
         if (currentPage && currentPage.text) {
             void generateAndLoadAudio(currentIndex, currentPage.text);
         }
-    }, [currentIndex, pages, generateAndLoadAudio]);
+
+        // Lazy image fetching: if page has illustrationPrompt but no imageUrl, generate on demand
+        const storyId = story.storyId;
+        if (
+            currentPage &&
+            currentPage.illustrationPrompt &&
+            !currentPage.imageUrl &&
+            storyId
+        ) {
+            setIsLoadingImage(true);
+            const pageNumber = currentIndex + 1; // API uses 1-based page numbers
+            storyGenerationService.generatePageImage(storyId, pageNumber)
+                .then((url) => {
+                    if (cancelled) return;
+                    if (url) {
+                        updatePageImage(currentIndex, url);
+                    }
+                    setIsLoadingImage(false);
+                })
+                .catch(() => {
+                    if (cancelled) return;
+                    setIsLoadingImage(false);
+                });
+        }
+
+        return () => {
+            cancelled = true;
+        };
+    }, [currentIndex, pages, generateAndLoadAudio, story.storyId, updatePageImage, isEndPage]);
 
     // Track story_opened once on mount
     useEffect(() => {
@@ -400,29 +467,16 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
         };
     }, []);
 
-    // Trigger fade-in animation when reaching last page + track story_completed
+    // Track story_completed when reaching the end page
     useEffect(() => {
-        if (isLastPage && !showEndMenu) {
-            const timer = setTimeout(() => {
-                setShowEndMenu(true);
-                Animated.timing(fadeAnim, {
-                    toValue: 1,
-                    duration: 800,
-                    useNativeDriver: true,
-                }).start();
-
-                if (!hasTrackedCompleteRef.current) {
-                    hasTrackedCompleteRef.current = true;
-                    trackEvent(AnalyticsEvents.STORY_COMPLETED, {
-                        reading_duration_seconds: Math.round((Date.now() - readingStartTimeRef.current) / 1000),
-                        page_count: pages.length,
-                    });
-                }
-            }, 500);
-
-            return () => clearTimeout(timer);
+        if (isEndPage && !hasTrackedCompleteRef.current) {
+            hasTrackedCompleteRef.current = true;
+            trackEvent(AnalyticsEvents.STORY_COMPLETED, {
+                reading_duration_seconds: Math.round((Date.now() - readingStartTimeRef.current) / 1000),
+                page_count: pages.length,
+            });
         }
-    }, [isLastPage, fadeAnim, showEndMenu, pages.length]);
+    }, [isEndPage, pages.length]);
 
     // --- SWIPE DETECTOR ---
     const panResponder = useRef(
@@ -456,37 +510,8 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
     return (
         <View style={styles.container} {...panResponder.panHandlers}>
             <View style={styles.pageWrapper}>
-                <Text style={styles.pageNumber}>
-                    Page {currentIndex + 1} of {pages.length}
-                </Text>
-
-                <ScrollView
-                    contentContainerStyle={styles.scrollContent}
-                    showsVerticalScrollIndicator={false}
-                    scrollEnabled={true}
-                >
-                    {currentPage.imageUrl && (
-                        <Image
-                            source={{ uri: currentPage.imageUrl }}
-                            style={styles.illustration}
-                            resizeMode="contain"
-                        />
-                    )}
-
-                    <Text style={styles.storyText}>
-                        {currentPage.text || currentPage.text}
-                    </Text>
-                </ScrollView>
-            </View>
-
-            {showEndMenu && isLastPage && (
-                <Animated.View
-                    style={[
-                        styles.endMenuOverlay,
-                        { opacity: fadeAnim }
-                    ]}
-                >
-                    <View style={styles.endMenuContainer}>
+                {isEndPage ? (
+                    <View style={styles.endPageContainer}>
                         <Text style={styles.endTitle}>The End! 🎉</Text>
                         <Text style={styles.endSubtitle}>What would you like to do?</Text>
 
@@ -534,11 +559,37 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
                             </>
                         )}
                     </View>
-                </Animated.View>
-            )}
+                ) : (
+                    <>
+                        <Text style={styles.pageNumber}>
+                            Page {currentIndex + 1} of {pages.length}
+                        </Text>
+
+                        <ScrollView
+                            contentContainerStyle={styles.scrollContent}
+                            showsVerticalScrollIndicator={false}
+                            scrollEnabled={true}
+                        >
+                            {isLoadingImage && !currentPage.imageUrl ? (
+                                <ShimmerPlaceholder />
+                            ) : currentPage.imageUrl ? (
+                                <Image
+                                    source={{ uri: currentPage.imageUrl }}
+                                    style={styles.illustration}
+                                    resizeMode="contain"
+                                />
+                            ) : null}
+
+                            <Text style={styles.storyText}>
+                                {currentPage.text || currentPage.text}
+                            </Text>
+                        </ScrollView>
+                    </>
+                )}
+            </View>
 
             {/* PAGE NAVIGATION CONTROLS */}
-            {!showEndMenu && (
+            {!isEndPage && (
                 <View style={styles.navigationRow}>
                     <TouchableOpacity
                         onPress={goPrev}
@@ -558,8 +609,8 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
 
                     <TouchableOpacity
                         onPress={goNext}
-                        style={[styles.navButton, currentIndex === pages.length - 1 && styles.disabledBtn]}
-                        disabled={currentIndex === pages.length - 1}
+                        style={[styles.navButton, isEndPage && styles.disabledBtn]}
+                        disabled={isEndPage}
                     >
                         <Text style={styles.navArrow}>›</Text>
                     </TouchableOpacity>
@@ -567,7 +618,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             )}
 
             {/* NARRATION CONTROLS */}
-            {!showEndMenu && (
+            {!isEndPage && (
                 <View style={styles.narrationControlsContainer}>
                     <NarrationControls
                         onPlay={handlePlay}
@@ -579,7 +630,7 @@ const BookReader = ({ sections: sectionsProp, onBack }: BookReaderProps = {}) =>
             )}
 
             {/* BACK TO BOOKSHELF */}
-            {onBack && !showEndMenu && (
+            {onBack && !isEndPage && (
                 <TouchableOpacity style={styles.backToBookshelfBtn} onPress={onBack}>
                     <Text style={styles.backToBookshelfBtnText}>‹ Bookshelf</Text>
                 </TouchableOpacity>

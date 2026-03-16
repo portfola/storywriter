@@ -25,11 +25,13 @@ export interface StoryElements {
 export interface StorySection {
   text: string;
   imageUrl: string | null;
+  illustrationPrompt?: string | null;
 }
 
 export interface StoryContent {
   content: string | null;
   sections: StorySection[];
+  storyId: number | null;
 }
 
 export interface SavedStory {
@@ -100,6 +102,9 @@ export interface ConversationState {
   loadStory: (id: string) => Promise<void>;
   loadSavedStories: () => Promise<void>;
 
+  // --- Actions: Page image ---
+  updatePageImage: (pageIndex: number, imageUrl: string) => void;
+
   // --- Actions: Errors ---
   addError: (key: string, error: AppError) => void;
   removeError: (key: string) => void;
@@ -122,6 +127,7 @@ export interface ConversationState {
 const EMPTY_STORY: StoryContent = {
   content: null,
   sections: [],
+  storyId: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -273,6 +279,7 @@ const useConversationStore = create<ConversationState>()(
           const sections = result.story.pages.map(page => ({
             text: page.content,
             imageUrl: page.imageUrl ?? null,
+            illustrationPrompt: page.illustrationPrompt ?? null,
           }));
 
           const completeStoryGeneration = () => {
@@ -280,6 +287,7 @@ const useConversationStore = create<ConversationState>()(
               story: {
                 content: result.story.pages.map(p => p.content).join('\n\n'),
                 sections,
+                storyId: result.story.storyId ?? null,
               },
               phase: 'COMPLETE',
               storyGenerationProgress: null,
@@ -422,6 +430,20 @@ const useConversationStore = create<ConversationState>()(
           get().addError('storage_load', appError);
           throw appError;
         }
+      },
+
+      // -----------------------------------------------------------------------
+      // PAGE IMAGE ACTIONS
+      // -----------------------------------------------------------------------
+
+      updatePageImage: (pageIndex, imageUrl) => {
+        set((state) => {
+          const sections = [...state.story.sections];
+          if (pageIndex >= 0 && pageIndex < sections.length) {
+            sections[pageIndex] = { ...sections[pageIndex], imageUrl };
+          }
+          return { story: { ...state.story, sections } };
+        });
       },
 
       // -----------------------------------------------------------------------

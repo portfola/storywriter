@@ -5,11 +5,13 @@ import client from '@/src/api/client';
 import BookReader from '@/components/BookReader/BookReader';
 import { parseStoryBody } from '@/src/utils/parseStoryBody';
 import { StorySection } from '@/types/story';
+import { useConversationStore } from '@/src/stores/conversationStore';
 
 export default function StoryDetailScreen() {
     const { slug } = useLocalSearchParams<{ slug: string }>();
     const router = useRouter();
     const [sections, setSections] = useState<StorySection[]>([]);
+    const [isLegacy, setIsLegacy] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -17,8 +19,31 @@ export default function StoryDetailScreen() {
         const fetchStory = async () => {
             try {
                 const { data } = await client.get(`/v1/stories/${slug}`);
-                const { sections: parsed } = parseStoryBody(data.data.body);
-                setSections(parsed);
+                const story = data.data;
+
+                if (story.pages && story.pages.length > 0) {
+                    // New structured format: map API pages to StorySection
+                    const mappedSections: StorySection[] = story.pages.map((p: { content: string; imageUrl?: string | null; illustrationPrompt?: string | null }) => ({
+                        text: p.content,
+                        imageUrl: p.imageUrl ?? null,
+                        illustrationPrompt: p.illustrationPrompt ?? null,
+                    }));
+                    setSections(mappedSections);
+
+                    // Set story data in conversation store for lazy image loading
+                    useConversationStore.setState({
+                        story: {
+                            content: story.body || null,
+                            sections: mappedSections,
+                            storyId: story.id,
+                        },
+                    });
+                } else {
+                    // Legacy: parse from body
+                    const { sections: parsed } = parseStoryBody(story.body);
+                    setSections(parsed);
+                    setIsLegacy(true);
+                }
             } catch {
                 setError('Could not load this story.');
             } finally {
@@ -52,7 +77,7 @@ export default function StoryDetailScreen() {
 
     return (
         <View style={styles.fullScreen}>
-            <BookReader sections={sections} onBack={() => router.push('/bookshelf')} />
+            <BookReader sections={isLegacy ? sections : undefined} onBack={() => router.push('/bookshelf')} />
         </View>
     );
 }
