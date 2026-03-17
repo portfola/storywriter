@@ -21,7 +21,7 @@ on:
         - production
 
 env:
-  NODE_VERSION: '18'
+  NODE_VERSION: '24'
   AWS_REGION: us-east-1
 
 jobs:
