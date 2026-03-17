@@ -23,6 +23,7 @@ on:
 env:
   NODE_VERSION: '24'
   AWS_REGION: us-east-1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # Determine environment based on branch or manual input
