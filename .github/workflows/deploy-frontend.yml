@@ -386,13 +386,26 @@ jobs:
     needs: [setup, infrastructure, build, connectivity-test]
     runs-on: ubuntu-latest
     environment: ${{ needs.setup.outputs.environment }}
+    outputs:
+      index_md5: ${{ steps.uploaded-index.outputs.md5 }}
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
           name: frontend-build-${{ needs.setup.outputs.environment }}
           path: dist/
-          
+
+      # `verify-deployment` compares this against the object the bucket really
+      # holds afterwards. A digest is all that has to travel between the jobs:
+      # S3 stores the MD5 of a single-part, SSE-S3 object as its ETag, so the
+      # comparison needs no second copy of the build.
+      - name: Record the index.html this run uploads
+        id: uploaded-index
+        run: |
+          MD5=$(md5sum dist/index.html | cut -d' ' -f1)
+          echo "md5=${MD5}" >> $GITHUB_OUTPUT
+          echo "index.html digest: ${MD5}"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -460,8 +473,15 @@ jobs:
       # the distribution maps an origin 403 to index.html with a 200, so a 403
       # reaching the viewer can only have come from the function.
       #
-      # This means CI no longer confirms the new bundle is what gets served.
-      # The `deploy` job's S3 sync is what that rests on now.
+      # What that 403 cannot tell us is *which* bundle is behind it. The
+      # "Verify S3 holds the bundle this run uploaded" step below covers that
+      # half, against the bucket rather than the edge.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Verify deployment
         env:
           ENVIRONMENT: ${{ needs.setup.outputs.environment }}
@@ -525,6 +545,57 @@ jobs:
               exit 1
               ;;
           esac
+
+      # The check above asks CloudFront whether it is serving. This one asks the
+      # bucket *what* it is serving: head the index.html that is really there
+      # and compare it to the digest the deploy job took of the file it pushed.
+      # Without it the only thing standing behind "staging runs the new build"
+      # is the deploy job's `aws s3 sync` reporting success.
+      #
+      # An object PUT in one part and encrypted with SSE-S3 carries its MD5 as
+      # its ETag. index.html is a few kilobytes, far below the multipart
+      # threshold, so that holds — and if it ever stops holding, the ETag grows
+      # a `-<parts>` suffix and this step says so rather than comparing digests
+      # that were never comparable.
+      - name: Verify S3 holds the bundle this run uploaded
+        env:
+          BUCKET: ${{ needs.infrastructure.outputs.s3_bucket }}
+          EXPECTED_MD5: ${{ needs.deploy.outputs.index_md5 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${EXPECTED_MD5}" ]; then
+            echo "❌ The deploy job reported no index.html digest, so there is nothing to compare against."
+            exit 1
+          fi
+
+          echo "Heading s3://${BUCKET}/index.html"
+          if ! ETAG=$(aws s3api head-object --bucket "${BUCKET}" --key index.html --query 'ETag' --output text 2>/tmp/head-object-err); then
+            echo "❌ Could not read index.html from s3://${BUCKET}"
+            cat /tmp/head-object-err
+            exit 1
+          fi
+          ETAG=${ETAG//\"/}
+
+          case "${ETAG}" in
+            *-*)
+              echo "❌ index.html came back with a multipart ETag (${ETAG})."
+              echo "   A multipart ETag is not an MD5, so it cannot be compared to the uploaded digest."
+              echo "   Either index.html grew past the multipart threshold or the upload changed shape."
+              echo "   Compare the object itself (aws s3 cp + cmp) instead of trusting this check."
+              exit 1
+              ;;
+          esac
+
+          if [ "${ETAG}" != "${EXPECTED_MD5}" ]; then
+            echo "❌ The bucket is not holding the index.html this run built."
+            echo "   Uploaded: ${EXPECTED_MD5}"
+            echo "   In S3:    ${ETAG}"
+            echo "   Something wrote over the sync, or the sync did not land. Do not treat this deploy as shipped."
+            exit 1
+          fi
+
+          echo "✅ s3://${BUCKET}/index.html is the file this run uploaded (${ETAG})"
 
       - name: Verify Terraform state consistency
         run: |
