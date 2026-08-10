@@ -188,6 +188,27 @@ export type ConversationDisconnectionDetails =
   | { reason: 'agent'; context?: { type?: string; reason?: string }; closeCode?: number; closeReason?: string }
   | { reason: 'user' };
 
+/**
+ * The agent running one of its own server-side tools, as the SDK reports it.
+ * `agent_tool_request` fires when the tool starts and `agent_tool_response` when
+ * it finishes.
+ *
+ * Note what is *not* here: the tool's arguments. So the `message` the agent may
+ * pass to `end_call` — the goodbye it says before hanging up — cannot be read
+ * from the app at all (#115). The request event is still useful, because it
+ * arrives before the SDK tears the session down.
+ *
+ * Mirrors AgentToolRequest / AgentToolResponse in @elevenlabs/types.
+ */
+export interface ConversationAgentToolEvent {
+  tool_name: string;
+  tool_call_id: string;
+  tool_type?: string;
+  event_id?: number;
+  is_error?: boolean;
+  is_called?: boolean;
+}
+
 export interface ConversationCallbacks {
   onConnect?: () => void;
   onDisconnect?: (details?: ConversationDisconnectionDetails) => void;
@@ -200,6 +221,10 @@ export interface ConversationCallbacks {
   // clientTools and, failing that, hands it to onUnhandledClientToolCall.
   clientTools?: Record<string, ConversationClientTool>;
   onUnhandledClientToolCall?: (toolCall: ConversationClientToolCall) => void;
+
+  // The agent's *own* tools, which run on ElevenLabs' side and never reach
+  // clientTools. `end_call` is the one we care about.
+  onAgentToolRequest?: (toolEvent: ConversationAgentToolEvent) => void;
 }
 
 export interface ConversationSession {

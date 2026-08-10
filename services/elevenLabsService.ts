@@ -3,6 +3,7 @@ import {
   TextToSpeechOptions,
   ElevenLabsError,
   AudioGenerationResult,
+  ConversationAgentToolEvent,
   ConversationCallbacks,
   ConversationDisconnectionDetails,
   ConversationSession
@@ -261,6 +262,12 @@ export class ElevenLabsService {
           ),
 
         onMessage: (message) => callbacks.onMessage?.(message), // Simplified message handling
+
+        // The agent starting one of its own tools. `end_call` is announced here
+        // before the SDK closes the session on the matching response, so this is
+        // the only warning the app gets that a hang-up is coming (#115).
+        onAgentToolRequest: (toolEvent) =>
+          callbacks.onAgentToolRequest?.(toolEvent as ConversationAgentToolEvent),
 
         onError: (error: unknown) => this.handleErrorEvent(error, callbacks.onError),
 
