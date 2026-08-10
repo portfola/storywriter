@@ -3,6 +3,7 @@ import ElevenLabsService from '@/services/elevenLabsService';
 import { TranscriptProcessor } from '@/src/utils/transcriptProcessor';
 import { useErrorStore } from '@/src/stores/errorStore';
 import { ChildFriendlyErrors } from '@/src/utils/errorHandler';
+import { trackEvent, AnalyticsEvents } from '@/src/utils/analytics';
 import {
   useConversation,
   CONVERSATION_ERROR_KEY,
@@ -499,6 +500,116 @@ describe('useConversation', () => {
 
       expect(useErrorStore.getState().getError(CONVERSATION_ERROR_KEY)).toBeUndefined();
       expect(mockStoreConfig.resetConversation).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- Card #115: measuring the agent's goodbye ----------------------------
+  // `end_call` takes an optional `message` the agent speaks before hanging up,
+  // and the app cannot read it — the tool events carry names and ids only. What
+  // it can measure is the gap between the agent starting `end_call` and the SDK
+  // reporting the disconnect, because the SDK closes the audio context on the
+  // matching response. That gap is the most of the goodbye the child could have
+  // heard, so it is the number that says whether the goodbye is being cut off.
+
+  describe('the goodbye window', () => {
+    const AGENT_END = { reason: 'agent', context: { type: 'end_call', reason: 'Agent ended the call' } };
+
+    const endedEventPayload = () => {
+      const call = (trackEvent as jest.Mock).mock.calls
+        .find(([event]) => event === AnalyticsEvents.CONVERSATION_ENDED);
+      return call?.[1];
+    };
+
+    const startConversationWithOneTurn = async () => {
+      mockStartConversationAgent.mockResolvedValue({
+        endSession: jest.fn().mockResolvedValue(undefined),
+      });
+
+      const { result } = renderHook(() => useConversation());
+
+      await act(async () => {
+        result.current.startConversation();
+      });
+
+      const startCallArgs = mockStartConversationAgent.mock.calls[0][0];
+
+      act(() => {
+        startCallArgs.onMessage({ source: 'ai', message: 'What shall we write about?' });
+        startCallArgs.onMessage({ source: 'user', message: 'A dragon' });
+      });
+
+      return startCallArgs;
+    };
+
+    it('reports how long the agent had to say goodbye before the SDK hung up', async () => {
+      const startCallArgs = await startConversationWithOneTurn();
+
+      act(() => {
+        startCallArgs.onAgentToolRequest({ tool_name: 'end_call', tool_call_id: 'call-1' });
+      });
+
+      // The goodbye plays in here, and the SDK cuts it off on the response.
+      act(() => {
+        jest.advanceTimersByTime(400);
+      });
+
+      await act(async () => {
+        startCallArgs.onDisconnect(AGENT_END);
+      });
+
+      expect(endedEventPayload()).toEqual(expect.objectContaining({
+        agent_end_requested: true,
+        goodbye_window_ms: 400,
+      }));
+    });
+
+    it('reports no window when the agent never announced the hang-up', async () => {
+      const startCallArgs = await startConversationWithOneTurn();
+
+      await act(async () => {
+        startCallArgs.onDisconnect(AGENT_END);
+      });
+
+      expect(endedEventPayload()).toEqual(expect.objectContaining({
+        agent_end_requested: false,
+        goodbye_window_ms: null,
+      }));
+    });
+
+    it('ignores the agent running a tool that is not the hang-up', async () => {
+      const startCallArgs = await startConversationWithOneTurn();
+
+      act(() => {
+        startCallArgs.onAgentToolRequest({ tool_name: 'search_web', tool_call_id: 'call-2' });
+        jest.advanceTimersByTime(400);
+      });
+
+      await act(async () => {
+        startCallArgs.onDisconnect(AGENT_END);
+      });
+
+      expect(endedEventPayload()).toEqual(expect.objectContaining({
+        agent_end_requested: false,
+        goodbye_window_ms: null,
+      }));
+    });
+
+    it('leaves no window behind on a route out that cannot carry a goodbye', async () => {
+      const startCallArgs = await startConversationWithOneTurn();
+
+      act(() => {
+        startCallArgs.onMessage({ source: 'user', message: 'A big one' });
+      });
+
+      // A plain socket drop: no details, so nothing the agent chose.
+      await act(async () => {
+        startCallArgs.onDisconnect(undefined);
+      });
+
+      expect(endedEventPayload()).toEqual(expect.objectContaining({
+        agent_end_requested: false,
+        goodbye_window_ms: null,
+      }));
     });
   });
 

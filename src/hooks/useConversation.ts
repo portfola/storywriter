@@ -38,6 +38,13 @@ export const CONVERSATION_ERROR_KEY = 'conversation';
 export const END_CONVERSATION_TOOL_NAMES = ['end_conversation', 'end_call'] as const;
 
 /**
+ * The agent's real hang-up tool, which runs on ElevenLabs' side. We see it twice
+ * — once as an `agent_tool_request` when it starts, and once, indirectly, as the
+ * disconnect the SDK raises when it finishes.
+ */
+export const END_CALL_SYSTEM_TOOL_NAME = 'end_call';
+
+/**
  * Puts a conversation failure somewhere the UI can find it. The message a kid
  * ends up reading is the child-friendly wording, not the raw provider error.
  */
@@ -76,6 +83,20 @@ export const useConversation = (): UseConversationReturn => {
   const pendingFlushRef = useRef<boolean>(false);
   const speakerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const conversationStartTimeRef = useRef<number>(0);
+
+  // Card #115. `end_call` takes an optional `message` — a goodbye the agent says
+  // before hanging up — and the app can never read it: the tool events carry the
+  // name and ids only. What we can measure is how long the child had to hear it.
+  //
+  // The SDK closes the audio context the instant the `end_call` *response*
+  // arrives, and only tells us afterwards, through onDisconnect. So the window
+  // between the *request* and the disconnect is the whole of the goodbye that
+  // could possibly have reached the child. A window near zero means the goodbye
+  // never played; a short one means it was cut off partway through. Recorded
+  // rather than acted on, because nobody has yet seen this happen live and the
+  // remedy is not ours (see the card).
+  const agentEndRequestedAtRef = useRef<number | null>(null);
+  const goodbyeWindowMsRef = useRef<number | null>(null);
 
   // The SDK callbacks below are handed over once, when the session starts, so
   // they close over the state of that render — where the session is still
@@ -122,6 +143,10 @@ export const useConversation = (): UseConversationReturn => {
       message_count: messageList.length,
       user_message_count: userMessages.length,
       duration_seconds: durationSeconds,
+      // Null on every route out of a conversation except the agent's own
+      // hang-up, which is the only one that can carry a goodbye (#115).
+      agent_end_requested: agentEndRequestedAtRef.current !== null,
+      goodbye_window_ms: goodbyeWindowMsRef.current,
     });
 
     const session = conversationSessionRef.current;
@@ -245,6 +270,8 @@ export const useConversation = (): UseConversationReturn => {
         speakerTimeoutRef.current = null;
       }
       pendingFlushRef.current = false;
+      agentEndRequestedAtRef.current = null;
+      goodbyeWindowMsRef.current = null;
     }
   }, [isConnecting]);
 
@@ -269,6 +296,17 @@ export const useConversation = (): UseConversationReturn => {
         onDisconnect: (details) => {
           conversationLogger.disconnected();
           setSession(null);
+
+          if (details?.reason === 'agent') {
+            goodbyeWindowMsRef.current = agentEndRequestedAtRef.current !== null
+              ? Date.now() - agentEndRequestedAtRef.current
+              : null;
+
+            logger.info(LogCategory.CONVERSATION, 'Agent hung up - how much goodbye the child could have heard', {
+              goodbyeWindowMs: goodbyeWindowMsRef.current,
+              sawEndCallRequest: agentEndRequestedAtRef.current !== null,
+            });
+          }
 
           if (rawMessages.current.length > 0) {
             const userMessages = rawMessages.current.filter(msg => msg.role === 'user');
@@ -348,6 +386,20 @@ export const useConversation = (): UseConversationReturn => {
               keys: Object.keys(message)
             });
           }
+        },
+
+        // The agent starting one of its own tools. `end_call` is the only one
+        // that concerns us, and it lands here *before* the SDK closes the audio
+        // context on the matching response — which is what makes the goodbye
+        // window measurable at all (#115).
+        onAgentToolRequest: (toolEvent) => {
+          if (toolEvent?.tool_name !== END_CALL_SYSTEM_TOOL_NAME) return;
+
+          agentEndRequestedAtRef.current = Date.now();
+
+          logger.info(LogCategory.CONVERSATION, 'Agent started its end_call tool', {
+            toolCallId: toolEvent.tool_call_id,
+          });
         },
 
         clientTools: Object.fromEntries(
